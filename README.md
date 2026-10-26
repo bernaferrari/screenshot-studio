@@ -1,0 +1,147 @@
+# Screenshot Studio
+
+One store-screenshot workflow for every app: real device captures composed in HTML into Play (and App Store) artwork for phone, 7-inch and 10-inch tablets, and desktop. Each app keeps its own look; the editor, gallery format, renderer, callouts, exporter and checks are shared.
+
+This folder is the master copy. `./sync.sh <app-repo>` copies `studio/` into `<app-repo>/store-listing/studio/`, so every repository still builds on its own. Never edit a synced copy; change it here, bump `studio/VERSION`, and sync. `./sync.sh <app-repo> --check` reports drift.
+
+## Interface source and build
+
+The editor is a React application built with the official **shadcn/ui** components and Tailwind CSS. The desktop project navigation uses shadcn Sidebar; mobile uses its Sheet drawer. Buttons, selects, tabs, forms, menus, dialogs, alerts, tables, progress, tooltips, scroll areas and toasts use the shared component source in `ui/src/components/ui/`. The custom screenshot canvas and accessibility selection sit inside those components. Light, dark and system appearance are available from the sidebar footer. Cmd/Ctrl+K searches projects; Cmd/Ctrl+B toggles the sidebar.
+
+```sh
+npm ci
+npm run build
+./sync.sh /path/to/app
+```
+
+Edit `ui/src/`, then build before syncing. The reproducible Vite build writes a self-contained browser bundle and stylesheet into `studio/assets/` and generates `studio/index.html`. React and the component dependencies are bundled locally; app repositories need only Node to run the existing server, without npm installation or a CDN connection. Opening the HTML file directly still shows a shadcn launch screen. Renderer files such as `preview.html`, `core.js`, `gallery.js` and `studio.css` remain separate from the interface bundle, so each app retains its own artwork.
+
+`components.json` records the shadcn registry setup. Component source is owned here and may be tailored; the slider forwards its accessible name to the actual thumb. The shadcn MIT notice is in `ui/SHADCN-LICENSE.md` and is included with the generated bundle.
+
+## Project workspace
+
+Start the shared workspace from this master folder:
+
+```sh
+node studio/server.cjs 8790
+```
+
+Open `http://127.0.0.1:8790/studio/`. The sidebar lists every connected project, with **Overview**, **Cards**, **Languages** and **Copy** beneath Studio apps. **All projects** shows real artwork, gallery and card counts, language readiness, capture coverage and export counts. Each project overview includes a language-by-language table and links to its device galleries. Navigation updates the current document while the sidebar stays mounted, with browser Back/Forward support. Repeated view clicks keep the current artwork; returning to a recently used view reuses its loaded previews. New live previews show an available export while they load.
+
+**Add project** accepts an app folder or screenshot folder. On macOS, **Choose folder** opens the native folder chooser; you can also paste a path. **Find projects** searches a parent folder, then lets you select which results to connect. The search visits up to four folder levels and 2,000 directories, skipping hidden, build and dependency folders. Projects with `store-listing/studio.json` use the editor. Other folders become image libraries: Studio scans common screenshot directories (or the selected folder), up to five levels and 2,000 images. It does not generate an app configuration or move your files.
+
+The project registry lives at `~/.screenshot-studio/projects.json`, shared by app servers and the master server. Registration persists across restarts. Use `--registry /path/projects.json` or `SCREENSHOT_STUDIO_PROJECTS` for a separate workspace; repeat `--add /path/to/app` to register folders from the command line. Starting the server inside an app automatically connects that app. Change its name or folder from the project menu. Removing a project only removes its registration; all project files stay in place. Unavailable folders remain visible so they can be reconnected.
+
+Coverage counts saved files used by the current gallery, including inherited cards. A **complete asset set** has all reference copy fields filled, all required captures and layout maps, and all expected exports present for that language. It does not certify freshness or a strict export result; run the exporter and review the artwork before publishing. Draft or borrowed English captures do not count as localized captures.
+
+Unsaved copy is retained per project and language in this browser tab’s session storage, including across project switches and reloads. Save writes only to that project’s selected language. If the saved file changed elsewhere, the editor asks you to keep your draft or use the saved copy. Session storage is temporary; use **Save copy** before closing your browser session.
+
+## What an app provides
+
+```
+store-listing/
+  studio/           synced from here, do not edit
+  studio.json       {"app": "Name", "locales": ["en-US"], "defaultLocale": "en-US", "writeAssets": true, "contactSheets": {"phone": "..."}}
+  profiles.json     per gallery: width, height (export canvas), captureWidth, captureHeight, captureDensity, frame ("phone" | "tablet" | "browser" | "none"), label
+  theme.css         the app's type, colors, device placement per kind (.phone, .tablet7, .tablet10, .desktop; .portrait/.landscape)
+  theme.js          export default { art, compose, layout, decorate } (all optional, see below)
+  gallery.json      shared layout: captures, callouts, order, output names; tablets may inherit phone cards
+  <locale>/copy.json per-card words keyed by feature, with optional "kind/feature" overrides
+  <locale>/raw/           native captures and matching <name>.nodes.json UI layout sidecars
+```
+
+A card:
+
+```json
+{"feature": "price", "raw": "phone/light/02-compare.png", "callouts": [{"x": 163, "y": 908, "w": 880, "h": 176, "mag": 1.16, "radius": 24}], "file": "optional/output/name.jpg", "vars": {"--paper": "#fff"}}
+```
+
+Several devices on one card: `"devices": [{"raw": "...", "role": "primary"}, {"raw": "...", "role": "secondary", "frame": "phone"}]` (each gets its role as a class). A card with no `raw` or `devices` is art only (a theme-drawn icon, for example). `"frame": "none"` shows a capture as the whole image. A `file` ending in `.png` is written as PNG; add `"transparent": true` for a 32-bit PNG such as an app icon. A gallery written as `{"inherits": "phone", "cards": [...]}` merges each card over the phone card at the same position, so tablets can swap captures and layout while using the same feature copy. Feature graphics and icons are just more galleries with their own profile.
+
+Headline markup: `*highlight*` → `<em>`, `~old~` → `<del>`, `[new]` → `<ins>`, `\n` breaks the line; the theme decides how each looks. Callouts lift a region of the real capture (capture pixels) out of the screen, centred where it lives (`dx`/`dy` move it). Any extra fields on a card are available to the theme as `ctx.slide`.
+
+`theme.js` hooks run in order with `ctx = {W, H, kind, locale, index, slide, slides, profile, profiles, config, main, art, capture}`: `art(ctx)` returns SVG for the background layer; `compose(ctx)` adds DOM (brand, notes, drawn details) before images and fonts settle; `layout(ctx)` adjusts frames once captures have their size; `decorate(ctx)` runs last with `ctx.devices` (each with `box` and `screen` relative to the canvas; `ctx.device`/`ctx.screen` are the first) and may throw to fail an export. `studio/shapes.js` has shared helpers: panorama coordinates and gradients (so art continues exactly across card seams), color mixing, and Material 3 Expressive shapes. Mark anything that must stay on the canvas with `data-check-bounds`.
+
+## Rules every gallery follows
+
+- Real app captures only, with the real status bar and navigation; no painted system UI. Sample data is local and fictional.
+- Every capture keeps a real device ratio (a configured capture size, either orientation); the renderer fails otherwise.
+- Devices are large (about two thirds of the card) and may run off an edge; copy and callouts never leave the canvas or cover the app.
+- The set reads as one strip in the store carousel: background and art are laid out in panorama coordinates.
+- Short benefit headlines with one marked phrase, one supporting line.
+
+## Use
+
+```sh
+node store-listing/studio/server.cjs 8790      # editor at /store-listing/studio/
+node store-listing/studio/export.cjs --locale en-US  # --kind phone limits a gallery
+node store-listing/studio/locales.cjs                  # translation/capture/layout coverage
+node store-listing/studio/locales.cjs --init de-DE     # scaffold empty copy, register locale
+node store-listing/studio/export.cjs --locale de-DE --strict
+```
+
+The editor shows each device gallery live from the source files, joined edge to edge or spaced like the store, and can switch to the exported JPEGs. The exporter serves the repository itself (themes may load fonts from anywhere in it), writes `<locale>/<kind>/NN-feature.jpg` unless a card sets `file`, a contact sheet per device, and `<locale>/assets.json`. It fails when fonts don't load (cards with copy), a capture has the wrong ratio, copy or callouts leave the canvas, a headline overflows, copy overlaps the app, or any request fails.
+
+## Languages and capture layouts
+
+Layout is shared in `gallery.json`. Words live in `<locale>/copy.json`, for example:
+
+```json
+{"price": {"title": "~$1,599~ [$1,349]", "body": "Catch the price drop."},
+ "tablet10/price": {"title": "See the [price drop]"}}
+```
+
+Empty or absent translated fields use the default locale's words and get an untranslated warning. A missing localized capture uses the default capture and gets a borrowed-capture warning. Draft languages are deliberately empty, rather than filled with English that would incorrectly count as translated. `locales.cjs --init` preserves existing translations. Sample content (room names, networks, example pages and calculations) stays English.
+
+Headlines shrink with the supporting text until they fit, to a minimum of 72% by default (`minFit` in `studio.json`). Shorten copy when the exporter still rejects it. The studio selects script font fallbacks for Japanese, Korean, Chinese, Hindi and Bengali; app CSS can override them with app-specific fonts.
+
+Capture the reference language first. `studio/uitree.py` provides `set_app_locale` (Android 13+ per-app language, checked by readback), `Navigator` (record English taps and replay UI tree positions), and `write_sidecar`. Save layout files next to each image as `scene.nodes.json`: `{"width":1080,"height":2340,"nodes":[{"path":"0.1","b":[40,200,1040,380],"text":"..."}]}`. Paths must be stable between locales; bounds are capture pixels. Kotlin instrumentation may write the same format directly from Android accessibility nodes. The reference sidecar anchors a callout to a UI element; localized bounds move and resize the callout. A missing match keeps the reference position and is flagged for review.
+
+The exporter prints a per-language summary of untranslated cards, borrowed captures, relocated callouts, callouts that could not follow their element, and fitted copy. `--strict` fails on untranslated words, borrowed captures and unresolved callouts for a translated locale. Successfully relocated callouts are valid. Without `--locale`, every configured language is exported, including drafts; use a locale filter while translating.
+
+## Editor
+
+**Cards** shows one language and device, with live previews, warnings, an exported-image toggle, and a callout picker. **Languages** shows searchable coverage rows with All languages, Needs copy and Copy complete filters. Expand Preview to mount that language’s selected gallery; collapsed rows do not load artwork. Copy counts include every gallery, while captures and exports use saved project files. Continue translation opens the first incomplete language. **Copy** shows reference words beside editable fields; save writes the selected language's `copy.json`. Cmd/Ctrl+Enter saves; saving refreshes the preview. Search by card or phrase, filter missing fields, or jump to a card without losing drafts. English reference editing uses one column; translated fields retain their reference beside them. Fields show character counts and explicit fallback status. The mobile Preview button opens the saved artwork in a dialog; it does not save automatically. Empty fields visibly warn and preview their English fallback.
+
+Pick a callout by dragging on the reference capture. Coordinates are saved in capture pixels to `gallery.json`; localized cards follow through their sidecars. The picker can select a device on a multi-device card, change magnification and radius, copy JSON, save, or remove callouts. Check each localized callout visually even when its tree path matched.
+
+The v4 editor uses a shadcn workbench with persistent Sidebar navigation, light/dark appearance, a dedicated preview canvas, copy-completion indicators in Languages, and grouped copy fields beside a sticky live preview. Unsaved copy stays in the browser tab while switching views or projects; button or Cmd/Ctrl+Enter saves it. Preview zoom and Joined update the existing artwork without reloading it. The gallery has Previous/Next controls and a visible card range, with reduced-motion support. The callout dialog also supports precise keyboard-entered coordinates and preserves existing placement settings.
+
+**Element** mode loads the accessibility tree saved with the reference capture. Hover and click on the screenshot, or search the element list by text, accessibility label, resource ID or path. **Parent element** selects the enclosing control. The selected rectangle snaps to the node's exact capture-pixel bounds. **Draw box** remains available for custom crops, merged nodes and canvas content. A missing tree or capture-size mismatch disables snapping.
+
+Element selections save `target`, `targetMode: "element"`, the node class, and a unique resource ID when available. Rendering resolves the exact node bounds again, including in the reference language after recapture. A unique ID survives path changes; otherwise matching uses path and class. Missing, ambiguous or incompatible targets are flagged in translated previews and rejected by strict export. A missing reference target fails rendering rather than silently using an old box. Path-based matches still need visual review when a UI changes; accessibility bounds can include hit-area padding or merged content.
+
+Opening `studio/index.html` directly shows the launch screen. Use the local HTTP server from an app repository to load captures, render artwork and save edits.
+
+Latest verification: [Capture and editor validation](VALIDATION.md).
+
+## Image gallery dialog
+
+Click artwork in the workspace overview, project filmstrip, screenshot library, Cards, Languages previews or Copy preview to open the shared shadcn gallery. Its dark presentation, wrapping navigation and thumbnail strip follow the gallery interaction in the local Kotlin Reforge project. Images stay in the studio; opening an original file in a new tab is an explicit toolbar action.
+
+Use the arrows, thumbnails, keyboard Left/Right or a horizontal swipe to change images. Home/End jump to the first/last item. Zoom buttons, double-click and trackpad/pinch gestures enlarge the artwork; drag to pan while enlarged. **Fit** (or `0`) resets the image, and **1:1** shows its native size. Original images can be downloaded; live artwork opens the current locale/device renderer instead of showing an unrelated export. Draft warnings remain visible. The copy viewer explains when unsaved words are not included, and never saves automatically.
+
+Escape closes the gallery and returns focus to the image trigger. Tooltips do not consume the close action. Missing images show a retry action; when an artwork item has a live renderer, it offers a live-preview fallback. The accessibility callout canvas keeps its element-selection interaction.
+
+## Verification
+
+```sh
+npm test
+# Install Chromium once if Playwright has no browser available:
+npx playwright install chromium
+npm run test:ui
+```
+
+The browser suite uses temporary project fixtures and a separate registry. It checks the real shadcn Sidebar and mobile Sheet, retained previews, Back/Forward, custom selects and keyboard saves, copy conflicts, project discovery/settings/removal, exact accessibility-element callouts and localized geometry, manual selection, dark appearance, command search and the file launch screen. Build first after changing source.
+
+## Workspace appearance
+
+Studio v4.2 uses the neutral shadcn theme across the workspace, project summaries, language screens and editor controls. Project filters use shadcn Tabs with connected panels, arrow-key navigation and project counts. Project cards show screenshot previews, gallery metadata and language completion without repeating the full overview. Headers and card grids respond to the available content width beside the sidebar; filters stay visible on small screens. The project language table aligns numeric columns for comparison.
+
+The palette declaration audit and design decisions are recorded in [DESIGN-NOTES.md](DESIGN-NOTES.md).
+
+## Project sections
+
+Studio v4.3 gives each project separate Overview, Galleries and Languages tabs. The selected section stays in the URL for reloads, links and browser history. Overview highlights the next unfinished language and links directly to its copy or artwork. Galleries lists each device or store asset size. Languages supports search and asset-status filtering, with a full table on wide screens and cards with all counts and actions on narrow screens.
+
+The workbench uses a shadcn Select for device galleries when there is not enough room for the tab strip. Translation fields stack their reference above the input on narrow layouts, and shortcut hints follow the platform. Navigation tabs activate on click, Enter or Space so focusing a route tab does not create duplicate history entries.
