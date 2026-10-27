@@ -41,7 +41,7 @@ Unsaved copy is retained per project and language in this browser tab’s sessio
 ```
 store-listing/
   studio/           synced from here, do not edit
-  studio.json       {"app": "Name", "locales": ["en-US"], "defaultLocale": "en-US", "writeAssets": true, "contactSheets": {"phone": "..."}}
+  studio.json       {"app": "Name", "locales": ["en-US"], "defaultLocale": "en-US", "writeAssets": true, "supersample": 2, "contactSheets": {"phone": "..."}} (supersample renders at 2× and downsamples, for crisp rotated or scaled UI)
   profiles.json     per gallery: width, height (export canvas), captureWidth, captureHeight, captureDensity, frame ("phone" | "tablet" | "browser" | "none"), label
   theme.css         the app's type, colors, device placement per kind (.phone, .tablet7, .tablet10, .desktop; .portrait/.landscape)
   theme.js          export default { art, compose, layout, decorate } (all optional, see below)
@@ -58,7 +58,7 @@ A card:
 
 Several devices on one card: `"devices": [{"raw": "...", "role": "primary"}, {"raw": "...", "role": "secondary", "frame": "phone"}]` (each gets its role as a class). A card with no `raw` or `devices` is art only (a theme-drawn icon, for example). `"frame": "none"` shows a capture as the whole image. A `file` ending in `.png` is written as PNG; add `"transparent": true` for a 32-bit PNG such as an app icon. A gallery written as `{"inherits": "phone", "cards": [...]}` merges each card over the phone card at the same position, so tablets can swap captures and layout while using the same feature copy. Feature graphics and icons are just more galleries with their own profile.
 
-Headline markup: `*highlight*` → `<em>`, `~old~` → `<del>`, `[new]` → `<ins>`, `\n` breaks the line; the theme decides how each looks. Callouts lift a region of the real capture (capture pixels) out of the screen, centred where it lives (`dx`/`dy` move it). Any extra fields on a card are available to the theme as `ctx.slide`.
+Headline markup: `*highlight*` → `<em>`, `~old~` → `<del>`, `[new]` → `<ins>`, `\n` breaks the line; the theme decides how each looks. Callouts lift a region of the real capture (capture pixels) out of the screen, centred where it lives (`dx`/`dy` move it). A callout can also come from another capture of the same scene with `"raw"` (a notification shade, say), placed with `"place": {"left", "top", "width"}` in canvas pixels; `"role"` adds a class so the theme can style it. Any extra fields on a card are available to the theme as `ctx.slide`.
 
 `theme.js` hooks run in order with `ctx = {W, H, kind, locale, index, slide, slides, profile, profiles, config, main, art, capture}`: `art(ctx)` returns SVG for the background layer; `compose(ctx)` adds DOM (brand, notes, drawn details) before images and fonts settle; `layout(ctx)` adjusts frames once captures have their size; `decorate(ctx)` runs last with `ctx.devices` (each with `box` and `screen` relative to the canvas; `ctx.device`/`ctx.screen` are the first) and may throw to fail an export. `studio/shapes.js` has shared helpers: panorama coordinates and gradients (so art continues exactly across card seams), color mixing, and Material 3 Expressive shapes. Mark anything that must stay on the canvas with `data-check-bounds`.
 
