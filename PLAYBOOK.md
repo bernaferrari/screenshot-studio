@@ -27,6 +27,7 @@ This creates `store-listing/` (studio.json, profiles.json, gallery.json, theme.c
   (1200×1920 @320) and 10-inch (1920×1200 @240), System UI demo mode (9:41, full battery and Wi-Fi), gesture
   navigation, and the app language; then drives the scenes and saves `<locale>/raw/<profile>/<name>.png` plus a
   `.nodes.json` layout sidecar. It resets display overrides and demo mode afterwards.
+- **One emulator at a time.** A 32 GB Mac runs out of memory with several emulators, and the system kills one mid-capture. Check `adb devices` first and queue apps instead of capturing in parallel.
 - **Emulator hygiene.** Use your own AVD and port; never a physical phone. Snooze other apps' notifications,
   turn the network off for fixture captures, uninstall other apps' capture builds if they steal focus, and reset
   `wm size`/`wm density` if a run is interrupted (the script refuses to start otherwise).
