@@ -78,6 +78,8 @@ play-staging/
 .play-api.env
 /[a-z][a-z]-*/*
 /[a-z][a-z][a-z]-*/*
+/[a-z][a-z]/*
+/[a-z][a-z][a-z]/*
 !/*/copy.json
 !/*/listing.json
 !/*/*.txt

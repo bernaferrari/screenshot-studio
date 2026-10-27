@@ -31,6 +31,12 @@ This creates `store-listing/` (studio.json, profiles.json, gallery.json, theme.c
 - **Emulator hygiene.** Use your own AVD and port; never a physical phone. Snooze other apps' notifications,
   turn the network off for fixture captures, uninstall other apps' capture builds if they steal focus, and reset
   `wm size`/`wm density` if a run is interrupted (the script refuses to start otherwise).
+- **Drive by visible text.** Tap tabs and buttons by their on-screen label from the node tree, not by fixed
+  coordinates; layouts shift between phone and tablet. Clear app data before each device size.
+- **Check the status bar in light mode.** Light screens need dark status bar icons; if the app gets this wrong,
+  fix the app, not the screenshot.
+- **Fictional third-party apps** (a firewall, a launcher) need drawn icons and names supplied by the capture
+  build, never real brands.
 
 ## 2. Design the set
 
@@ -46,6 +52,9 @@ What users rejected, and what they kept:
 | Most devices rotated | Upright by default; 3D only where it carries the idea |
 | Long, verbose copy | One headline with one highlighted phrase, one short line |
 | Black device frames everywhere | Frames that belong to the card (tinted, or app-coloured) |
+
+Type: a two-line headline fits at about 108px on a 1080px phone card; letter-spacing tighter than −0.02em
+starts merging words in bold display faces.
 
 Checklist for each card: readable at Play thumbnail size, one idea, the app visible, no clipped glyphs or
 cut tablets (except intentional bleeds), copy never overlaps the app.
