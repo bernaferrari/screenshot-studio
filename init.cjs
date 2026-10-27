@@ -74,6 +74,7 @@ write('.gitignore', `# Commit the reference locale's captures and exports (the R
 # Other locales regenerate from the capture script and the studio, so their images stay out of git.
 node_modules/
 __pycache__/
+.fixture-apps/
 play-staging/
 .play-api.env
 /[a-z][a-z]-*/*

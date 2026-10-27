@@ -35,8 +35,23 @@ This creates `store-listing/` (studio.json, profiles.json, gallery.json, theme.c
   coordinates; layouts shift between phone and tablet. Clear app data before each device size.
 - **Check the status bar in light mode.** Light screens need dark status bar icons; if the app gets this wrong,
   fix the app, not the screenshot.
-- **Fictional third-party apps** (a firewall, a launcher) need drawn icons and names supplied by the capture
-  build, never real brands.
+- **Fictional third-party apps** (a firewall, a launcher) need drawn icons and names, never real brands. When
+  the app lists apps through `PackageManager`, install real code-free stub APKs instead of patching the app:
+  `node store-listing/studio/fixture-apps.cjs store-listing/fixture-apps.json --install emulator-5572` builds
+  one per entry (label, gradient adaptive icon with a Lucide glyph, INTERNET permission, app category). The
+  capture build then only seeds rules and traffic for those packages, looked up by package name.
+- **Pin the clock, not just the status bar.** If screens show timestamps or "last hour" windows, set the
+  emulator clock to 9:41 (`settings put global auto_time 0`, `cmd alarm set-time <ms>`) before the app seeds
+  its data, so log times end at the status-bar time; restore the host time afterwards. Insert seeded logs
+  oldest first: lists that order by row id otherwise show last week at the top.
+- **Seed, then relaunch.** View models that read once at start (totals, counts) miss data seeded after launch.
+  Let the first start seed (write a marker file, poll it with `run-as`), force-stop, and start again.
+- **Endless animations block uiautomator.** A pulsing hero keeps the UI from going idle, so dumps hang. Set the
+  three animation scales to 0 during capture (most apps then show their reduced-motion state) and restore them.
+- **Match filter chips above the list.** A label like "Blocked" also appears in rows; restrict taps to the top
+  of the screen (the Re-Rethink script takes an `above` fraction).
+- **Look at the 10-inch captures for layout bugs.** Width-limited columns can leave the window background
+  bare (black side bars); fix the app, then recapture.
 
 ## 2. Design the set
 
