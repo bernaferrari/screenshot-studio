@@ -50,6 +50,14 @@ This creates `store-listing/` (studio.json, profiles.json, gallery.json, theme.c
   three animation scales to 0 during capture (most apps then show their reduced-motion state) and restore them.
 - **Match filter chips above the list.** A label like "Blocked" also appears in rows; restrict taps to the top
   of the screen (the Re-Rethink script takes an `above` fraction).
+- **Apps that show another computer** (remote desktops, companions) capture against a real host when
+  one is available: open fictional content on it over SSH from a script kept in the repo
+  (`store-listing/host/` in Lumina), close every window and delete the folder afterwards, and remove
+  the emulator's pairing from the host. Dismiss the host's desktop notifications first and check
+  every frame for names, paths and other people's devices (discovery lists show them; turn
+  discovery off in the capture build). Native libraries must match the app's source revision.
+- **Pillow is optional.** A capture script needs only `adb exec-out screencap -p`: read the size
+  from the PNG header and write the bytes; not every Mac has Pillow.
 - **Look at the 10-inch captures for layout bugs.** Width-limited columns can leave the window background
   bare (black side bars); fix the app, then recapture.
 
