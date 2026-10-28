@@ -14,7 +14,7 @@ This creates `store-listing/` (studio.json, profiles.json, gallery.json, theme.c
 
 ## 1. Capture real screens
 
-- **Real app only.** Captures come from the running Android app on a dedicated emulator, with Android's own
+- **Real app only.** Captures come from the running Android app on the one capture emulator, with Android's own
   status bar and gesture pill. Never paint UI, never fake numbers.
 - **A capture build.** Add a build type or flavor with its own application ID suffix (`.screenshots`,
   `.storecapture`) that seeds fictional, believable sample data and never touches real user data or the network.
@@ -28,7 +28,7 @@ This creates `store-listing/` (studio.json, profiles.json, gallery.json, theme.c
   navigation, and the app language; then drives the scenes and saves `<locale>/raw/<profile>/<name>.png` plus a
   `.nodes.json` layout sidecar. It resets display overrides and demo mode afterwards.
 - **One emulator at a time.** A 32 GB Mac runs out of memory with several emulators, and the system kills one mid-capture. Check `adb devices` first and queue apps instead of capturing in parallel.
-- **Emulator hygiene.** Use your own AVD and port; never a physical phone. Snooze other apps' notifications,
+- **Emulator hygiene.** Every app uses the same `Resizable_Experimental` AVD on port 5578 (`emulator-5578`); never create per-app AVDs, never a physical phone. Snooze other apps' notifications,
   turn the network off for fixture captures, uninstall other apps' capture builds if they steal focus, and reset
   `wm size`/`wm density` if a run is interrupted (the script refuses to start otherwise).
 - **Drive by visible text.** Tap tabs and buttons by their on-screen label from the node tree, not by fixed
@@ -37,7 +37,7 @@ This creates `store-listing/` (studio.json, profiles.json, gallery.json, theme.c
   fix the app, not the screenshot.
 - **Fictional third-party apps** (a firewall, a launcher) need drawn icons and names, never real brands. When
   the app lists apps through `PackageManager`, install real code-free stub APKs instead of patching the app:
-  `node store-listing/studio/fixture-apps.cjs store-listing/fixture-apps.json --install emulator-5572` builds
+  `node store-listing/studio/fixture-apps.cjs store-listing/fixture-apps.json --install emulator-5578` builds
   one per entry (label, gradient adaptive icon with a Lucide glyph, INTERNET permission, app category). The
   capture build then only seeds rules and traffic for those packages, looked up by package name.
 - **Pin the clock, not just the status bar.** If screens show timestamps or "last hour" windows, set the
