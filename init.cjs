@@ -13,7 +13,7 @@ const args = process.argv.slice(2);
 const repo = path.resolve(args[0] || '');
 const flag = name => { const i = args.indexOf(`--${name}`); return i > 0 ? args[i + 1] : null; };
 const name = flag('name'), pkg = flag('package');
-const locales = (flag('locales') || 'en-US').split(',');
+const locales = [...new Set(['en-US', ...(flag('locales') || 'en-US').split(',')])];
 if (!args[0] || !name || !pkg) {
   console.error('Usage: node init.cjs /path/to/app --name "App name" --package com.example.app [--locales en-US,de-DE]');
   process.exit(1);
@@ -48,7 +48,8 @@ with Device(args, '${pkg}.storecapture', '.MainActivity') as d:
     for profile in d.profiles():
         d.night(False)
         d.launch(clear=True)
-        d.shot('01-home')
+        d.shot('01-hero')
+        d.shot('02-second')
         # d.tap('Settings'); d.shot('02-settings'); d.night(True); d.launch(); d.shot('03-home-dark')
 `);
 write('profiles.json', {

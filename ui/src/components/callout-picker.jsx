@@ -322,7 +322,12 @@ function Picker({ selection, onClose, session }) {
       if (clear) {
         if (Array.isArray(gallery[kind])) delete target.callouts;
         else target.callouts = [];
-      } else target.callouts = [value];
+      } else {
+        const existing = target.callouts || card.callouts || [];
+        const position = existing.findIndex(c => (c.device || 0) === device);
+        target.callouts = existing.map((c, i) => i === position ? value : c);
+        if (position < 0) target.callouts.push(value);
+      }
       await saveGallery(gallery);
       toast.success(clear ? "Callouts removed" : "Callout saved");
       onClose();

@@ -151,11 +151,11 @@ export function useProject(base) {
       draft.error = "";
       touch();
       try {
-        await mutate(
-          asset(base, `../${locale}/copy.json`),
-          JSON.parse(snapshot),
-          "PUT",
-        );
+        await request(asset(base, `../${locale}/copy.json`), {
+          method: "PUT",
+          headers: { "X-Studio-Base": Array.from(new Uint8Array(await crypto.subtle.digest("SHA-256", new TextEncoder().encode(draft.saved))), byte => byte.toString(16).padStart(2, "0")).join("") },
+          body: snapshot,
+        });
         draft.saved = snapshot;
         model.revision = ++revision.current;
         persist(locale);
