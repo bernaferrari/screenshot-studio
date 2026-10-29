@@ -121,7 +121,7 @@ The rest of the toolkit: `tap(label, wait, text_only=, within=lambda bounds: …
 }
 ```
 
-It builds, installs through `capture.py install` (with the storage recovery), then for each locale (the default first, since it records the tap map) runs each run's `script` (default `store-listing/capture-emulator.py`) once per profile with `--serial --locale --profile` and the run's `args` (`${NAME}` reads the environment), through `uv run --with pillow` when uv is installed. A failed run resets the emulator and is tried again. `locales` is `"all"` (default), `"default"` or a list; `profiles` defaults to every capture profile (`false` passes none). Then it exports each locale and runs `after`. Use only the one capture emulator (`CAPTURE_SERIAL`, default `emulator-5578`), one capture job at a time.
+It builds, installs through `capture.py install` (with the storage recovery), then for each locale (the default first, since it records the tap map) runs each run's `script` (default `store-listing/capture-emulator.py`) once per profile with `--serial --locale --profile` and the run's `args` (`${NAME}` reads the environment), through `uv run --with pillow` when uv is installed. A failed run resets the emulator and is tried again. `locales` is `"all"` (default), `"default"` or a list; `profiles` defaults to every capture profile (`false` passes none). Then it exports each locale (a failing language does not stop the others; they are listed at the end) and runs `after`. Use only the one capture emulator (`CAPTURE_SERIAL`, default `emulator-5578`), one capture job at a time.
 
 ## Rules every gallery follows
 
