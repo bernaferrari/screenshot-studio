@@ -27,7 +27,30 @@ const write = (rel, content) => {
   console.log(`created   ${rel}`);
 };
 
-write('studio.json', {app: name, package: pkg, locales, defaultLocale: 'en-US', supersample: 2});
+write('studio.json', {app: name, package: pkg, locales, defaultLocale: 'en-US', supersample: 2, capture: {
+  build: './gradlew :app:assembleStoreCapture -q',
+  install: [{apk: 'app/build/outputs/apk/storeCapture/app-storeCapture.apk', package: `${pkg}.storecapture`}],
+  runs: [{locales: 'default'}]
+}});
+write('capture-emulator.py', `"""Capture ${name}'s store screens on the capture emulator (needs adb and Pillow).
+
+\`node store-listing/studio/recapture.cjs\` builds and installs the capture build (studio.json → capture),
+runs this tour for every device size and exports. The emulator plumbing is the studio's capture.py.
+"""
+import sys
+from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).resolve().parent / 'studio'))
+from capture import Device, parser  # noqa: E402
+
+args = parser(__doc__).parse_args()
+with Device(args, '${pkg}.storecapture', '.MainActivity') as d:
+    for profile in d.profiles():
+        d.night(False)
+        d.launch(clear=True)
+        d.shot('01-home')
+        # d.tap('Settings'); d.shot('02-settings'); d.night(True); d.launch(); d.shot('03-home-dark')
+`);
 write('profiles.json', {
   phone: {width: 1080, height: 1920, captureWidth: 1080, captureHeight: 2340, captureDensity: 420, frame: 'phone', label: 'Phone'},
   tablet7: {width: 1200, height: 1920, captureWidth: 1200, captureHeight: 1920, captureDensity: 320, frame: 'tablet', label: '7″ tablet'},
@@ -96,11 +119,13 @@ Built with [Screenshot Studio](studio/). Read \`~/Documents/screenshot-studio/PL
 | Words per language | \`<locale>/copy.json\`, \`<locale>/listing.json\` |
 | Look | \`theme.css\`, \`theme.js\` |
 | Canvas and capture sizes | \`profiles.json\` |
+| Scene tour | \`capture-emulator.py\` (build and runs: \`studio.json\` → \`capture\`) |
 
 \`\`\`sh
+node store-listing/studio/recapture.cjs          # build, capture on emulator-5578, export
 node store-listing/studio/server.cjs 8790        # editor
 node store-listing/studio/export.cjs --locale en-US
 \`\`\`
 `);
 execFileSync(path.join(__dirname, 'sync.sh'), [repo], {stdio: 'inherit'});
-console.log(`\nNext: add a capture build and script, then design theme.css/theme.js. See PLAYBOOK.md.`);
+console.log(`\nNext: add a storeCapture build, write the scene tour in capture-emulator.py, then design theme.css/theme.js. See PLAYBOOK.md.`);

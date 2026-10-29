@@ -84,6 +84,45 @@ Run `PLAYWRIGHT_MODULE=… node store-listing/studio/icon.cjs`. Android gets ada
 
 Several icons (widget or shortcut icons, a build flavour's icon) are listed as `{"icons": [{"layers": "todo", "android": {...}, "files": [...]}, ...]}`, each drawn in `brand/<layers>/`. A layer missing there comes from `brand/` itself, so a variant redraws only what changes (an alpha build's lavender ground, say); `"monochrome": false` leaves out the themed layer. Every run writes `icon-preview.png` beside the layers: the icon in each shape, at launcher sizes on light and dark, and themed.
 
+## Capture on the emulator
+
+`studio/capture.py` is the emulator side of every app (Python 3; Pillow for writing images). An app keeps only its scene tour in `store-listing/capture-emulator.py`:
+
+```python
+import sys
+from pathlib import Path
+sys.path.insert(0, str(Path(__file__).resolve().parent / 'studio'))
+from capture import Device, parser
+
+args = parser(__doc__).parse_args()            # --serial (default emulator-5578), --profile, --locale, --only
+with Device(args, 'com.example.storecapture', '.MainActivity') as d:
+    for profile in d.profiles():               # every profiles.json entry with captureWidth/Height/Density
+        d.night(False)
+        d.launch(clear=True)                   # force-stop, clear data, set the app language again, start
+        d.shot('01-home')                      # <locale>/raw/<profile>/01-home.png + 01-home.nodes.json
+        d.tap('Settings')                      # by label: a regular expression over text or description
+        d.shot('02-settings')
+```
+
+`Device` works only on an emulator serial and refuses to start while a `wm size`/`wm density` override is left over (`python3 store-listing/studio/capture.py reset` clears one). While open it sets gesture navigation, System UI demo mode (9:41, `battery` level, full Wi-Fi, no mobile signal, SIM or notifications), font scale 1, heads-up off, other apps' notifications snoozed, Wi-Fi and data off (`offline=False` keeps them), animations off (`animations=False`) and the app language; each profile gets its display size and density. On exit, even after a failure, it restores all of it. It also recovers from what goes wrong on a busy emulator: a stale UiAutomation client (agent-device's `snapshothelper` app_process, "UiAutomationService already registered") is stopped, an "isn't responding" dialog gets Wait, a slow first draw is waited for, and `install()` answers INSUFFICIENT_STORAGE by uninstalling the capture build and trimming caches before installing again. Helper packages that would show up in app lists (`com.callstack.agentdevice.*`, SafetyCore, contact keys, verifiers) are removed for the user with `pm uninstall --user 0`.
+
+The rest of the toolkit: `tap(label, wait, text_only=, within=lambda bounds: …, key=)`, `find`, `present`, `wait_for`, `back`, `key`, `type`, `swipe`, `scroll(fraction, up=)`, `drag(pixels)`, `scroll_to(label, top)`, `launch(activity, clear, **intent extras)`, `set_clock('09:41')` (host time comes back on exit), `rotate`, `use(profile, w, h, dpi)` for sizes outside profiles.json, and `shell`/`adb`. `shot(*targets, animated=, check=, either=)` checks the screen (the app in front, no system dialog, the expected size), strips the second display's warning from `screencap`, and writes each target: a plain name goes to `<locale>/raw/<profile>/<name>.png`, a relative path under `<locale>/raw/`, a `Path` anywhere; `.jpg` targets are JPEG, and files under `raw/` get their `.nodes.json` sidecar. `--only a,b` skips other shots. With the default tap map the reference locale records each tapped node's tree path in `<default>/raw/tap-map.json` and other locales replay them, so a tour written with English labels runs in every language; `d.scope` (default `<profile>|<theme>`) keys the taps.
+
+`studio/recapture.cjs` is the one command for every app: `node store-listing/studio/recapture.cjs [locale…] [--profile phone] [--no-build] [--no-capture] [--no-export] [--dry-run]`. It reads a `capture` block in studio.json:
+
+```json
+"capture": {
+  "build": "./gradlew :app:assembleStoreCapture -q",
+  "install": [{"apk": "app/build/outputs/apk/storeCapture/app-storeCapture.apk", "package": "com.example.storecapture"}],
+  "runs": [{"args": ["--theme", "light"]}, {"args": ["--theme", "dark"], "profiles": ["phone"], "locales": "default"}],
+  "retries": 2,
+  "export": "optional per-locale command with {locale}, instead of studio/export.cjs",
+  "after": ["python3 scripts/refresh_readme_assets.py"]
+}
+```
+
+It builds, installs through `capture.py install` (with the storage recovery), then for each locale (the default first, since it records the tap map) runs each run's `script` (default `store-listing/capture-emulator.py`) once per profile with `--serial --locale --profile` and the run's `args` (`${NAME}` reads the environment), through `uv run --with pillow` when uv is installed. A failed run resets the emulator and is tried again. `locales` is `"all"` (default), `"default"` or a list; `profiles` defaults to every capture profile (`false` passes none). Then it exports each locale and runs `after`. Use only the one capture emulator (`CAPTURE_SERIAL`, default `emulator-5578`), one capture job at a time.
+
 ## Rules every gallery follows
 
 - Real app captures only, with the real status bar and navigation; no painted system UI. Sample data is local and fictional.
@@ -119,7 +158,7 @@ Headlines shrink with the supporting text until they fit, to a minimum of 72% by
 
 Fictional apps for app lists: `studio/fixture-apps.cjs <spec.json> [--install <emulator>]` builds code-free stub APKs (label, adaptive icon from a Lucide glyph or text, INTERNET permission, category) with the SDK's `aapt2`/`apksigner` and Playwright, cached in `.fixture-apps/` beside the spec.
 
-Capture the reference language first. `studio/uitree.py` provides `set_app_locale` (Android 13+ per-app language, checked by readback), `Navigator` (record English taps and replay UI tree positions), and `write_sidecar`. Save layout files next to each image as `scene.nodes.json`: `{"width":1080,"height":2340,"nodes":[{"path":"0.1","b":[40,200,1040,380],"text":"..."}]}`. Paths must be stable between locales; bounds are capture pixels. Kotlin instrumentation may write the same format directly from Android accessibility nodes. The reference sidecar anchors a callout to a UI element; localized bounds move and resize the callout. A missing match keeps the reference position and is flagged for review.
+Capture the reference language first (`recapture.cjs` does). `studio/capture.py` handles languages, tap replay and sidecars for a scene tour; underneath, `studio/uitree.py` provides `set_app_locale` (Android 13+ per-app language, checked by readback), `Navigator` (record English taps and replay UI tree positions), and `write_sidecar`. Save layout files next to each image as `scene.nodes.json`: `{"width":1080,"height":2340,"nodes":[{"path":"0.1","b":[40,200,1040,380],"text":"..."}]}`. Paths must be stable between locales; bounds are capture pixels. Kotlin instrumentation may write the same format directly from Android accessibility nodes. The reference sidecar anchors a callout to a UI element; localized bounds move and resize the callout. A missing match keeps the reference position and is flagged for review.
 
 The exporter prints a per-language summary of untranslated cards, borrowed captures, relocated callouts, callouts that could not follow their element, and fitted copy. `--strict` fails on untranslated words, borrowed captures and unresolved callouts for a translated locale. Successfully relocated callouts are valid. Without `--locale`, every configured language is exported, including drafts; use a locale filter while translating.
 

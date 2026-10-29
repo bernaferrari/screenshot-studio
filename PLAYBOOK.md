@@ -23,14 +23,17 @@ This creates `store-listing/` (studio.json, profiles.json, gallery.json, theme.c
   numbers, and at least one story with a visible change (a price drop, a signal dip and recovery). `.example`
   domains look fake; avoid them.
 - **Light mode by default.** Light screens read better on most canvases. Use dark only where it is the point.
-- **Script it.** One script per app sets display size and density for phone (1080×2340 @400–420), 7-inch
-  (1200×1920 @320) and 10-inch (1920×1200 @240), System UI demo mode (9:41, full battery and Wi-Fi), gesture
-  navigation, and the app language; then drives the scenes and saves `<locale>/raw/<profile>/<name>.png` plus a
-  `.nodes.json` layout sidecar. It resets display overrides and demo mode afterwards.
+- **Script it.** Write only the scene tour: `store-listing/capture-emulator.py` on the studio's `capture.py`
+  (`Device`, see the studio README), which sets display size and density for phone (1080×2340 @400–420),
+  7-inch (1200×1920 @320) and 10-inch (1920×1200 @240), System UI demo mode (9:41, full battery and Wi-Fi),
+  gesture navigation and the app language, saves `<locale>/raw/<profile>/<name>.png` plus a `.nodes.json`
+  layout sidecar, and resets everything afterwards. Describe the build and the runs in studio.json's
+  `capture` block; `node store-listing/studio/recapture.cjs` then rebuilds, captures and exports in one command.
 - **One emulator at a time.** A 32 GB Mac runs out of memory with several emulators, and the system kills one mid-capture. Check `adb devices` first and queue apps instead of capturing in parallel.
-- **Emulator hygiene.** Every app uses the same `Resizable_Experimental` AVD on port 5578 (`emulator-5578`); never create per-app AVDs, never a physical phone. Snooze other apps' notifications,
-  turn the network off for fixture captures, uninstall other apps' capture builds if they steal focus, and reset
-  `wm size`/`wm density` if a run is interrupted (the script refuses to start otherwise).
+- **Emulator hygiene.** Every app uses the same `Resizable_Experimental` AVD on port 5578 (`emulator-5578`); never create per-app AVDs, never a physical phone. `capture.py` snoozes other apps' notifications,
+  turns the network off, hides helper packages and recovers from a stuck UiAutomation or a full disk; uninstall
+  other apps' capture builds if they steal focus, and run `python3 store-listing/studio/capture.py reset` if a run
+  is killed (a capture refuses to start over a leftover display override).
 - **Drive by visible text.** Tap tabs and buttons by their on-screen label from the node tree, not by fixed
   coordinates; layouts shift between phone and tablet. Clear app data before each device size.
 - **Check the status bar in light mode.** Light screens need dark status bar icons; if the app gets this wrong,
@@ -46,18 +49,18 @@ This creates `store-listing/` (studio.json, profiles.json, gallery.json, theme.c
   oldest first: lists that order by row id otherwise show last week at the top.
 - **Seed, then relaunch.** View models that read once at start (totals, counts) miss data seeded after launch.
   Let the first start seed (write a marker file, poll it with `run-as`), force-stop, and start again.
-- **Endless animations block uiautomator.** A pulsing hero keeps the UI from going idle, so dumps hang. Set the
-  three animation scales to 0 during capture (most apps then show their reduced-motion state) and restore them.
+- **Endless animations block uiautomator.** A pulsing hero keeps the UI from going idle, so dumps hang. Open the
+  `Device` with `animations=False` (most apps then show their reduced-motion state); `shot(name, animated=True)`
+  lets the real motion run for one frame.
 - **Match filter chips above the list.** A label like "Blocked" also appears in rows; restrict taps to the top
-  of the screen (the Re-Rethink script takes an `above` fraction).
+  of the screen (`d.tap('Blocked', within=lambda b: b[1] < d.height * .25)`).
 - **Apps that show another computer** (remote desktops, companions) capture against a real host when
   one is available: open fictional content on it over SSH from a script kept in the repo
   (`store-listing/host/` in Lumina), close every window and delete the folder afterwards, and remove
   the emulator's pairing from the host. Dismiss the host's desktop notifications first and check
   every frame for names, paths and other people's devices (discovery lists show them; turn
   discovery off in the capture build). Native libraries must match the app's source revision.
-- **Pillow is optional.** A capture script needs only `adb exec-out screencap -p`: read the size
-  from the PNG header and write the bytes; not every Mac has Pillow.
+- **Pillow comes from uv.** `recapture.cjs` runs tours with `uv run --with pillow`; the system Python may lack it.
 - **Look at the 10-inch captures for layout bugs.** Width-limited columns can leave the window background
   bare (black side bars); fix the app, then recapture.
 
