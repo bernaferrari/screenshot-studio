@@ -62,6 +62,24 @@ Headline markup: `*highlight*` → `<em>`, `~old~` → `<del>`, `[new]` → `<in
 
 `theme.js` hooks run in order with `ctx = {W, H, kind, locale, index, slide, slides, profile, profiles, config, main, art, capture}`: `art(ctx)` returns SVG for the background layer; `compose(ctx)` adds DOM (brand, notes, drawn details) before images and fonts settle; `layout(ctx)` adjusts frames once captures have their size; `decorate(ctx)` runs last with `ctx.devices` (each with `box` and `screen` relative to the canvas; `ctx.device`/`ctx.screen` are the first) and may throw to fail an export. `studio/shapes.js` has shared helpers: panorama coordinates and gradients (so art continues exactly across card seams), color mixing, and Material 3 Expressive shapes. Mark anything that must stay on the canvas with `data-check-bounds`.
 
+## App icons
+
+`studio/icon.cjs` is the icon factory: an app draws its icon once and gets every icon it ships. Draw it as SVG layers on Android's 108 x 108 adaptive canvas in `store-listing/brand/`: `background.svg` (full bleed), `foreground.svg` (the mark on transparent, inside the 66-wide safe circle at the centre) and, for Android's themed icons, `monochrome.svg` (the mark in one colour). `brand/icon.json` lists where icons go, from the repository root:
+
+```json
+{
+  "android": {"res": "app/src/main/res", "legacy": true},
+  "files": [
+    {"path": "store-listing/brand/icon.png", "size": 512, "shape": "square"},
+    {"path": "web/favicon.svg", "shape": "circle"},
+    {"path": "desktop/AppIcon.ico", "shape": "rounded"},
+    {"path": "desktop/AppIcon.icns", "shape": "rounded"}
+  ]
+}
+```
+
+Run `PLAYWRIGHT_MODULE=… node store-listing/studio/icon.cjs`. Android gets adaptive icons from bitmap layers at every density (and `ic_launcher`/`ic_launcher_round` PNGs for old launchers with `"legacy": true`); each file is a PNG of its size, or vector for `.svg`, a multi-size `.ico`, or an `.icns` (macOS). Shapes are `square` (stores mask their own), `rounded`, `circle` and `mark` (the foreground alone). Every run writes `brand/icon-preview.png` with the icon in each shape, at launcher sizes on light and dark, and themed.
+
 ## Rules every gallery follows
 
 - Real app captures only, with the real status bar and navigation; no painted system UI. Sample data is local and fictional.
