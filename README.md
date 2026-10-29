@@ -64,7 +64,7 @@ Headline markup: `*highlight*` → `<em>`, `~old~` → `<del>`, `[new]` → `<in
 
 ## App icons
 
-`studio/icon.cjs` is the icon factory: an app draws its icon once and gets every icon it ships. Draw it as SVG layers on Android's 108 x 108 adaptive canvas in `store-listing/brand/`: `background.svg` (full bleed), `foreground.svg` (the mark on transparent, inside the 66-wide safe circle at the centre) and, for Android's themed icons, `monochrome.svg` (the mark in one colour). `brand/icon.json` lists where icons go, from the repository root:
+`studio/icon.cjs` is the icon factory: an app draws its icon once and gets every icon it ships. Draw it as SVG layers on Android's 108 x 108 adaptive canvas in `store-listing/brand/`: `background.svg` (full bleed), `foreground.svg` (the mark on transparent, inside the 66-wide safe circle at the centre) and, for Android's themed icons, `monochrome.svg` (the mark in one colour). A layer can embed painted art (`<image href="foreground.png">` beside it is inlined), and an existing Android vector drawable becomes a layer as is with `node store-listing/studio/icon.cjs --import drawable.xml > store-listing/brand/foreground.svg`. `brand/icon.json` lists where icons go, from the repository root:
 
 ```json
 {
@@ -73,12 +73,16 @@ Headline markup: `*highlight*` → `<em>`, `~old~` → `<del>`, `[new]` → `<in
     {"path": "store-listing/brand/icon.png", "size": 512, "shape": "square"},
     {"path": "web/favicon.svg", "shape": "circle"},
     {"path": "desktop/AppIcon.ico", "shape": "rounded"},
-    {"path": "desktop/AppIcon.icns", "shape": "rounded"}
+    {"path": "desktop/AppIcon.icns", "shape": "rounded"},
+    {"path": "ios/AppIcon.icon", "apple": {"Background": "background", "Mark": "foreground"}},
+    {"path": "ios/Assets.xcassets/AppIcon.appiconset/icon-1024.png", "size": 1024, "shape": "square", "scale": 1.3, "opaque": true}
   ]
 }
 ```
 
-Run `PLAYWRIGHT_MODULE=… node store-listing/studio/icon.cjs`. Android gets adaptive icons from bitmap layers at every density (and `ic_launcher`/`ic_launcher_round` PNGs for old launchers with `"legacy": true`); each file is a PNG of its size, or vector for `.svg`, a multi-size `.ico`, or an `.icns` (macOS). Shapes are `square` (stores mask their own), `rounded`, `circle` and `mark` (the foreground alone). Every run writes `brand/icon-preview.png` with the icon in each shape, at launcher sizes on light and dark, and themed.
+Run `PLAYWRIGHT_MODULE=… node store-listing/studio/icon.cjs`. Android gets adaptive icons from bitmap layers at every density, `name` and `type` (`mipmap` or `drawable`) matching the manifest, plus `ic_launcher`/`ic_launcher_round` PNGs for old launchers with `"legacy": true`. Each file is a PNG of its size, or vector for `.svg`, a multi-size `.ico`, an `.icns` (macOS) or an Apple Icon Composer `.icon`: its `apple` map writes each named layer to `Assets/<Name>.png` at 1024px so iOS can light glass layers separately (extra layers such as `brand/corners.svg` work too), keeps an existing `icon.json` with its tuned glass, dark and tinted settings, and is checked with Xcode's `ictool`. Shapes are `square` (stores mask their own), `rounded`, `circle` and `mark` (the foreground alone); `{"layer": "corners"}` draws one layer alone; `scale` grows or shrinks the mark on its ground (an Apple icon shows the whole square); `opaque` drops transparency (Apple's App Store icon).
+
+Several icons (widget or shortcut icons, a build flavour's icon) are listed as `{"icons": [{"layers": "todo", "android": {...}, "files": [...]}, ...]}`, each drawn in `brand/<layers>/`. A layer missing there comes from `brand/` itself, so a variant redraws only what changes (an alpha build's lavender ground, say); `"monochrome": false` leaves out the themed layer. Every run writes `icon-preview.png` beside the layers: the icon in each shape, at launcher sizes on light and dark, and themed.
 
 ## Rules every gallery follows
 
