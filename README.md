@@ -62,6 +62,21 @@ Headline markup: `*highlight*` → `<em>`, `~old~` → `<del>`, `[new]` → `<in
 
 `theme.js` hooks run in order with `ctx = {W, H, kind, locale, index, slide, slides, profile, profiles, config, main, art, capture}`: `art(ctx)` returns SVG for the background layer; `compose(ctx)` adds DOM (brand, notes, drawn details) before images and fonts settle; `layout(ctx)` adjusts frames once captures have their size; `decorate(ctx)` runs last with `ctx.devices` (each with `box` and `screen` relative to the canvas; `ctx.device`/`ctx.screen` are the first) and may throw to fail an export. `studio/shapes.js` has shared helpers: panorama coordinates and gradients (so art continues exactly across card seams), color mixing, and Material 3 Expressive shapes. Mark anything that must stay on the canvas with `data-check-bounds`.
 
+### What the studio does for every theme
+
+A theme holds the app's look; these come built in, as defaults it can override.
+
+- **Frames scale with their width.** Bezel and corner radius are fractions of the frame width: phone 0.02 / 0.09, tablet 0.018 / 0.05, and 0.012 / 0.035 for a landscape capture in either (each frame gets `device-portrait` or `device-landscape`). `studio.json` overrides any of them, adds `browser`, and lists layouts whose CSS sizes its own frames: `"frames": {"phone": {"bezel": 0.02, "radius": 0.09}, "fixed": ["compare"]}`. `"frames": false` turns scaling off. Scaling runs before `layout(ctx)`, so a theme can still adjust a frame there.
+- **Device bounds are checked.** A frame keeps `margin` px (default 0) from the sides and top, shows at least `visible` of itself (default 0.6), and a landscape screen in a phone or tablet frame is never cut at the top or bottom. Allowances go per layout word, card feature or gallery kind: `"bounds": {"margin": 12, "visible": 0.7, "layouts": {"hang": {"top": true}, "tablet10": {"right": 0.22}, "bleed": {"right": true}, "room": {"sides": true, "cut": true}, "stack": {"visible": 0}, "compare": false}}`. `right` takes `true` or the fraction of the frame that may run off; `false` skips a layout. A card's own `"bounds"` applies last. The README `spread` may run off the right by default. Unframed (`"frame": "none"`) devices are not checked.
+- **README layouts** (the `readme` gallery, 2400 × 1260) have default positions in `studio.css`; themes restyle them and move anything by repeating a selector.
+  - `"identity": true` on a card swaps its headline for a name banner: the icon (`brand/icon.png`), the app name (`app`) and an optional `tagline` from the card's copy (with `*highlight*`), as `.identity` holding `img`, `span` and `small`. `studio.json` `"identity": {"icon": "../docs/app-icon.png", "name": "…"}` changes the defaults (paths from `store-listing/`); the card's `identity` object wins.
+  - `trio`: a centred headline, then three equal phones with roles `one`, `two`, `three`, each under its caption.
+  - `hero` or `fan`: three phones with roles `left`, `center` (or `middle`) and `right`; add `named` to the layout to lower them under a name banner.
+  - `spread`: the headline on the left, the landscape tablet off the right edge, the portrait phone in front.
+- **Labels** carry `--device-height` (their frame) and `--tallest-device` (the card's tallest), so a theme can set them under the frames in one row: `transform: translateY(calc(var(--tallest-device) + 30px))`.
+- **Panorama lights.** `panoramaLights(ctx, [{x, y, r, color, opacity}], {id})` from `studio/shapes.js` lays soft radial lights over the whole strip: each light is described for one card and repeats on every card at k + x, drawn in panorama coordinates so every seam continues. Use `stops: [[0, .3], [.55, .07], [1, 0]]` for a softer fall-off, `each: false` for x along the whole strip, and `alone: true` for an image seen on its own (README art). Never draw a light per card in card coordinates; it breaks at every seam.
+- **Seams.** A theme whose background runs across cards says `continuous: true` (or a list of gallery kinds) in `theme.js`. The exporter then compares the pixel columns where neighbouring cards touch (a row may match up to 4 rows away or one column further in, so hairlines and thin slanted strokes do not count), with devices, copy, callouts and labels hidden, and warns when they don't continue.
+
 ## App icons
 
 `studio/icon.cjs` is the icon factory: an app draws its icon once and gets every icon it ships. Draw it as SVG layers on Android's 108 x 108 adaptive canvas in `store-listing/brand/`: `background.svg` (full bleed), `foreground.svg` (the mark on transparent, inside the 66-wide safe circle at the centre) and, for Android's themed icons, `monochrome.svg` (the mark in one colour). A layer can embed painted art (`<image href="foreground.png">` beside it is inlined), and an existing Android vector drawable becomes a layer as is with `node store-listing/studio/icon.cjs --import drawable.xml > store-listing/brand/foreground.svg`. `brand/icon.json` lists where icons go, from the repository root:
@@ -139,9 +154,18 @@ node store-listing/studio/export.cjs --locale en-US  # --kind phone limits a gal
 node store-listing/studio/locales.cjs                  # translation/capture/layout coverage
 node store-listing/studio/locales.cjs --init de-DE     # scaffold empty copy, register locale
 node store-listing/studio/export.cjs --locale de-DE --strict
+node store-listing/studio/export.cjs --fastlane          # also fastlane/F-Droid text and screenshots
 ```
 
 The editor shows each device gallery live from the source files, joined edge to edge or spaced like the store, and can switch to the exported JPEGs. The exporter serves the repository itself (themes may load fonts from anywhere in it), writes `<locale>/<kind>/NN-feature.jpg` unless a card sets `file`, a contact sheet per device, and `<locale>/assets.json`. It fails when fonts don't load (cards with copy), a capture has the wrong ratio, copy or callouts leave the canvas, a headline overflows, copy overlaps the app, or any request fails.
+
+It fails, too, when a frame breaks the bounds rules above. It warns (and `--strict` fails) when:
+
+- a folder of cards holds images no card, contact sheet or strip writes any more (stale outputs; delete them),
+- a `continuous` theme's background breaks at a seam,
+- `<locale>/listing.json` is over Play's limits: `title` (or `appName`) 30, `shortDescription` 80, `fullDescription` 4000 characters.
+
+`--fastlane` also writes the listing for F-Droid and fastlane supply: `fastlane/metadata/android/<locale>/{title,short_description,full_description}.txt` from each rendered locale's `listing.json`, and the phone cards as lossless `images/phoneScreenshots/1.png, 2.png, …` (the folder is cleared first) for the default locale. Configure it in `studio.json`: `"fastlane": {"dir": "fastlane/metadata/android", "screenshots": {"phone": "phoneScreenshots", "tablet7": "images/sevenInchScreenshots"}, "screenshotLocales": ["en-US"] /* or "all" */, "locales": {"ru-RU": "ru"}}`.
 
 ## Languages and capture layouts
 

@@ -76,7 +76,7 @@ header{left:72px;right:72px;top:130px;text-align:center}
 h1{font-size:104px;line-height:1.04;letter-spacing:-.03em;font-weight:700}
 h1 em{color:var(--accent)}
 header p{margin:24px auto 0;font-size:40px;line-height:1.3;opacity:.75;max-width:880px}
-.device{--bezel:12px;--radius:70px;box-shadow:0 40px 90px -24px #15172b55}
+.device{box-shadow:0 40px 90px -24px #15172b55}
 .phone .big .device{left:110px;top:520px;width:860px}
 .tablet7 .big .device{left:110px;top:560px;width:980px}
 .tablet10 header{left:96px;right:auto;top:0;bottom:0;width:620px;display:flex;flex-direction:column;justify-content:center;text-align:left}
@@ -87,6 +87,9 @@ write('theme.js', `// ${name}: one continuous field under the whole strip, laid 
 import {panoramaGradient} from './studio/shapes.js';
 
 export default {
+  // The field runs across every seam; the exporter checks that it does.
+  continuous: true,
+
   art(ctx) {
     const {W, H} = ctx;
     return \`<defs>\${panoramaGradient(ctx, 'field', ['#eef0ff', '#f6f6fb', '#eef7f3'])}</defs><rect width="\${W}" height="\${H}" fill="url(#field)"/>\`;
