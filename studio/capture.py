@@ -19,7 +19,8 @@ An app's capture script keeps only its scene tour:
 `Device` refuses anything but an emulator serial and an emulator that still has a display-size override.
 While it is open it sets gesture navigation, System UI demo mode (9:41, full battery and Wi-Fi, no
 notifications or SIM), font scale 1, heads-up off, the network off (`offline`), animations off
-(`animations=False`), and the app's language; each profile gets its `wm size`/`wm density` from
+(`animations=False`; otherwise
+they are set to 1, whatever an interrupted run left), and the app's language; each profile gets its `wm size`/`wm density` from
 profiles.json. Everything it changes is put back on exit, even after a failure.
 
 It also recovers from what goes wrong on a busy emulator: a stale UiAutomation client (an agent-device
@@ -153,8 +154,7 @@ class Device:
             if self.offline:
                 self.shell('svc', 'wifi', 'disable', check=False)
                 self.shell('svc', 'data', 'disable', check=False)
-            if not self.keep_animations:
-                self.animations(False)
+            self.animations(self.keep_animations)  # explicitly: an interrupted run can leave them at 0
             if self.apk:
                 self.install(self.apk)
             if self.app_locale:
