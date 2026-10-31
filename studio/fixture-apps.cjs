@@ -11,6 +11,8 @@
  * glyph: a Lucide icon name (resolved from lucide-react in the studio master's node_modules or LUCIDE_DIR),
  * {"svg": "<path d=\"...\"/>"} drawn on a 24-unit stroke grid, or {"text": "Aa"}.
  * category: an android:appCategory value (game, audio, video, image, social, news, maps, productivity).
+ * targetSdk (default 34; Android refuses installs below 24), versionCode (1) and versionName ("1.0") set the
+ * manifest, for apps that read them (an SDK tracker).
  * Needs the Android SDK (ANDROID_HOME or ~/Library/Android/sdk) and Playwright (PLAYWRIGHT_MODULE) for the icons.
  * Builds into <spec dir>/.fixture-apps/ (keep it git-ignored) and signs with the local debug keystore.
  */
@@ -134,7 +136,8 @@ function build(app) {
   run('aapt2', 'compile', '--dir', path.join(root, 'res'), '-o', compiled);
   const unsigned = path.join(root, 'unsigned.apk'), aligned = path.join(root, 'aligned.apk');
   run('aapt2', 'link', '-o', unsigned, '-I', androidJar, '--manifest', path.join(root, 'AndroidManifest.xml'),
-    '--min-sdk-version', '26', '--target-sdk-version', '34', '--version-code', '1', '--version-name', '1.0', compiled);
+    '--min-sdk-version', '26', '--target-sdk-version', String(app.targetSdk || 34),
+    '--version-code', String(app.versionCode || 1), '--version-name', app.versionName || '1.0', compiled);
   run('zipalign', '-p', '-f', '4', unsigned, aligned);
   const apk = path.join(out, `${app.package}.apk`);
   // The SDK's public debug keystore; these APKs only ever run on capture emulators.
