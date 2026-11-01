@@ -3,7 +3,7 @@
  * Scaffold Screenshot Studio in an app repository.
  *   node init.cjs /path/to/app --name "App name" --package com.example.app [--locales en-US,de-DE]
  * Creates store-listing/ with a working starter theme and gallery, syncs studio/, and never overwrites
- * files that already exist. Follow PLAYBOOK.md afterwards.
+ * files that already exist. Follow docs/playbook.md afterwards.
  */
 const fs = require('node:fs');
 const path = require('node:path');
@@ -70,7 +70,7 @@ write('en-US/copy.json', {
   second: {title: 'The core\n*feature*', body: 'Why it matters, briefly.'}
 });
 write('en-US/listing.json', {title: name, shortDescription: 'Up to 80 characters that say what the app does.', fullDescription: 'Up to 4000 characters.'});
-write('theme.css', `/* ${name}: replace this starter with the app's own identity (see PLAYBOOK.md section 2). */
+write('theme.css', `/* ${name}: replace this starter with the app's own identity (see https://github.com/bernaferrari/screenshot-studio/blob/main/docs/playbook.md, section 2). */
 :root{--paper:#f6f6fb;--ink:#15172b;--accent:#4150d0}
 body,.campaign{background:var(--paper);color:var(--ink);font-family:system-ui,var(--script-font),sans-serif}
 header{left:72px;right:72px;top:130px;text-align:center}
@@ -115,7 +115,7 @@ play-staging/
 `);
 write('README.md', `# ${name} · Play listing
 
-Built with [Screenshot Studio](studio/). Read \`~/Documents/screenshot-studio/PLAYBOOK.md\` first.
+Built with [Screenshot Studio](studio/). Read \`~/Documents/screenshot-studio/docs/playbook.md\` first.
 
 | Change | File |
 | --- | --- |
@@ -132,4 +132,4 @@ node store-listing/studio/export.cjs --locale en-US
 \`\`\`
 `);
 execFileSync(path.join(__dirname, 'sync.sh'), [repo], {stdio: 'inherit'});
-console.log(`\nNext: add a storeCapture build, write the scene tour in capture-emulator.py, then design theme.css/theme.js. See PLAYBOOK.md.`);
+console.log(`\nNext: add a storeCapture build, write the scene tour in capture-emulator.py, then design theme.css/theme.js. See https://github.com/bernaferrari/screenshot-studio/blob/main/docs/playbook.md`);

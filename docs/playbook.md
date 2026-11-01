@@ -24,7 +24,7 @@ This creates `store-listing/` (studio.json, profiles.json, gallery.json, theme.c
   domains look fake; avoid them.
 - **Light mode by default.** Light screens read better on most canvases. Use dark only where it is the point.
 - **Script it.** Write only the scene tour: `store-listing/capture-emulator.py` on the studio's `capture.py`
-  (`Device`, see the studio README), which sets display size and density for phone (1080×2340 @400–420),
+  (`Device`, see [Capturing](capture.md)), which sets display size and density for phone (1080×2340 @400–420),
   7-inch (1200×1920 @320) and 10-inch (1920×1200 @240), System UI demo mode (9:41, full battery and Wi-Fi),
   gesture navigation and the app language, saves `<locale>/raw/<profile>/<name>.png` plus a `.nodes.json`
   layout sidecar, and resets everything afterwards. Describe the build and the runs in studio.json's
@@ -101,12 +101,15 @@ Review every card at full size, plus the joined contact sheet (does it read as o
 
 ## 4. README
 
-- Hero (banner or icon + tagline), a Google Play badge linking `https://play.google.com/store/apps/details?id=<package>`.
-- Feature images in a table row (4 across), then 2–3 short sections, each 2–3 sentences.
-- Tablets once, privacy once, a short "Good to know" if the app measures something.
-- No duplicated captions under images that already carry a headline.
-- Build instructions live in `docs/DEVELOPMENT.md`; the README ends with one small pointer to it.
-- Preview it rendered with GitHub's styles before committing.
+The README is art too, rendered by the same studio from the `readme` gallery (2400 × 1260, default language only).
+
+- **Open with the app.** A header (the name beside one large device) or a hero (icon, name and tagline over three phones). Then one bold line and two or three sentences.
+- **Install badges right after**, the same height: Google Play, F-Droid, Obtainium. Link the web demo if there is one.
+- **Two or three feature images, not a gallery.** What works: tinted panels, each with its own short headline and one device (Calcula's tools, SDK Monitor's "Where apps stand"); one headline over three captioned phones (QuietGuard's rules). Each image gets a short section and two to four bullets.
+- **Tablets and dark mode once,** in one image.
+- **A before and after** when the app grew from another: the old app beside the new, one or two pairs.
+- **Privacy once,** a few lines. Build instructions live in `docs/DEVELOPMENT.md`; end with one small pointer to it.
+- No captions under images that already carry a headline. Check it rendered with GitHub's styles before committing (`node store-listing/studio/readme-preview.cjs`).
 
 ## 5. Git
 
@@ -116,5 +119,4 @@ Other locales' `raw/` captures and exports regenerate from the scripts and are g
 
 ## 6. Ship
 
-Fastlane staging (`prepare-play.mjs`) validates every locale and stages `play-staging/` for `supply`.
-Calcula has the reference implementation; it will move into the studio once it settles.
+`export.cjs --fastlane` writes the store text and phone screenshots into `fastlane/metadata/android/` for F-Droid and fastlane `supply` (see [Languages and export](languages-and-export.md)). Apps that upload to Play keep their lanes in `fastlane/Fastfile`, with the steps in `fastlane/PLAY_STORE.md`.
