@@ -33,6 +33,8 @@ const COMMANDS: Record<string, Command> = {
     run: async argv => (await import('../node/icon')).run(argv)},
   fixtures: {summary: 'Build fictional apps to install on the capture emulator', usage: 'fixtures fixture-apps.json [--install emulator-5578] [--uninstall emulator-5578]',
     run: async argv => (await import('../node/fixture-apps')).run(argv)},
+  mcp: {summary: 'Run as an MCP server, so agents can check, render and look at cards', usage: 'mcp [--listing path/to/app]',
+    run: async argv => (await import('../node/mcp')).run(argv)},
   readme: {summary: 'Preview the README as GitHub shows it', usage: 'readme [--out file.png] [--width 1012]',
     run: async argv => (await import('../node/readme-preview')).run(argv)},
 };

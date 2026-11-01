@@ -170,6 +170,13 @@ export function init(options: InitOptions = {}): InitResult {
   }
   syncStudio(app);
   log(`synced    store-listing/studio (v${version()})`);
+  // Agents working in the app find the playbook here.
+  const skill = path.join(PACKAGE, 'skills', 'store-screenshots', 'SKILL.md');
+  if (fs.existsSync(skill) && !fs.existsSync(path.join(app, '.claude', 'skills', 'store-screenshots', 'SKILL.md'))) {
+    fs.mkdirSync(path.join(app, '.claude', 'skills', 'store-screenshots'), {recursive: true});
+    fs.copyFileSync(skill, path.join(app, '.claude', 'skills', 'store-screenshots', 'SKILL.md'));
+    log('created   .claude/skills/store-screenshots/SKILL.md');
+  }
   return result;
 }
 

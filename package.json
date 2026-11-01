@@ -27,11 +27,12 @@
   "main": "studio/studio.cjs",
   "types": "studio/types.d.ts",
   "files": [
+    "README.md",
+    "docs/*.md",
+    "skills",
     "studio",
     "templates",
-    "themes",
-    "docs/*.md",
-    "README.md"
+    "themes"
   ],
   "engines": {
     "node": ">=20"
