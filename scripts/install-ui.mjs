@@ -5,23 +5,30 @@ fs.mkdirSync(target, { recursive: true });
 for (const file of fs.readdirSync(target))
   fs.rmSync(path.join(target, file), { recursive: true, force: true });
 for (const file of fs.readdirSync(".ui-build"))
-  fs.copyFileSync(path.join(".ui-build", file), path.join(target, file));
+  if (file !== "bundled-packages.json") fs.copyFileSync(path.join(".ui-build", file), path.join(target, file));
 fs.copyFileSync(
   "ui/SHADCN-LICENSE.md",
   path.join(target, "shadcn-LICENSE.txt"),
 );
-const lock = JSON.parse(fs.readFileSync("package-lock.json", "utf8"));
+// Notices for the packages the build bundled (vite.config.js records them) and their runtime dependencies, which
+// may be bundled in part.
+const bundled = new Set(JSON.parse(fs.readFileSync(".ui-build/bundled-packages.json", "utf8")));
+for (const directory of bundled) {
+  const {dependencies = {}} = JSON.parse(fs.readFileSync(path.join(directory, "package.json"), "utf8"));
+  for (const name of Object.keys(dependencies)) {
+    // Node's lookup: the package's own node_modules first, then each folder up.
+    for (let dir = directory; dir; dir = path.dirname(dir) === dir ? "" : path.dirname(dir)) {
+      const candidate = path.join(dir, "node_modules", name);
+      if (fs.existsSync(path.join(candidate, "package.json"))) { bundled.add(path.relative(".", candidate)); break; }
+      if (dir === ".") break;
+    }
+  }
+}
 const notices = [
   "Screenshot Studio — third-party runtime notices",
   fs.readFileSync("ui/SHADCN-LICENSE.md", "utf8"),
 ];
-for (const [directory, metadata] of Object.entries(lock.packages || {})) {
-  if (
-    !directory.startsWith("node_modules/") ||
-    metadata.dev ||
-    !fs.existsSync(directory)
-  )
-    continue;
+for (const directory of [...bundled].sort()) {
   const info = JSON.parse(
     fs.readFileSync(path.join(directory, "package.json"), "utf8"),
   );
