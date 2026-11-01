@@ -44,8 +44,9 @@ export async function loadCard(q: URLSearchParams): Promise<Loaded> {
   const cards = cardsFor(galleries, kind);
   const index = Math.max(0, Math.min(cards.length - 1, Number(q.get('slide') || 0)));
   const {card: slide, missing} = withCopy(cards[index], kind, copy || {}, fallback);
-  // The app's theme sits beside the studio folder and loads at runtime (the build keeps it external).
-  const theme: Theme = (await import(/* @vite-ignore */ '../theme.js' as string)).default || {};
+  // The app's theme sits beside the studio folder and loads at runtime (the build keeps it external). A theme may be
+  // CSS alone, without a theme.js.
+  const theme: Theme = (await fetch('../theme.js', {method: 'HEAD'})).ok ? (await import(/* @vite-ignore */ '../theme.js' as string)).default || {} : {};
   return {
     config, profiles, locale, defaultLocale, kind, profile, index, slide, theme,
     slides: cards.map(card => withCopy(card, kind, copy || {}, fallback).card),

@@ -1,6 +1,7 @@
 /* {{name}}: A warm ruled page across the strip, a margin rule, a running head, grotesque type and a highlighter. */
 /* Re-brand with the first three variables: the page, the ink, and the highlighter. The ruled lines and the margin
    rule are mixed from them. */
+@import "studio/layouts.css";
 :root{
   --paper:#f6f0e4;
   --ink:#2b2219;
@@ -25,7 +26,7 @@ body,.campaign{background:var(--paper);color:var(--ink);font-family:Paper,var(--
 /* The margin rule, down the left of every page. */
 .campaign::before{content:'';position:absolute;z-index:1;left:96px;top:0;bottom:0;width:3px;background:var(--margin)}
 
-header{left:130px;right:110px;top:160px;z-index:5}
+header{z-index:5}
 h1{font-size:106px;line-height:1.02;letter-spacing:-.035em;font-weight:800}
 /* The highlighter: a band over the lower part of the words. */
 h1 em,h1 ins{font-style:normal;text-decoration:none;
@@ -40,35 +41,24 @@ header p{margin:30px 0 0;font-size:40px;line-height:1.3;font-weight:450;color:va
 .device-label{color:var(--ink);font-weight:700}
 .device-label em{font-style:normal;background:linear-gradient(176deg,transparent 50%,var(--accent) 51%,var(--accent) 90%,transparent 91%)}
 
-/* Phone (1080 x 1920). big: the copy and the device share the text column; the app runs off the bottom. */
-.phone .big .device{left:130px;top:600px;width:850px}
-/* hang: the phone hangs from the top, the copy underneath. */
+/* Placement: studio/layouts.css lays out big, hang and duo from these variables, per gallery.
+   Phone (1080 x 1920): big, the copy and the device sharing the text column, the app running off the bottom; hang,
+   the phone hanging from the top with the copy underneath; duo, the second phone stepping in front, lower. */
+.phone{--inset:130px;--inset-end:110px;--copy-top:160px;--copy-bottom:150px;--device-left:130px;--device-right:100px;--device-top:600px;--hang-top:-640px;
+  --duo-left:130px;--duo-right:40px;--duo-width:540px;--duo-top:600px;--duo-step:200px}
 .phone .hang .folio{top:auto;bottom:66px}
-.phone .hang header{top:auto;bottom:150px}
-.phone .hang .device{left:130px;top:-640px;width:850px}
-/* duo: two phones, the second stepping in front, lower. */
-.phone .duo .primary{left:130px;top:600px;width:540px}
-.phone .duo .secondary{left:500px;top:800px;width:540px;z-index:3}
 
 /* 7-inch portrait (1200 x 1920). */
+.tablet7{--inset:140px;--inset-end:120px;--copy-top:160px;--copy-bottom:160px;--device-left:140px;--device-right:100px;--device-top:650px;--hang-top:-420px;
+  --duo-left:140px;--duo-right:60px;--duo-width:820px;--duo-second-width:400px;--duo-top:650px;--duo-step:310px}
 .tablet7 .folio{left:140px;right:140px}
-.tablet7 header{left:140px;right:120px}
 .tablet7 h1{font-size:120px}
 .tablet7 header p{font-size:42px}
-.tablet7 .big .device{left:140px;top:650px;width:960px}
-.tablet7 .hang header{top:auto;bottom:160px}
-.tablet7 .hang .device{left:140px;top:-420px;width:960px}
-.tablet7 .duo .primary{left:140px;top:650px;width:820px}
-.tablet7 .duo .secondary{left:740px;top:960px;width:400px;z-index:3}
 
 /* 10-inch landscape (1920 x 1200): copy on the left page, the tablet on the right. */
+.tablet10{--inset:130px;--copy-width:520px;--copy-bottom:120px;--device-left:690px;--device-right:40px;--device-top:210px;--hang-top:120px;
+  --duo-width:1030px;--duo-second-width:290px;--duo-right:60px;--duo-top:150px;--duo-step:290px}
 .tablet10 .folio{left:130px;right:60px;top:56px}
-.tablet10 header{left:130px;right:auto;top:0;bottom:0;width:520px;display:flex;flex-direction:column;justify-content:center}
 .tablet10 h1{font-size:88px}
 .tablet10 h1 .line{white-space:normal;text-wrap:balance}
 .tablet10 header p{font-size:34px;max-width:500px}
-.tablet10 .big .device{left:690px;top:210px;width:1190px}
-.tablet10 .hang header{justify-content:flex-end;bottom:120px}
-.tablet10 .hang .device{left:690px;top:120px;width:1190px}
-.tablet10 .duo .primary{left:690px;top:150px;width:1030px}
-.tablet10 .duo .secondary{left:1570px;top:440px;width:290px;z-index:3}

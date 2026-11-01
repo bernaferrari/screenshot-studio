@@ -40,8 +40,28 @@ Every theme styles these layout words on the phone, 7-inch and 10-inch galleries
 | `hang` | The phone hangs from the top edge, the copy below it (on the 10-inch the tablet stays whole, top right) |
 | `duo` | Two devices, roles `primary` and `secondary`, the second stepping in front |
 
-`hang` cards are allowed past the top edge by the theme itself (it sets the card's `bounds` to `{"top": true}`),
-so no `studio.json` change is needed.
+They come from `studio/layouts.css`, which a theme opts into with its first rule, and places with a few variables per
+gallery, so a new gallery size gets all three layouts without new CSS:
+
+```css
+@import "studio/layouts.css";
+.phone{--inset:84px;--copy-top:150px;--device-left:84px;--device-top:610px;--hang-top:-760px;--duo-width:560px;--duo-step:180px}
+```
+
+| Variable | What it places |
+|---|---|
+| `--inset`, `--inset-end` | The copy's side margins (landscape: its left edge, with `--copy-width`) |
+| `--copy-top`, `--copy-bottom` | Where the copy starts, and where it ends on `hang` cards |
+| `--device-left`, `--device-right`, `--device-top` | The `big` device (its width is what's left between them); `hang` uses `--hang-top` |
+| `--duo-left`, `--duo-right`, `--duo-width`, `--duo-second-width`, `--duo-top`, `--duo-step` | `duo`: the primary from the left, the secondary from the right and `--duo-step` lower |
+
+Every variable has a default worked out from the canvas, portrait or landscape. The layouts sit in a cascade layer,
+so any rule in `theme.css` wins over them: place one card by hand with an ordinary selector. Set the variables on the
+gallery (`.phone`, `.tablet7`…), where the derived ones are worked out. A theme can be CSS alone; `theme.js` is
+optional.
+
+`hang` cards may leave the top edge and the feature graphic's phone may show only its top; the renderer knows both,
+so no `bounds` setting is needed.
 
 ## Fonts
 

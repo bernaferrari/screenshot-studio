@@ -1,6 +1,7 @@
 /* {{name}}: Near-black and white with one accent, tight modern type, graphite frames, nothing else. A clean default. */
 /* Re-brand with the first three variables. It works light as well: a white --paper and a near-black --ink turn it
    into a quiet white theme, frames and lines included. */
+@import "studio/layouts.css";
 :root{
   --paper:#0b0b0d;
   --ink:#f4f4f5;
@@ -18,7 +19,7 @@
 
 body,.campaign{background:var(--paper);color:var(--ink);font-family:Mono,var(--script-font),sans-serif}
 
-header{left:84px;right:84px;top:150px;text-align:center;z-index:5}
+header{text-align:center;z-index:5}
 h1{font-size:104px;line-height:1.04;letter-spacing:-.045em;font-weight:620}
 h1 em,h1 ins{font-style:normal;text-decoration:none;color:var(--accent)}
 h1 del{color:var(--muted)}
@@ -29,32 +30,22 @@ header p{margin:28px auto 0;font-size:40px;line-height:1.3;font-weight:400;lette
 .device-label{color:var(--ink);font-weight:560;letter-spacing:-.02em}
 .device-label em{font-style:normal;color:var(--accent)}
 
-/* Phone (1080 x 1920). big: one phone, centred, running off the bottom. */
-.phone .big .device{left:130px;top:580px;width:820px}
-/* hang: the phone hangs from the top, the copy underneath. */
-.phone .hang header{top:auto;bottom:140px}
-.phone .hang .device{left:130px;top:-600px;width:820px}
-/* duo: two phones side by side, level, a gap between. */
-.phone .duo .primary{left:60px;top:620px;width:470px}
-.phone .duo .secondary{left:550px;top:620px;width:470px}
+/* Placement: studio/layouts.css lays out big, hang and duo from these variables, per gallery.
+   Phone (1080 x 1920): big, one phone centred and running off the bottom; hang, the phone hanging from the top with
+   the copy underneath; duo, two phones side by side, level, a gap between. */
+.phone{--inset:84px;--copy-top:150px;--copy-bottom:140px;--device-left:130px;--device-top:580px;--hang-top:-600px;
+  --duo-left:60px;--duo-width:470px;--duo-top:620px;--duo-step:0px}
 
 /* 7-inch portrait (1200 x 1920). */
-.tablet7 header{left:96px;right:96px;top:160px}
+.tablet7{--inset:96px;--copy-top:160px;--copy-bottom:150px;--device-left:130px;--device-top:620px;--hang-top:-380px;
+  --duo-left:80px;--duo-width:840px;--duo-second-width:400px;--duo-right:60px;--duo-top:640px;--duo-step:300px}
 .tablet7 h1{font-size:112px}
 .tablet7 header p{font-size:42px}
-.tablet7 .big .device{left:130px;top:620px;width:940px}
-.tablet7 .hang header{top:auto;bottom:150px}
-.tablet7 .hang .device{left:130px;top:-380px;width:940px}
-.tablet7 .duo .primary{left:80px;top:640px;width:840px}
-.tablet7 .duo .secondary{left:740px;top:940px;width:400px;z-index:3}
 
 /* 10-inch landscape (1920 x 1200): copy on the left, the tablet on the right. */
-.tablet10 header{left:96px;right:auto;top:0;bottom:0;width:540px;text-align:left;display:flex;flex-direction:column;justify-content:center}
+.tablet10{--inset:96px;--copy-width:540px;--copy-bottom:120px;--device-left:680px;--device-right:40px;--device-top:200px;--hang-top:70px;
+  --duo-width:1040px;--duo-second-width:300px;--duo-right:60px;--duo-top:130px;--duo-step:290px}
+.tablet10 header{text-align:left}
 .tablet10 h1{font-size:86px}
 .tablet10 h1 .line{white-space:normal;text-wrap:balance}
 .tablet10 header p{margin:24px 0 0;font-size:34px;max-width:500px}
-.tablet10 .big .device{left:680px;top:200px;width:1200px}
-.tablet10 .hang header{justify-content:flex-end;bottom:120px}
-.tablet10 .hang .device{left:680px;top:70px;width:1200px}
-.tablet10 .duo .primary{left:680px;top:130px;width:1040px}
-.tablet10 .duo .secondary{left:1560px;top:420px;width:300px;z-index:3}

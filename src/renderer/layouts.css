@@ -1,0 +1,60 @@
+/* Layout primitives: the big, hang and duo layouts on any gallery, portrait or landscape, placed from a few variables.
+   A theme opts in with its first rule,
+     @import "studio/layouts.css";
+   and tunes them per gallery: .phone{--device-left:84px;--device-top:610px}. Everything here sits in a cascade layer,
+   so the theme's own rules always win and any card can still be placed by hand. Set the variables on the gallery
+   (.phone, .tablet7…), not on a card: the derived ones are worked out there.
+
+   Portrait: the copy across the top of every card (the bottom on hang), the devices under it.
+   Landscape: on big, hang and duo cards, the copy in a column on the left, the devices on the right.
+
+     --inset, --inset-end     the copy's side margins (landscape: its left edge; --copy-width its width)
+     --copy-top, --copy-bottom   where the copy starts, and where it ends on hang cards
+     --device-left, --device-right, --device-width, --device-top    the big device (and hang's, from --hang-top)
+     --duo-left, --duo-right, --duo-width, --duo-second-width, --duo-top, --duo-step
+                              duo: the primary from the left, the secondary from the right, --duo-step lower */
+@layer layouts {
+  :root.portrait {
+    --inset: calc(var(--canvas-width) * .078);
+    --inset-end: var(--inset);
+    --copy-top: calc(var(--canvas-height) * .078);
+    --copy-bottom: calc(var(--canvas-height) * .07);
+    --device-left: calc(var(--canvas-width) * .1);
+    --device-right: var(--device-left);
+    --device-width: calc(var(--canvas-width) - var(--device-left) - var(--device-right));
+    --device-top: calc(var(--canvas-height) * .31);
+    --hang-top: calc(var(--canvas-height) * -.31);
+    --duo-left: var(--inset);
+    --duo-right: var(--duo-left);
+    --duo-width: calc((var(--canvas-width) - var(--duo-left) - var(--duo-right)) * .58);
+    --duo-second-width: var(--duo-width);
+    --duo-top: var(--device-top);
+    --duo-step: calc(var(--canvas-height) * .09);
+  }
+  :root.landscape {
+    --inset: calc(var(--canvas-width) * .05);
+    --copy-width: calc(var(--canvas-width) * .28);
+    --copy-bottom: calc(var(--canvas-height) * .1);
+    --device-left: calc(var(--canvas-width) * .354);
+    --device-right: calc(var(--canvas-width) * .021);
+    --device-width: calc(var(--canvas-width) - var(--device-left) - var(--device-right));
+    --device-top: calc(var(--canvas-height) * .167);
+    --hang-top: calc(var(--canvas-height) * .058);
+    --duo-left: var(--device-left);
+    --duo-right: calc(var(--canvas-width) * .031);
+    --duo-width: calc(var(--canvas-width) * .54);
+    --duo-second-width: calc(var(--canvas-width) * .156);
+    --duo-top: calc(var(--canvas-height) * .108);
+    --duo-step: calc(var(--canvas-height) * .242);
+  }
+
+  .portrait header{left:var(--inset);right:var(--inset-end);top:var(--copy-top)}
+  .portrait .hang header{top:auto;bottom:var(--copy-bottom)}
+  .landscape :is(.big,.hang,.duo) header{left:var(--inset);top:0;bottom:0;width:var(--copy-width);display:flex;flex-direction:column;justify-content:center}
+  .landscape .hang header{justify-content:flex-end;bottom:var(--copy-bottom)}
+
+  .big .device{left:var(--device-left);top:var(--device-top);width:var(--device-width)}
+  .hang .device{left:var(--device-left);top:var(--hang-top);width:var(--device-width)}
+  .duo .primary{left:var(--duo-left);top:var(--duo-top);width:var(--duo-width)}
+  .duo .secondary{left:calc(var(--canvas-width) - var(--duo-right) - var(--duo-second-width));top:calc(var(--duo-top) + var(--duo-step));width:var(--duo-second-width);z-index:3}
+}

@@ -34,7 +34,7 @@ for (const [entry, file] of [['src/renderer/render.ts', 'render.js'], ['src/rend
 }
 fs.chmodSync(path.join(out, 'studio.cjs'), 0o755);
 
-for (const file of ['preview.html', 'studio.css']) fs.copyFileSync(path.join(root, 'src/renderer', file), path.join(out, file));
+for (const file of ['preview.html', 'studio.css', 'layouts.css']) fs.copyFileSync(path.join(root, 'src/renderer', file), path.join(out, file));
 fs.copyFileSync(path.join(root, 'src/core/types.d.ts'), path.join(out, 'types.d.ts'));
 fs.cpSync(path.join(root, 'schemas'), path.join(out, 'schemas'), {recursive: true});
 for (const file of fs.readdirSync(path.join(root, 'capture'))) if (file.endsWith('.py')) fs.copyFileSync(path.join(root, 'capture', file), path.join(out, file));

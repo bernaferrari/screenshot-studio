@@ -2,6 +2,7 @@
 /* Re-brand with the first three variables: the page between the panels, the type, and the accent the first panel
    takes. Later panels turn the accent's hue (theme.js sets --turn per card); each panel's ink is the type color
    mixed with a deep shade of the panel's own hue, and its highlight a brighter, warmer shade. */
+@import "studio/layouts.css";
 :root{
   --paper:#fbf5ea;
   --ink:#22307f;
@@ -33,44 +34,35 @@ body,.campaign{background:var(--paper);color:var(--panel-ink);font-family:Panels
 .panel .wave{position:absolute;inset:0;width:100%;height:100%}
 .panel .wave path{fill:#fff;fill-opacity:.24;stroke:#fff;stroke-opacity:.4;stroke-width:3}
 
-header{left:100px;right:100px;top:130px;z-index:5}
+header{z-index:5}
 h1{font-size:120px;line-height:.98;letter-spacing:-.04em;font-weight:760;font-variation-settings:'opsz' 96}
 h1 em,h1 ins{font-style:normal;text-decoration:none;color:var(--panel-accent)}
 h1 del{opacity:.45}
 header p{margin:28px 0 0;font-size:40px;line-height:1.26;font-weight:450;letter-spacing:-.01em;opacity:.84;max-width:860px;text-wrap:balance}
 
-/* Frames: white, with the panel's tint at the rim. Positions are relative to the panel (36px in). */
+/* Frames: white, with the panel's tint at the rim. */
 .device{background:linear-gradient(170deg,#fff,var(--panel-light));
   box-shadow:inset 0 0 0 2px color-mix(in oklab,var(--panel-deep) 60%,#fff),0 8px 22px color-mix(in oklab,var(--panel-ink) 18%,transparent),0 45px 80px -30px color-mix(in oklab,var(--panel-ink) 40%,transparent)}
 .device-label{color:var(--panel-ink)}
 .device-label em{font-style:normal;color:var(--panel-accent)}
 
-/* Phone (1080 x 1920; the panel is 1008 x 1848). big: the app under the copy, cut by the panel's foot. */
-.phone .big .device{left:84px;top:590px;width:840px}
-/* hang: the phone hangs from the panel's top, the copy underneath. */
-.phone .hang header{top:auto;bottom:150px}
-.phone .hang .device{left:84px;top:-680px;width:840px}
-/* duo: two phones side by side, the second stepping in front, lower. */
-.phone .duo .primary{left:64px;top:600px;width:520px}
-.phone .duo .secondary{left:430px;top:760px;width:520px;z-index:3}
+/* Placement: studio/layouts.css lays out big, hang and duo from these variables, per gallery. Positions are
+   relative to the card; the panel sits 36px in.
+   Phone (1080 x 1920; the panel is 1008 x 1848): big, the app under the copy, cut by the panel's foot; hang, the
+   phone hanging from the panel's top, the copy underneath; duo, the second phone stepping in front, lower. */
+.phone{--inset:100px;--copy-top:130px;--copy-bottom:150px;--device-left:84px;--device-right:156px;--device-top:590px;--hang-top:-680px;
+  --duo-left:64px;--duo-right:130px;--duo-width:520px;--duo-top:600px;--duo-step:160px}
 
 /* 7-inch portrait (1200 x 1920; panel 1128 x 1848). */
-.tablet7 header{left:110px;right:110px;top:140px}
+.tablet7{--inset:110px;--copy-top:140px;--copy-bottom:160px;--device-left:84px;--device-right:156px;--device-top:620px;--hang-top:-440px;
+  --duo-left:64px;--duo-right:120px;--duo-width:820px;--duo-second-width:400px;--duo-top:620px;--duo-step:300px}
 .tablet7 h1{font-size:128px}
 .tablet7 header p{font-size:42px}
-.tablet7 .big .device{left:84px;top:620px;width:960px}
-.tablet7 .hang header{top:auto;bottom:160px}
-.tablet7 .hang .device{left:84px;top:-440px;width:960px}
-.tablet7 .duo .primary{left:64px;top:620px;width:820px}
-.tablet7 .duo .secondary{left:680px;top:920px;width:400px;z-index:3}
 
 /* 10-inch landscape (1920 x 1200; panel 1848 x 1128): copy on the left, the tablet on the right. */
-.tablet10 header{left:110px;right:auto;top:0;bottom:0;width:560px;display:flex;flex-direction:column;justify-content:center}
+.tablet10{--inset:110px;--copy-width:560px;--copy-bottom:130px;--device-left:660px;--device-right:90px;--device-top:170px;--hang-top:60px;
+  --duo-width:1020px;--duo-second-width:300px;--duo-right:120px;--duo-top:110px;--duo-step:270px}
 .tablet10 h1{font-size:96px}
 .tablet10 h1 .line{white-space:normal;text-wrap:balance}
 .tablet10 header p{font-size:34px;max-width:520px}
-.tablet10 .big .device{left:660px;top:170px;width:1170px}
-.tablet10 .hang header{justify-content:flex-end;bottom:130px}
-.tablet10 .hang .device{left:660px;top:60px;width:1140px}
-.tablet10 .duo .primary{left:660px;top:110px;width:1020px}
-.tablet10 .duo .secondary{left:1500px;top:380px;width:300px;z-index:3}
+.tablet10 .hang .device{width:1140px}
