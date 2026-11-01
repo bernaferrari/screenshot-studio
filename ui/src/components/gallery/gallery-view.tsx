@@ -1,43 +1,33 @@
-import { useCallback, useEffect, useRef, useState } from "react";
-import { Image, Link2, Monitor, Smartphone, Store, Tablet } from "lucide-react";
-import { Card, CardContent } from "@/components/ui/card";
-import { Label } from "@/components/ui/label";
-import { ScrollArea, ScrollBar } from "@/components/ui/scroll-area";
+import { useCallback, useRef, useState } from "react";
+import { Image } from "lucide-react";
 import {
   Sheet,
   SheetContent,
   SheetDescription,
   SheetTitle,
 } from "@/components/ui/sheet";
-import { Slider } from "@/components/ui/slider";
-import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Toggle } from "@/components/ui/toggle";
-import { CalloutPicker } from "@/components/callout-picker";
-import { Choice, EmptyState } from "@/components/common";
-import { artworkMedia, useMediaViewer } from "@/components/media-viewer";
-import { language, plural, pretty } from "@/lib/format";
-import { typing, useMediaQuery, useStoredNumber } from "@/lib/hooks";
+import { CalloutPicker } from "@/components/callout/callout-picker";
+import { EmptyState } from "@/components/common";
+import { useMediaViewer } from "@/components/viewer/media-viewer";
+import { plural, pretty } from "@/lib/format";
+import { useMediaQuery, useStoredNumber } from "@/lib/hooks";
+import { artworkMedia } from "@/lib/media";
 import {
   cardsFor,
   type ProjectModel,
   type ProjectSession,
 } from "@/lib/project";
 import { cardIssues } from "@/lib/review";
-import type { Route, Source } from "@/lib/route";
+import type { Route } from "@/lib/route";
+import { keepStrip, type Strip } from "@/lib/strips";
 import type { ReviewIssue, StudioProject } from "@/lib/types";
 import type { FrameState } from "./card-frame";
-import { frameKey, GalleryStrip } from "./gallery-strip";
-import { Inspector } from "./inspector";
+import { GalleryToolbar } from "./gallery-toolbar";
+import { frameKey } from "./gallery-strip";
+import { Inspector } from "./inspector/inspector";
+import { KeptStrips } from "./kept-strips";
 import { StorePreview } from "./store-preview";
-
-const galleryIcon = (kind: string) =>
-  kind === "phone"
-    ? Smartphone
-    : kind === "desktop"
-      ? Monitor
-      : kind.startsWith("tablet")
-        ? Tablet
-        : Image;
+import { useCardKeys } from "./use-card-keys";
 
 /** Strips already rendered stay mounted (hidden), so going back to them doesn't render every card again. */
 const KEPT_STRIPS = 6;
@@ -61,8 +51,10 @@ export function GalleryView({
   issues,
   active,
 }: GalleryViewProps) {
-  const kinds = Object.keys(model.galleries),
-    kind = route.kind && model.galleries[route.kind] ? route.kind : kinds[0],
+  const kind =
+      route.kind && model.galleries[route.kind]
+        ? route.kind
+        : Object.keys(model.galleries)[0],
     locale =
       route.locale && model.locales.includes(route.locale)
         ? route.locale
@@ -79,9 +71,7 @@ export function GalleryView({
     [picker, setPicker] = useState<{ kind: string; index: number } | null>(
       null,
     ),
-    strips = useRef(
-      new Map<string, { kind: string; locale: string; source: Source }>(),
-    ),
+    strips = useRef(new Map<string, Strip>()),
     wide = useMediaQuery("(min-width: 1280px)"),
     openViewer = useMediaViewer();
 
@@ -94,6 +84,12 @@ export function GalleryView({
     (index: number | null) => route.go({ card: index }, { replace: true }),
     [route],
   );
+  const close = useCallback(() => select(null), [select]);
+  // Clicking the inspected card again closes the inspector.
+  const toggle = useCallback(
+    (index: number) => select(index === card ? null : index),
+    [card, select],
+  );
   const move = useCallback(
     (direction: number) => {
       if (card === null) return;
@@ -102,34 +98,11 @@ export function GalleryView({
     },
     [card, cards.length, select],
   );
-
-  // Escape closes the inspector; ← and → move between cards, unless typing or a dialog is open.
-  useEffect(() => {
-    if (card === null || !active) return;
-    const keys = (event: KeyboardEvent) => {
-      if (
-        event.defaultPrevented ||
-        typing(event) ||
-        event.metaKey ||
-        event.ctrlKey ||
-        event.altKey
-      )
-        return;
-      if (
-        document.querySelector(
-          '[role="dialog"][data-state="open"]:not(.inspector-sheet), [role="alertdialog"], [role="menu"], [role="listbox"]',
-        )
-      )
-        return;
-      if (event.key === "Escape") select(null);
-      else if (event.key === "ArrowLeft") move(-1);
-      else if (event.key === "ArrowRight") move(1);
-      else return;
-      event.preventDefault();
-    };
-    addEventListener("keydown", keys);
-    return () => removeEventListener("keydown", keys);
-  }, [card, active, move, select]);
+  const pick = useCallback(
+    (kind: string, index: number) => setPicker({ kind, index }),
+    [],
+  );
+  useCardKeys(card !== null && active, close, move);
 
   if (!kind)
     return (
@@ -140,24 +113,17 @@ export function GalleryView({
       />
     );
 
-  const stripKey = JSON.stringify([kind, locale, route.source]);
-  if (!strips.current.has(stripKey))
-    strips.current.set(stripKey, { kind, locale, source: route.source });
-  while (strips.current.size > KEPT_STRIPS) {
-    const oldest = strips.current.keys().next().value!;
-    if (oldest === stripKey) break;
-    strips.current.delete(oldest);
-  }
-  // A gallery removed from gallery.json leaves with its strips.
-  for (const [key, strip] of strips.current)
-    if (!model.galleries[strip.kind] || !model.locales.includes(strip.locale))
-      strips.current.delete(key);
-
+  // This strip stays mounted with the last few shown; a gallery removed from gallery.json leaves with its strips.
+  const current = keepStrip(
+    strips.current,
+    { kind, locale, source: route.source },
+    (strip) =>
+      !!model.galleries[strip.kind] && model.locales.includes(strip.locale),
+    KEPT_STRIPS,
+  );
   const profile = model.profiles[kind],
     label = (type: string) => model.profiles[type]?.label || pretty(type),
-    inspecting = card !== null,
-    cardState =
-      card === null ? undefined : states.get(frameKey(locale, kind, card));
+    inspecting = card !== null;
   const inspector =
     card !== null ? (
       <Inspector
@@ -166,11 +132,11 @@ export function GalleryView({
         kind={kind}
         index={card}
         locale={locale}
-        state={cardState}
+        state={states.get(frameKey(locale, kind, card))}
         issues={cardIssues(issues, kind, card, locale)}
-        onClose={() => select(null)}
+        onClose={close}
         onMove={move}
-        onPicker={() => setPicker({ kind, index: card })}
+        onPicker={() => pick(kind, card)}
         onView={(event) =>
           openViewer(
             {
@@ -189,119 +155,15 @@ export function GalleryView({
 
   return (
     <div className="@container/gallery space-y-4">
-      <Card className="gap-0 overflow-hidden py-0 shadow-none">
-        <Tabs
-          value={kind}
-          activationMode="manual"
-          onValueChange={(next) => route.go({ kind: next, card: null })}
-          className="hidden min-w-0 @min-[56rem]/gallery:flex"
-        >
-          <ScrollArea className="w-full" type="auto">
-            <TabsList
-              aria-label="Device galleries"
-              variant="line"
-              className="h-auto w-max min-w-full justify-start gap-1 rounded-none border-b px-3 py-2"
-            >
-              {kinds.map((type) => {
-                const Icon = galleryIcon(type);
-                return (
-                  <TabsTrigger
-                    key={type}
-                    value={type}
-                    className="h-9 flex-none gap-2 px-3"
-                  >
-                    <Icon />
-                    {label(type)}
-                    <span className="rounded bg-muted px-1.5 text-xs text-muted-foreground tabular-nums">
-                      {cardsFor(model.galleries, type).length}
-                    </span>
-                  </TabsTrigger>
-                );
-              })}
-            </TabsList>
-            <ScrollBar orientation="horizontal" />
-          </ScrollArea>
-        </Tabs>
-        <CardContent className="flex flex-wrap items-center gap-2.5 p-3">
-          <div className="w-full @min-[56rem]/gallery:hidden">
-            <Choice
-              label="Device gallery"
-              value={kind}
-              onChange={(next) => route.go({ kind: next, card: null })}
-              items={kinds.map((type) => ({
-                value: type,
-                label: `${label(type)} · ${plural(cardsFor(model.galleries, type).length, "card")}`,
-              }))}
-              className="w-full"
-            />
-          </div>
-          <Choice
-            label="Language"
-            value={locale}
-            onChange={(next) => route.go({ locale: next })}
-            items={model.locales.map((code) => ({
-              value: code,
-              label: `${language(code)}${code === model.reference ? " · reference" : ""}`,
-            }))}
-            className="w-full sm:w-64"
-          />
-          <Tabs
-            value={route.source}
-            activationMode="manual"
-            onValueChange={(source) => route.go({ source })}
-          >
-            <TabsList aria-label="Preview source">
-              <TabsTrigger value="live">Live</TabsTrigger>
-              <TabsTrigger value="exported">Exported</TabsTrigger>
-            </TabsList>
-          </Tabs>
-          <Toggle
-            pressed={route.store}
-            onPressedChange={(store) =>
-              route.go({ store: store || null }, { replace: true })
-            }
-            aria-label="Store preview"
-            variant="outline"
-          >
-            <Store />
-            Store preview
-          </Toggle>
-          {!route.store && (
-            <>
-              <Toggle
-                pressed={route.joined}
-                onPressedChange={(joined) =>
-                  route.go({ joined }, { replace: true })
-                }
-                aria-label="Joined"
-                variant="outline"
-              >
-                <Link2 />
-                Joined
-              </Toggle>
-              <div className="ml-auto flex items-center gap-3">
-                <Label htmlFor="preview-height" className="sr-only">
-                  Preview size
-                </Label>
-                <Slider
-                  id="preview-height"
-                  aria-label="Preview size"
-                  value={[height]}
-                  min={240}
-                  max={760}
-                  step={20}
-                  className="w-28"
-                  onValueChange={([next]) => setHeight(next)}
-                />
-                <span className="w-12 text-right text-xs text-muted-foreground tabular-nums">
-                  {height} px
-                </span>
-              </div>
-            </>
-          )}
-        </CardContent>
-      </Card>
-
+      <GalleryToolbar
+        model={model}
+        route={route}
+        kind={kind}
+        locale={locale}
+        label={label}
+        height={height}
+        onHeight={setHeight}
+      />
       <div
         className={
           inspecting && wide
@@ -321,52 +183,23 @@ export function GalleryView({
               exportRevision={session.exportRevision(locale)}
               storeTextRevision={session.storeTextRevision(locale)}
               selected={card}
-              onSelect={(index) => select(index === card ? null : index)}
+              onSelect={toggle}
               onKind={(next) => route.go({ kind: next, card: null })}
             />
           ) : (
-            <div id="view">
-              {[...strips.current].map(([key, strip]) => {
-                const stripCards = cardsFor(model.galleries, strip.kind),
-                  current = key === stripKey;
-                return (
-                  <div
-                    key={key}
-                    className="editor-view"
-                    hidden={!current}
-                    inert={!current || undefined}
-                  >
-                    {stripCards.length ? (
-                      <GalleryStrip
-                        model={model}
-                        locale={strip.locale}
-                        kind={strip.kind}
-                        cards={stripCards}
-                        height={height}
-                        source={strip.source}
-                        joined={route.joined}
-                        revision={session.revision(strip.locale)}
-                        exportRevision={session.exportRevision(strip.locale)}
-                        selected={current ? card : null}
-                        onSelect={(index) =>
-                          select(index === card ? null : index)
-                        }
-                        onPicker={(index) =>
-                          setPicker({ kind: strip.kind, index })
-                        }
-                        onState={onState}
-                        states={states}
-                      />
-                    ) : (
-                      <EmptyState
-                        title="No cards in this gallery"
-                        description={`Add cards to "${strip.kind}" in gallery.json; they appear here as soon as the file is saved.`}
-                      />
-                    )}
-                  </div>
-                );
-              })}
-            </div>
+            <KeptStrips
+              strips={strips.current}
+              current={current}
+              session={session}
+              model={model}
+              height={height}
+              joined={route.joined}
+              selected={card}
+              onSelect={toggle}
+              onPicker={pick}
+              onState={onState}
+              states={states}
+            />
           )}
           <p className="flex flex-wrap items-center justify-between gap-3 text-xs text-muted-foreground">
             <span>
@@ -393,7 +226,7 @@ export function GalleryView({
       {!wide && (
         <Sheet
           open={inspecting && active}
-          onOpenChange={(open) => !open && select(null)}
+          onOpenChange={(open) => !open && close()}
         >
           <SheetContent
             side="right"

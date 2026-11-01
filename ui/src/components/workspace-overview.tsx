@@ -32,9 +32,11 @@ import {
   SearchField,
   Status,
 } from "./common";
-import { useMediaViewer, type MediaItem } from "./media-viewer";
-import { ProjectMenu, type ProjectActions } from "./project-dialogs";
+import type { ProjectActions } from "./projects/project-dialogs";
+import { ProjectMenu } from "./projects/project-menu";
+import { useMediaViewer } from "./viewer/media-viewer";
 import { errorMessage } from "@/lib/api";
+import type { MediaItem } from "@/lib/media";
 import { projectURL } from "@/lib/route";
 import type { ProjectSummary, WorkspaceData } from "@/lib/types";
 import { cn } from "@/lib/utils";

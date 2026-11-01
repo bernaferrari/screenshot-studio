@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { ImageOff } from "lucide-react";
-import { exportURL, previewURL } from "@/components/media-viewer";
+import { exportURL, previewURL } from "@/lib/media";
 import type { ProjectModel } from "@/lib/project";
 import type { Source } from "@/lib/route";
 import type { Card, CardReport } from "@/lib/types";
