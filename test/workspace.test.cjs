@@ -226,7 +226,7 @@ test("mounted editors isolate writes, block path escapes, and keep shared UI rea
   );
 });
 test("drafts survive project switches, isolate locales, and detect changed disk copy", async () => {
-  const { createDraftStore } = await import("../ui/src/lib/editor-drafts.ts"),
+  const { createDraftStore } = await import("../ui/src/lib/drafts.ts"),
     values = new Map();
   const storage = {
     getItem: (k) => values.get(k),
@@ -280,4 +280,84 @@ test('coverage excludes reference-only galleries and includes separate callout c
   const [project] = await f.store.list(), german = project.locales.find(l => l.locale === 'de-DE');
   assert.equal(german.expectedExports, 1);
   assert.equal(german.expectedCaptures, 2);
+});
+
+test("a clean draft follows the file on disk; an unsaved one keeps its words and asks", async () => {
+  const { rebase, isDirty } = await import("../ui/src/lib/drafts.ts");
+  const draft = { data: { home: { title: "A" } }, saved: JSON.stringify({ home: { title: "A" } }), saving: false, error: "", conflict: false };
+  assert.equal(rebase(draft, { home: { title: "A" } }), false);
+  assert.equal(rebase(draft, { home: { title: "B" } }), true);
+  assert.equal(draft.data.home.title, "B");
+  assert.equal(isDirty(draft), false);
+  draft.data = { home: { title: "Mine" } };
+  assert.equal(rebase(draft, { home: { title: "C" } }), true);
+  assert.equal(draft.conflict, true);
+  assert.equal(draft.data.home.title, "Mine");
+  assert.equal(draft.restoreBase, JSON.stringify({ home: { title: "B" } }));
+  // The file catching up with the draft settles the conflict.
+  assert.equal(rebase(draft, { home: { title: "Mine" } }), true);
+  assert.equal(draft.conflict, false);
+});
+
+test("the editor hears about listing changes over Server-Sent Events, without studio or export output", async (t) => {
+  const f = fixture(t), root = f.app("Live"), listing = path.join(root, "store-listing");
+  const [project] = await f.store.add([root]);
+  const server = await serve(f.root, 0, { workspace: f.store, editable: true });
+  const abort = new AbortController();
+  t.after(() => {
+    abort.abort();
+    server.closeAllConnections();
+    return new Promise((resolve) => server.close(resolve));
+  });
+  const response = await fetch(`http://127.0.0.1:${server.address().port}/api/projects/${project.id}/events`, { signal: abort.signal });
+  assert.equal(response.headers.get("content-type"), "text/event-stream");
+  const reader = response.body.getReader(), decoder = new TextDecoder();
+  let text = "";
+  const until = async (pattern) => {
+    while (!pattern.test(text)) {
+      const { value, done } = await reader.read();
+      if (done) throw new Error("stream ended");
+      text += decoder.decode(value);
+    }
+  };
+  await until(/event: ready/);
+  // Exports and the studio copy are the studio's own writes; they're not news.
+  f.write(path.join(listing, "studio/render.js"), "// copy");
+  f.write(path.join(listing, "de-DE/phone/01-home.jpg"), "jpg");
+  f.write(path.join(listing, "theme.css"), "body{}");
+  f.write(path.join(listing, "de-DE/raw/phone/home.png"), "png");
+  await until(/event: change/);
+  const change = JSON.parse(text.split("event: change\ndata: ")[1].split("\n")[0]);
+  assert.deepEqual(change.files, ["de-DE/raw/phone/home.png", "theme.css"]);
+});
+
+test("the review route joins the file check with the last export's notes and warnings", async (t) => {
+  const f = fixture(t), root = f.app("Review"), listing = path.join(root, "store-listing");
+  const [project] = await f.store.add([root]);
+  f.write(path.join(listing, "export-report.json"), {
+    ok: false, error: "Fonts failed to load: de-DE/phone/01-home.jpg", cards: [], locales: [{ locale: "de-DE" }],
+    warnings: ["de-DE/phone/01-home.jpg: \"Welt\" is left on a short last line; reword or shorten the copy"],
+    finishedAt: "2026-01-01T00:00:00.000Z", options: { locales: ["de-DE"] },
+  });
+  f.write(path.join(listing, "de-DE/assets.json"), { galleries: { phone: [{ file: "phone/01-home.jpg", feature: "home", slide: 0, notes: ["untranslated: body"] }] } });
+  const server = await serve(f.root, 0, { workspace: f.store, editable: true });
+  t.after(() => new Promise((resolve) => server.close(resolve)));
+  const review = await (await fetch(`http://127.0.0.1:${server.address().port}/api/projects/${project.id}/review`)).json();
+  assert.equal(review.lastExport.ok, false);
+  assert.deepEqual(review.lastExport.locales, ["de-DE"]);
+  const byMessage = (text) => review.issues.find((issue) => issue.message.includes(text));
+  assert.equal(review.issues[0].level, "error");
+  assert.equal(byMessage("Fonts failed").source, "export");
+  assert.deepEqual(byMessage("untranslated: body").card, { kind: "phone", index: 0, feature: "home" });
+  const widow = byMessage("short last line");
+  assert.equal(widow.file, "de-DE/phone/01-home.jpg");
+  assert.deepEqual(widow.card, { kind: "phone", index: 0, feature: "home" });
+  assert.match(widow.fix, /Reword/);
+  // A missing capture names its card through the JSON path.
+  f.write(path.join(listing, "gallery.json"), { phone: [{ feature: "home", raw: "phone/missing.png" }], tablet7: { inherits: "phone", cards: [{}] } });
+  const again = await (await fetch(`http://127.0.0.1:${server.address().port}/api/projects/${project.id}/review`)).json();
+  const missing = again.issues.find((issue) => issue.message.includes("missing.png"));
+  assert.equal(missing.level, "error");
+  assert.equal(missing.path, "phone[0].raw");
+  assert.deepEqual(missing.card, { kind: "phone", index: 0, feature: "home" });
 });

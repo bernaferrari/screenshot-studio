@@ -10,7 +10,7 @@ export default defineConfig({
     outDir: ".ui-build",
     emptyOutDir: true,
     lib: {
-      entry: "ui/src/main.jsx",
+      entry: "ui/src/main.tsx",
       name: "ScreenshotStudio",
       formats: ["iife"],
       fileName: () => "studio.js",

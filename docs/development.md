@@ -7,7 +7,7 @@ Working on the studio itself.
 | Path | What |
 |---|---|
 | `studio/` | Everything an app gets: renderer (`preview.html`, `core.js`, `gallery.js`, `studio.css`, `shapes.js`), exporter, capture, icons, server, and the built editor in `assets/` |
-| `ui/src/` | The editor's source: React with shadcn/ui and Tailwind |
+| `ui/src/` | The editor's source: React and TypeScript with shadcn/ui and Tailwind |
 | `init.cjs` | Scaffolds `store-listing/` in a new app |
 | `sync.sh` | Copies `studio/` into an app |
 | `docs/` | These guides; `docs/images/make.cjs` rebuilds the README images |
@@ -18,7 +18,10 @@ Working on the studio itself.
 npm ci
 npm run dev       # Vite, for working on ui/src
 npm run build     # writes the bundle to studio/assets/ and generates studio/index.html
+npm run typecheck # the studio (tsconfig.json) and the editor (tsconfig.ui.json), both strict
 ```
+
+The editor shares its types with the studio: the files an app keeps come from `src/core/types.d.ts`, the server's answers from `src/node/workspace/` (imported as types only). `ui/src/lib/` holds everything that isn't a component: the project model and live reload (`project.ts`, `live.ts`), drafts, the review, routes and the API.
 
 The editor is built from the official shadcn/ui components (`ui/src/components/ui/`, set up in `components.json`), owned here and tailored where needed. The build bundles React and every dependency, so an app needs only Node to run the editor: no npm install, no CDN. It uses the neutral shadcn palette in light and dark; app artwork keeps its own theme. The renderer files stay separate from the bundle, so each app keeps its own artwork. The shadcn MIT notice is in `ui/SHADCN-LICENSE.md` and ships with the bundle.
 

@@ -189,22 +189,21 @@ test("genuine shadcn sidebar, menus and navigation preserve the document and loa
     .locator(".sidebar")
     .getByRole("link", { name: "Alpha", exact: true })
     .click();
-  await page.getByRole("tablist", { name: "Project sections" }).waitFor();
-  await page.getByRole("link", { name: "Open studio", exact: true }).click();
+  await page.getByRole("navigation", { name: "Project sections" }).waitFor();
   await active(page).locator("iframe.preview-ready").waitFor();
   const original = await active(page)
     .locator("iframe")
     .evaluateHandle((n) => n);
-  await view(page, "Cards");
+  await view(page, "Gallery");
   await active(page).locator(".canvas-surface").waitFor();
   assert(
     await active(page)
       .locator("iframe")
       .evaluate((n, old) => n === old, original),
   );
-  await view(page, "Copy");
-  await page.getByRole("textbox").first().waitFor();
-  await view(page, "Cards");
+  await view(page, "Languages");
+  await page.locator(".language-row").first().waitFor();
+  await view(page, "Gallery");
   await active(page).locator(".canvas-surface").waitFor();
   assert(
     await active(page)
@@ -212,7 +211,7 @@ test("genuine shadcn sidebar, menus and navigation preserve the document and loa
       .evaluate((n, old) => n === old, original),
   );
   await page.goBack();
-  await page.getByRole("textbox").first().waitFor();
+  await page.locator(".language-row").first().waitFor();
   await page.goForward();
   await active(page).locator("iframe").waitFor();
   await page.getByRole("button", { name: "Joined", exact: true }).click();
@@ -303,7 +302,7 @@ test("copy filtering, custom selects, conflict recovery and keyboard saves retai
   await page
     .getByRole("textbox", { name: "en-US hello title", exact: true })
     .waitFor();
-  assert.equal(await active(page).locator(".copy-reference").count(), 0);
+  assert.equal(await page.locator(".copy .copy-reference").count(), 0);
 });
 
 test("a pending save stays scoped to the original project after switching projects", async (t) => {
@@ -377,55 +376,44 @@ test("a slow abandoned editor cannot commit over the next project", async (t) =>
   );
 });
 
-test("language tabs and collapsibles mount previews only on demand and reuse them", async (t) => {
+test("languages list every language's needs, filters them and opens its words", async (t) => {
   const { page, base, projects } = await setup(t);
   await page.goto(base + projects[0].editorURL + "?view=languages");
   await page.locator(".language-row").first().waitFor();
   assert.equal(await page.locator("iframe").count(), 0);
-  await page.getByRole("tab", { name: "Needs copy", exact: true }).click();
-  assert.equal(await page.locator(".language-row:visible").count(), 1);
+  const german = page.locator('.language-row[data-locale="de-DE"]');
+  assert.match(await german.textContent(), /1 \/ 2 copy fields/);
+  assert.match(await german.textContent(), /Copy needed/);
+  await page.getByRole("tab", { name: "Complete", exact: true }).click();
+  await page.getByText("No matching languages", { exact: true }).waitFor();
+  await page.getByRole("button", { name: "Clear filters", exact: true }).click();
   await page
     .getByRole("searchbox", { name: "Search languages", exact: true })
-    .fill("English");
-  await page.getByText("No matching languages", { exact: true }).waitFor();
+    .fill("German");
+  assert.equal(await page.locator(".language-row").count(), 1);
   await page
-    .getByRole("button", { name: "Clear filters", exact: true })
+    .getByRole("button", { name: "Edit German (Germany) copy", exact: true })
     .click();
-  const preview = page.getByRole("button", {
-    name: "Preview German (Germany)",
-    exact: true,
-  });
-  await preview.click();
-  await active(page).locator("iframe.preview-ready").waitFor();
-  const original = await active(page)
-    .locator("iframe")
-    .evaluateHandle((n) => n);
-  await preview.click();
-  await preview.click();
-  assert(
-    await active(page)
-      .locator("iframe")
-      .evaluate((n, old) => n === old, original),
-  );
-  await page.getByRole("tab", { name: "Exported", exact: true }).click();
-  await page.waitForFunction(
-    () =>
-      document.querySelector(".editor-view:not([hidden]) .canvas-surface")
-        ?.dataset.previewSource === "exported",
-  );
-  await active(page).locator(".missing").waitFor();
-  await page.getByRole("tab", { name: "Live", exact: true }).click();
-  assert(
-    await active(page)
-      .locator("iframe")
-      .evaluate((n, old) => n === old, original),
-  );
+  await page
+    .getByRole("textbox", { name: "de-DE hello title", exact: true })
+    .waitFor();
+  await page.getByRole("button", { name: "All languages", exact: true }).click();
   await page
     .getByRole("button", { name: "Continue translation", exact: true })
     .click();
   await page
     .getByRole("textbox", { name: "de-DE hello title", exact: true })
     .waitFor();
+  await page.goBack();
+  await page
+    .getByRole("button", { name: "View German (Germany) gallery", exact: true })
+    .click();
+  await active(page).locator("iframe.preview-ready").waitFor();
+  assert(
+    (await active(page).locator("iframe").getAttribute("src")).includes(
+      "locale=de-DE",
+    ),
+  );
 });
 
 test("project dialogs use shadcn to discover, connect, rename and remove folders safely", async (t) => {
@@ -489,7 +477,7 @@ test("project dialogs use shadcn to discover, connect, rename and remove folders
 
 test("shadcn callout dialog saves exact element metadata, follows localized bounds and supports manual crops", async (t) => {
   const { page, base, projects, roots } = await setup(t);
-  await page.goto(base + projects[0].editorURL + "?view=cards");
+  await page.goto(base + projects[0].editorURL + "?view=gallery");
   await page.getByRole("button", { name: "Pick callout", exact: true }).click();
   let dialog = page.getByRole("dialog", {
     name: "Pick a callout",
@@ -588,7 +576,10 @@ test("mobile Sidebar Sheet, keyboard search, saved preview and dark mode work wi
   await page.locator("[data-slot=sidebar-trigger]").click();
   await page
     .getByRole("dialog", { name: "Sidebar", exact: true })
-    .getByRole("link", { name: "Copy", exact: true })
+    .getByRole("link", { name: "Languages", exact: true })
+    .click();
+  await page
+    .getByRole("button", { name: "Edit American English copy", exact: true })
     .click();
   await page.getByRole("textbox").first().waitFor();
   await page.getByRole("button", { name: "Preview", exact: true }).click();
@@ -767,14 +758,14 @@ test("live and exported gallery cards use the same viewer without reloading thei
   const f = await setup(t),
     { page, base, projects } = f;
   addViewerGallery(f);
-  await page.goto(base + projects[0].editorURL + "?view=cards");
+  await page.goto(base + projects[0].editorURL + "?view=gallery");
   await active(page).locator("iframe.preview-ready").first().waitFor();
   const original = await active(page)
     .locator("iframe")
     .first()
     .evaluateHandle((node) => node);
   await active(page)
-    .getByRole("button", { name: "Enlarge Hello screenshot", exact: true })
+    .getByRole("button", { name: "Open Hello in image viewer", exact: true })
     .click();
   await waitViewer(page, "live");
   assert(
@@ -809,7 +800,7 @@ test("live and exported gallery cards use the same viewer without reloading thei
         ?.dataset.previewSource === "exported",
   );
   await active(page)
-    .getByRole("button", { name: "Enlarge Hello screenshot", exact: true })
+    .getByRole("button", { name: "Open Hello in image viewer", exact: true })
     .click();
   await waitViewer(page, "image");
   await page.keyboard.press("Escape");
@@ -822,7 +813,7 @@ test("live and exported gallery cards use the same viewer without reloading thei
       ?.src.includes("locale=de-DE"),
   );
   await active(page)
-    .getByRole("button", { name: "Enlarge Hello screenshot", exact: true })
+    .getByRole("button", { name: "Open Hello in image viewer", exact: true })
     .click();
   await waitViewer(page, "live");
   assert(
@@ -933,9 +924,9 @@ test("a long gallery stays fitted and keeps controls visible on mobile and after
   const fixture = await setup(t),
     { page, base, projects } = fixture;
   addViewerGallery(fixture, 8);
-  await page.goto(base + projects[0].editorURL + "?view=cards");
+  await page.goto(base + projects[0].editorURL + "?view=gallery");
   await active(page)
-    .getByRole("button", { name: "Enlarge Hello screenshot", exact: true })
+    .getByRole("button", { name: "Open Hello in image viewer", exact: true })
     .click();
   await waitViewer(page, "live");
   for (const width of [390, 320, 900]) {
@@ -1074,15 +1065,14 @@ test("project filters use connected shadcn tab panels and fit narrow screens", a
     .locator(".sidebar")
     .getByRole("link", { name: "Alpha", exact: true })
     .click();
-  await page.getByRole("tablist", { name: "Project sections" }).waitFor();
-  await page.getByRole("link", { name: "Open studio", exact: true }).click();
+  await page.getByRole("navigation", { name: "Project sections" }).waitFor();
   await active(page).locator("iframe.preview-ready").waitFor();
   await view(page, "Languages");
   const languageTabs = page.getByRole("tablist", { name: "Language filters" });
   await languageTabs
-    .getByRole("tab", { name: "Needs copy", exact: true })
+    .getByRole("tab", { name: "Needs work", exact: true })
     .click();
-  assert.equal(await active(page).locator(".language-row:visible").count(), 1);
+  assert.equal(await page.locator(".language-row:visible").count(), 2);
   for (const width of [320, 390]) {
     await page.setViewportSize({ width, height: 900 });
     const overflow = await languageTabs.evaluate((el) => ({
@@ -1096,74 +1086,54 @@ test("project filters use connected shadcn tab panels and fit narrow screens", a
   }
 });
 
-test("project sections keep history, expose language actions on phones, and link to the right gallery", async (t) => {
+test("a listing opens in its editor, and project sections keep history and fit phones", async (t) => {
   const { page, projects, base } = await setup(t);
   await page.goto(base + projects[0].overviewURL);
-  const sections = page.getByRole("tablist", { name: "Project sections" });
+  const sections = page.getByRole("navigation", { name: "Project sections" });
   await sections.waitFor();
+  await page.waitForFunction(() => location.pathname.includes("/store-listing/studio/"));
   await page.evaluate(() => {
     window.projectDocument = document;
   });
-  const galleries = sections.getByRole("tab", { name: /Galleries/ });
-  const languages = sections.getByRole("tab", { name: /Languages/ });
-  await galleries.click();
-  await page
-    .getByRole("heading", { name: "Choose a gallery", exact: true })
-    .waitFor();
-  assert.equal(new URL(page.url()).searchParams.get("section"), "galleries");
-  const panel = page.getByRole("tabpanel");
-  const links = panel.getByRole("link", { name: "Open gallery", exact: true });
-  assert.equal(await links.count(), 2);
-  assert((await links.nth(1).getAttribute("href")).includes("kind=tablet7"));
-  await languages.click();
-  await page
-    .getByRole("searchbox", { name: "Search project languages" })
-    .fill("German");
-  assert.equal(await panel.getByRole("row").count(), 2);
-  await choice(page, "Language asset status", "Assets complete");
-  await page.getByText("No matching languages", { exact: true }).waitFor();
-  await page
-    .getByRole("button", { name: "Clear filters", exact: true })
-    .click();
-  assert.equal(await panel.getByRole("row").count(), 3);
+  await sections.getByRole("link", { name: /Review/ }).click();
+  await page.getByRole("tablist", { name: "Issue filters" }).waitFor();
+  assert.equal(new URL(page.url()).searchParams.get("view"), "review");
+  await sections.getByRole("link", { name: /Languages/ }).click();
+  await page.locator(".language-row").first().waitFor();
   await page.goBack();
-  await page
-    .getByRole("heading", { name: "Choose a gallery", exact: true })
-    .waitFor();
+  await page.getByRole("tablist", { name: "Issue filters" }).waitFor();
   await page.goForward();
-  await page
-    .getByRole("heading", { name: "Language coverage", exact: true })
-    .waitFor();
+  await page.locator(".language-row").first().waitFor();
   assert(await page.evaluate(() => document === window.projectDocument));
   await page.reload();
-  await page
-    .getByRole("heading", { name: "Language coverage", exact: true })
-    .waitFor();
-  assert.equal(await languages.getAttribute("aria-selected"), "true");
+  await page.locator(".language-row").first().waitFor();
+  assert.equal(
+    await sections
+      .getByRole("link", { name: /Languages/ })
+      .getAttribute("aria-current"),
+    "page",
+  );
   for (const width of [320, 390, 798]) {
     await page.setViewportSize({ width, height: 900 });
     await page.waitForFunction(
       () => document.documentElement.scrollWidth <= innerWidth,
     );
-    const cards = panel.getByRole("article");
-    assert.equal(await cards.count(), 2);
-    assert(await cards.first().isVisible());
-    const action = cards.getByRole("link", { name: "Edit copy", exact: true });
+    const action = page.getByRole("button", {
+      name: "Edit German (Germany) copy",
+      exact: true,
+    });
     const within = await action.evaluate((el) => {
       const r = el.getBoundingClientRect();
       return r.left >= 0 && r.right <= innerWidth;
     });
     assert(within, `copy action clipped at ${width}`);
     const fits = await sections.evaluate(
-      (el) =>
-        el.scrollWidth <= el.clientWidth + 1 &&
-        el.scrollHeight <= el.clientHeight + 1,
+      (el) => el.scrollWidth <= el.clientWidth + 1,
     );
-    assert(fits, `project tabs clipped at ${width}`);
+    assert(fits, `project sections clipped at ${width}`);
   }
-  await panel
-    .getByRole("article", { name: "German (Germany) asset set", exact: true })
-    .getByRole("link", { name: "Edit copy", exact: true })
+  await page
+    .getByRole("button", { name: "Edit German (Germany) copy", exact: true })
     .click();
   await page
     .getByRole("textbox", { name: "de-DE hello title", exact: true })
@@ -1188,7 +1158,7 @@ test("project sections keep history, expose language actions on phones, and link
 test("the narrow gallery select switches devices and reuses the loaded gallery", async (t) => {
   const { page, projects, base } = await setup(t);
   await page.setViewportSize({ width: 798, height: 1000 });
-  await page.goto(base + projects[0].editorURL + "?view=cards");
+  await page.goto(base + projects[0].editorURL + "?view=gallery");
   await active(page).locator("iframe.preview-ready").waitFor();
   const original = await active(page)
     .locator("iframe")
@@ -1197,12 +1167,12 @@ test("the narrow gallery select switches devices and reuses the loaded gallery",
     await page.getByRole("tablist", { name: "Device galleries" }).isVisible(),
     false,
   );
-  await choice(page, "Device gallery", "Tablet · 1 cards");
+  await choice(page, "Device gallery", "Tablet · 1 card");
   await page.waitForFunction(
     () => new URL(location.href).searchParams.get("kind") === "tablet7",
   );
   await active(page).locator("iframe.preview-ready").waitFor();
-  await choice(page, "Device gallery", "Phone · 1 cards");
+  await choice(page, "Device gallery", "Phone · 1 card");
   await page.waitForFunction(
     () =>
       new URL(location.href).searchParams.get("kind") === "phone" &&
@@ -1237,7 +1207,7 @@ test('saving a callout preserves other callouts', async t => {
   const sibling = {x:30, y:300, w:100, h:60};
   gallery.phone[0].callouts = [{x:20,y:100,w:160,h:60}, sibling];
   write(file, gallery);
-  await page.goto(base + projects[0].editorURL + '?view=cards');
+  await page.goto(base + projects[0].editorURL + '?view=gallery');
   await page.getByRole('button', {name:'Pick callout',exact:true}).click();
   const dialog = page.getByRole('dialog', {name:'Pick a callout',exact:true});
   await dialog.getByRole('combobox', {name:'Find accessibility element',exact:true}).fill('Suggested');
@@ -1245,4 +1215,230 @@ test('saving a callout preserves other callouts', async t => {
   await dialog.getByRole('button', {name:"Save as this card's callout",exact:true}).click();
   await dialog.waitFor({state:'hidden'});
   assert.deepEqual(JSON.parse(fs.readFileSync(file)).phone[0].callouts[1], sibling);
+});
+
+test("live reload re-renders previews in place when theme, gallery and copy files change", async (t) => {
+  const { page, base, projects, roots, write } = await setup(t);
+  const listing = roots[0] + "/store-listing";
+  await page.goto(base + projects[0].editorURL + "?view=gallery");
+  await page.locator(".live-indicator[data-state=live]").waitFor();
+  await active(page).locator("iframe.preview-ready").waitFor();
+  const first = await active(page).locator("iframe").getAttribute("src");
+  await page.evaluate(() => scrollTo(0, 120));
+  const scrolled = await page.evaluate(() => scrollY);
+  write(
+    listing + "/theme.css",
+    fs.readFileSync(listing + "/theme.css", "utf8") + "body{background:#123456}",
+  );
+  // A new frame renders behind the old one and replaces it once ready.
+  await page.waitForFunction(
+    (old) => {
+      const frames = [
+        ...document.querySelectorAll(".editor-view:not([hidden]) iframe"),
+      ];
+      return (
+        frames.length === 1 &&
+        frames[0].src !== old &&
+        frames[0].classList.contains("preview-ready")
+      );
+    },
+    first,
+    { timeout: 10000 },
+  );
+  const background = await active(page)
+    .locator("iframe")
+    .evaluate((f) => getComputedStyle(f.contentDocument.body).backgroundColor);
+  assert.equal(background, "rgb(18, 52, 86)");
+  assert.equal(await page.evaluate(() => scrollY), scrolled);
+  // A new card in gallery.json appears without a reload.
+  const gallery = JSON.parse(fs.readFileSync(listing + "/gallery.json"));
+  gallery.phone.push({ feature: "second" });
+  write(listing + "/gallery.json", gallery);
+  await active(page)
+    .getByRole("button", { name: "Inspect Second", exact: true })
+    .waitFor();
+  // Words saved elsewhere reach an open, clean copy editor.
+  await page.goto(base + projects[0].editorURL + "?view=copy&locale=de-DE");
+  const area = page.getByRole("textbox", {
+    name: "de-DE hello title",
+    exact: true,
+  });
+  await area.waitFor();
+  await page.locator(".live-indicator[data-state=live]").waitFor();
+  write(listing + "/de-DE/copy.json", {
+    hello: { title: "Von außen", body: "Words" },
+  });
+  await page.waitForFunction(
+    () =>
+      document.querySelector('[aria-label="de-DE hello title"]')?.value ===
+      "Von außen",
+  );
+  // An unsaved draft is kept, and the person chooses.
+  await area.fill("Mein Entwurf");
+  write(listing + "/de-DE/copy.json", {
+    hello: { title: "Noch einmal", body: "Words" },
+  });
+  await page.getByText("The saved copy changed", { exact: true }).waitFor();
+  assert.equal(await area.inputValue(), "Mein Entwurf");
+});
+
+test("the review queue lists check and export issues with fixes and opens their cards", async (t) => {
+  const { page, base, projects, roots, write } = await setup(t);
+  const listing = roots[0] + "/store-listing";
+  const copy = JSON.parse(fs.readFileSync(listing + "/en-US/copy.json"));
+  copy.unused = { title: "Nobody reads me" };
+  write(listing + "/en-US/copy.json", copy);
+  write(listing + "/export-report.json", {
+    ok: true,
+    cards: [{}],
+    warnings: [
+      "de-DE/phone: the background breaks at the seam between cards 1 and 2 (12% of rows differ)",
+      "en-US/phone/old.png is no longer in the gallery; delete it",
+    ],
+    locales: [{ locale: "de-DE" }],
+    finishedAt: new Date().toISOString(),
+    options: { locales: ["de-DE"] },
+  });
+  write(listing + "/de-DE/assets.json", {
+    galleries: {
+      phone: [
+        {
+          file: "phone/01-hello.png",
+          feature: "hello",
+          slide: 0,
+          notes: ["untranslated: title"],
+        },
+      ],
+    },
+  });
+  await page.goto(base + projects[0].editorURL + "?view=review");
+  const issues = page.locator(".review-issue");
+  await issues.first().waitFor();
+  assert.equal(await issues.count(), 4);
+  await page.getByText('"unused" isn\'t used by any card', { exact: true }).waitFor();
+  await page.getByText("Remove it, or fix the card's feature name.").waitFor();
+  await page.getByText("en-US/phone/old.png", { exact: true }).waitFor();
+  assert.match(
+    await page.locator(".review").textContent(),
+    /Last export .* German \(Germany\)/,
+  );
+  await page.getByRole("tab", { name: /Errors/ }).click();
+  await page.getByText("No errors", { exact: true }).waitFor();
+  await page.getByRole("tab", { name: /All/ }).click();
+  // The header and the section link count what needs fixing.
+  await page
+    .getByRole("navigation", { name: "Project sections" })
+    .getByRole("link", { name: /Review\s*4/ })
+    .waitFor();
+  // A fixed file leaves the queue on its own.
+  delete copy.unused;
+  write(listing + "/en-US/copy.json", copy);
+  await page.waitForFunction(
+    () => document.querySelectorAll(".review-issue").length === 3,
+  );
+  await page
+    .locator(".review-issue")
+    .filter({ hasText: "untranslated: title" })
+    .getByRole("button", { name: "Open card Hello", exact: true })
+    .click();
+  const inspector = page.getByRole("region", { name: "Hello card" });
+  await inspector.waitFor();
+  const url = new URL(page.url());
+  assert.equal(url.searchParams.get("view"), "gallery");
+  assert.equal(url.searchParams.get("card"), "0");
+  assert.equal(url.searchParams.get("locale"), "de-DE");
+  await inspector.getByText("untranslated: title", { exact: true }).waitFor();
+  await inspector.getByText(/background breaks at the seam/).waitFor();
+});
+
+test("clicking a card inspects it: words save inline, the viewer stays reachable, keys move and close", async (t) => {
+  const f = await setup(t),
+    { page, base, projects, roots } = f;
+  addViewerGallery(f);
+  await page.goto(base + projects[0].editorURL + "?view=gallery&locale=de-DE");
+  await active(page).locator("iframe.preview-ready").first().waitFor();
+  await active(page)
+    .getByRole("button", { name: "Inspect Hello", exact: true })
+    .click();
+  const inspector = page.getByRole("region", { name: "Hello card" });
+  await inspector.waitFor();
+  assert.equal(new URL(page.url()).searchParams.get("card"), "0");
+  await inspector.getByText("gallery.json · phone[0]", { exact: true }).waitFor();
+  await inspector.getByText("home.png", { exact: true }).waitFor();
+  await inspector.getByText("Untranslated: title").waitFor();
+  const title = inspector.getByRole("textbox", {
+    name: "de-DE hello title",
+    exact: true,
+  });
+  await title.fill("Hallo *Welt*");
+  await inspector.getByText("Unsaved", { exact: true }).waitFor();
+  await title.press("Control+Enter");
+  await inspector.getByText("Saved", { exact: true }).waitFor();
+  assert.equal(
+    JSON.parse(fs.readFileSync(roots[0] + "/store-listing/de-DE/copy.json"))
+      .hello.title,
+    "Hallo *Welt*",
+  );
+  // The live preview follows the saved words.
+  await page.waitForFunction(
+    () =>
+      document
+        .querySelector(".editor-view:not([hidden]) iframe.preview-ready")
+        ?.contentDocument?.querySelector("h1 em")?.textContent === "Welt",
+    null,
+    { timeout: 10000 },
+  );
+  await inspector.getByRole("button", { name: "Open in viewer", exact: true }).click();
+  await waitViewer(page, "live");
+  await page.keyboard.press("Escape");
+  await viewer(page).waitFor({ state: "hidden" });
+  await inspector.waitFor();
+  await page.keyboard.press("ArrowRight");
+  await page.getByRole("region", { name: "Detail 2 card" }).waitFor();
+  await page.keyboard.press("Escape");
+  await page.getByRole("region", { name: "Detail 2 card" }).waitFor({ state: "hidden" });
+  assert.equal(new URL(page.url()).searchParams.get("card"), null);
+  // On a phone the inspector is a sheet.
+  await page.setViewportSize({ width: 390, height: 844 });
+  await active(page)
+    .getByRole("button", { name: "Inspect Hello", exact: true })
+    .click();
+  const sheet = page.getByRole("dialog", { name: "Card inspector" });
+  await sheet.getByRole("region", { name: "Hello card" }).waitFor();
+  await sheet.getByRole("button", { name: "Close inspector", exact: true }).click();
+  await sheet.waitFor({ state: "hidden" });
+  assert.equal(
+    await page.evaluate(() => document.documentElement.scrollWidth - innerWidth),
+    0,
+  );
+});
+
+test("store preview shows the cards at Play's thumbnail size on a phone-width page", async (t) => {
+  const f = await setup(t),
+    { page, base, projects } = f;
+  addViewerGallery(f);
+  await page.goto(base + projects[0].editorURL + "?view=gallery");
+  await active(page).locator("iframe.preview-ready").first().waitFor();
+  await page.getByRole("button", { name: "Store preview", exact: true }).click();
+  const store = page.getByRole("region", {
+    name: "Google Play store page preview, American English",
+  });
+  await store.waitFor();
+  assert.equal(new URL(page.url()).searchParams.get("store"), "true");
+  await store.getByText("Alpha", { exact: true }).waitFor();
+  const frames = store.locator("[data-card-frame]");
+  assert.equal(await frames.count(), 3);
+  const box = await frames.first().boundingBox();
+  assert.equal(Math.round(box.height), 210);
+  assert.equal(Math.round(box.width), 105);
+  assert((await store.boundingBox()).width <= 432);
+  await store.locator("iframe.preview-ready").first().waitFor();
+  await store.getByRole("button", { name: "Inspect Detail 2", exact: true }).click();
+  await page.getByRole("region", { name: "Detail 2 card" }).waitFor();
+  await page.getByRole("button", { name: "Close inspector", exact: true }).click();
+  // Galleries Play doesn't show say so.
+  await page.getByRole("tab", { name: /Tablet/ }).click();
+  await page.getByRole("region", { name: /Google Play store page preview/ }).waitFor();
+  await page.getByRole("button", { name: "Store preview", exact: true }).click();
+  await active(page).locator(".canvas-surface").waitFor();
 });

@@ -3,12 +3,16 @@
     "target": "ES2022",
     "module": "ESNext",
     "moduleResolution": "Bundler",
+    "lib": ["ES2023", "DOM", "DOM.Iterable"],
+    "types": ["vite/client", "node"],
     "jsx": "react-jsx",
-    "allowJs": true,
-    "checkJs": false,
+    "strict": true,
     "noEmit": true,
-    "baseUrl": ".",
-    "paths": { "@/*": ["ui/src/*"] }
+    "skipLibCheck": true,
+    "isolatedModules": true,
+    "noUnusedLocals": true,
+    "noFallthroughCasesInSwitch": true,
+    "paths": { "@/*": ["./ui/src/*"] }
   },
-  "include": ["ui/src"]
+  "include": ["ui/src/**/*.ts", "ui/src/**/*.tsx"]
 }

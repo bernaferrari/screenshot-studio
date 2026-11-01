@@ -28,7 +28,7 @@ The same studio makes the Play listings and READMEs of [SDK Monitor](https://git
 
 ## The editor
 
-A local web app for every project you connect: browse each gallery live or as exported, edit copy side by side with the English reference, and pick callouts on the real screen.
+A local web app for every project you connect: each gallery live as its files change, click a card to inspect and reword it, see it at Play's thumbnail size, translate side by side with the reference, and work through one review list of everything left to fix.
 
 <p align="center">
   <img src="docs/images/editor-cards.jpg" width="100%" alt="The editor showing SDK Monitor's phone cards, with tabs for 7-inch and 10-inch tablets, README and share image">
@@ -63,7 +63,7 @@ node store-listing/studio/export.cjs --locale en-US   # export only
 | [Capturing](docs/capture.md) | The scene tour, the emulator, and the one-command recapture |
 | [Languages and export](docs/languages-and-export.md) | Copy per language, the exporter's checks, fastlane |
 | [App icons](docs/icons.md) | One drawing, every icon an app ships |
-| [The editor](docs/editor.md) | Projects, cards, languages, copy and callouts |
+| [The editor](docs/editor.md) | Projects, the gallery and card inspector, store preview, languages and review |
 | [Development](docs/development.md) | Working on the studio itself: the UI, syncing into apps, tests |
 
 ## Principles
