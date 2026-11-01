@@ -6,8 +6,8 @@ Instructions for agents changing the studio itself. To *use* the studio in an ap
 
 | Path | What |
 | --- | --- |
-| `src/core/` | Shared by everything: types (`types.d.ts`), gallery rules, the schema validator |
-| `src/renderer/` | The card renderer that runs in the browser (`render.ts`, `preview.html`, `studio.css`) and `shapes.ts` for themes |
+| `src/core/` | Shared by everything: types (`types.d.ts`), gallery rules, the renderer's rules (`layout.ts`: headline markup, frame sizes, bounds, callout placement), the schema validator |
+| `src/renderer/` | The card renderer that runs in the browser: `render.ts` runs the steps (`load`, `text`, `devices`, `identity`, `callouts`, `fit`) and the theme's hooks between them; `preview.html`, `studio.css`, the opt-in `layouts.css`, and `shapes.ts` for themes |
 | `src/node/` | The Node library: export, check, recapture, init, server and workspace, MCP, icons, fixtures |
 | `src/cli/main.ts` | The `screenshot-studio` command, and the library's public exports |
 | `ui/src/` | The editor (React, shadcn/ui, Tailwind) |
