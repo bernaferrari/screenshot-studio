@@ -1,13 +1,16 @@
 /**
- * Local Screenshot Studio server. In the master repository it opens the project overview;
- * in an app repository it also keeps the standalone editor available.
- *   node studio/server.cjs [port] [--add /path/to/app] [--registry /path/to/projects.json]
+ * The local Screenshot Studio server. It serves an app's files, and the studio itself (renderer, editor, theme helpers)
+ * at the app's store-listing/studio/ address, so an app keeps no copy of the studio: a theme's
+ * `import … from './studio/shapes.js'` and the renderer's `../theme.js` both resolve. With a workspace it also serves
+ * the project overview and /p/<id>/ mounts for every connected project.
+ *   npx screenshot-studio studio [port] [--add /path/to/app]… [--registry projects.json] [--open]
  */
 import http from 'node:http';
 import fs from 'node:fs';
 import path from 'node:path';
 import {createHash} from 'node:crypto';
 import {inside, createWorkspaceStore} from './workspace/store';
+import {findListing, STUDIO_DIR} from './project';
 import type {WorkspaceStore} from './workspace/store';
 import {workspaceRoutes} from './workspace/routes';
 import type {ServeFileOptions, WorkspaceHandler} from './workspace/routes';
@@ -23,7 +26,6 @@ export interface ServeOptions {
 
 const types: Record<string, string> = {'.html': 'text/html', '.js': 'text/javascript', '.mjs': 'text/javascript', '.cjs': 'text/javascript', '.css': 'text/css', '.json': 'application/json',
   '.png': 'image/png', '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg', '.webp': 'image/webp', '.svg': 'image/svg+xml', '.woff2': 'font/woff2', '.woff': 'font/woff', '.ttf': 'font/ttf', '.otf': 'font/otf', '.ttc': 'font/collection'};
-const listing = path.resolve(__dirname, '..');
 function writable(file: string, listingRoot: string): boolean {
   const relative = path.relative(listingRoot, file).split(path.sep);
   return (relative.length === 1 && relative[0] === 'gallery.json') ||
@@ -31,7 +33,16 @@ function writable(file: string, listingRoot: string): boolean {
 }
 export function serve(root: string, port = 0, {editable = false, workspace = null, activeProjectId = null, selectFolder}: ServeOptions = {}): Promise<http.Server> {
   root = path.resolve(root);
-  const hub: WorkspaceHandler | null = workspace ? workspaceRoutes({store: workspace, uiDirectory: __dirname, activeProjectId, selectFolder}) : null;
+  // The listing whose gallery.json and copy.json may be written: root itself, or its store-listing/.
+  const listing = fs.existsSync(path.join(root, 'studio.json')) ? root : path.join(root, 'store-listing');
+  const hub: WorkspaceHandler | null = workspace ? workspaceRoutes({store: workspace, uiDirectory: STUDIO_DIR, activeProjectId, selectFolder}) : null;
+  /** `/<listing>/studio/<rest>` for any folder under root that holds a studio.json: the studio's own <rest>. */
+  const studioFile = (pathname: string): string | null => {
+    const match = pathname.match(/^(.*?)\/studio(\/.*)?$/);
+    if (!match) return null;
+    const folder = path.resolve(root, `.${match[1] || '/'}`);
+    return inside(root, folder) && fs.existsSync(path.join(folder, 'studio.json')) ? match[2] || '/' : null;
+  };
   const server = http.createServer(async (request, response) => {
     async function serveFile(allowedRoot: string, url: string, {editable: canWrite = editable, listingRoot = listing}: ServeFileOptions = {}): Promise<void> {
       allowedRoot = path.resolve(allowedRoot);
@@ -74,7 +85,9 @@ export function serve(root: string, port = 0, {editable = false, workspace = nul
       if (!/^(127\.0\.0\.1|localhost)(:\d+)?$/.test(request.headers.host || '')) { response.writeHead(403).end('Use the local Studio address'); return; }
       const pathname = decodeURIComponent(new URL(request.url || '/', 'http://local').pathname);
       if (hub && await hub(request, response, pathname, serveFile)) return;
-      await serveFile(root, pathname);
+      const own = studioFile(pathname);
+      if (own !== null) await serveFile(STUDIO_DIR, own, {editable: false});
+      else await serveFile(root, pathname);
     } catch (error) { if (!response.headersSent) response.writeHead(400).end((error as Error).message); }
   });
   return new Promise(resolve => server.listen(port, '127.0.0.1', () => resolve(server)));
@@ -88,13 +101,14 @@ export async function run(argv: string[]): Promise<number> {
   const value = (flag: string): string | undefined => { const index = argv.indexOf(flag); return index < 0 ? undefined : argv[index + 1]; };
   const port = Number(value('--port') || (argv[0] && !argv[0].startsWith('--') ? argv[0] : 8790));
   const workspace = createWorkspaceStore({registryFile: value('--registry')});
-  const app = fs.existsSync(path.join(listing, 'studio.json'));
-  const root = app ? path.dirname(listing) : listing;
+  const listing = findListing();
+  const app = listing !== null;
+  const root = listing ? path.dirname(listing) : path.dirname(STUDIO_DIR);
   let activeProjectId: string | null = null;
   if (app) activeProjectId = (await workspace.add([root]))[0].id;
   for (let index = 0; index < argv.length; index++) if (argv[index] === '--add') await workspace.add([argv[++index]]);
   await serve(root, port, {editable: true, workspace, activeProjectId});
-  const url = app ? `http://127.0.0.1:${port}/store-listing/studio/` : `http://127.0.0.1:${port}/studio/`;
+  const url = listing ? `http://127.0.0.1:${port}/${path.relative(root, listing).split(path.sep).join('/')}/studio/` : `http://127.0.0.1:${port}/studio/`;
   console.log(`Screenshot Studio: ${url}`);
   if (argv.includes('--open')) {
     const opener = process.platform === 'darwin' ? 'open' : process.platform === 'win32' ? 'explorer.exe' : 'xdg-open';

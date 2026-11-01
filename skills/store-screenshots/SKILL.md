@@ -15,7 +15,7 @@ In the app's repository:
 - **Android app to capture automatically:** `npx screenshot-studio init --name "App" --package com.example.app`, then write the tour in `store-listing/capture-emulator.py` and run `npx screenshot-studio recapture --boot`. The app needs a capture build with believable, fictional sample data (see `docs/playbook.md`, section 1).
 - `npx screenshot-studio themes` lists starting looks; pass `--theme <name>`.
 
-Already set up? There's a `store-listing/studio.json`. Run `npx screenshot-studio sync` if `check` says the studio copy is old.
+Already set up? There's a `store-listing/studio.json`; run the commands below from the app.
 
 ## 2. The files you edit
 

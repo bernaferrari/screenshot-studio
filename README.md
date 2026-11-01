@@ -78,7 +78,7 @@ The same studio makes the store listings and READMEs of [SDK Monitor](https://gi
 | `locales` | Language coverage; `--init de-DE` adds one |
 | `icons` | Every app icon from one drawing |
 | `mcp` | The MCP server for agents |
-| `themes`, `sync` | List themes; update an app's copy of the studio |
+| `themes`, `reset` | List themes; undo an interrupted capture |
 
 ## Documentation
 
@@ -99,7 +99,7 @@ The same studio makes the store listings and READMEs of [SDK Monitor](https://gi
 - **Real screens only.** No painted UI or made-up numbers; sample data is fictional and lives in a capture build.
 - **Everything regenerates.** Words, layout and look are files in your repository; images are output.
 - **Each app keeps its look.** The studio is shared; the theme is yours.
-- **Each app builds on its own.** The studio is copied into the app, so an export never depends on a version you no longer have.
+- **Nothing to vendor.** Apps keep only their words, look and captures; the studio comes from the package. Pin it with `npx screenshot-studio@0.0.1` if you like.
 
 ## License
 

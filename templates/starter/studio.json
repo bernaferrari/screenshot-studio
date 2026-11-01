@@ -1,5 +1,5 @@
 {
-  "$schema": "./studio/schemas/studio.schema.json",
+  "$schema": "https://unpkg.com/screenshot-studio/studio/schemas/studio.schema.json",
   "app": "{{name}}",
   "package": "{{package}}",
   "locales": ["en-US"],

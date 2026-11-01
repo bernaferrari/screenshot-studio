@@ -5,7 +5,7 @@
 // Hue turns, in degrees from the accent, card by card: far apart neighbours, then the turns in between.
 const TURNS = [0, 180, 90, -60, 50, 220, 130, -110];
 
-/** @type {import('./studio/types').Theme} */
+/** @type {import('screenshot-studio').Theme} */
 export default {
   continuous: true,
 

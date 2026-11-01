@@ -32,8 +32,9 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import {spawn, spawnSync} from 'node:child_process';
-import {loadListing} from './project';
+import {loadListing, requireListing, STUDIO_DIR} from './project';
 import {bootSimulator, simulatorsFor} from './ios';
+import {findPlaywright} from './playwright';
 
 export interface RecaptureOptions {
   listing?: string;
@@ -98,7 +99,7 @@ export async function bootEmulator(serial: string, avd: string | undefined, log:
 
 export async function recapture(options: RecaptureOptions = {}): Promise<RecaptureResult> {
   const log = options.log || ((line: string) => console.log(line));
-  const listing = options.listing ? path.resolve(options.listing) : path.resolve(__dirname, '..');
+  const listing = requireListing(options.listing);
   const {config, profiles, repo, defaultLocale, locales: configured} = loadListing(listing);
   const capture = config.capture;
   const locales = options.locales?.length ? [...options.locales] : [...configured];
@@ -117,8 +118,15 @@ export async function recapture(options: RecaptureOptions = {}): Promise<Recaptu
     if (options.profile && !profiles[options.profile]?.captureWidth) throw new Error(`No capture profile ${options.profile} in profiles.json`);
 
     const python = has('uv') ? ['uv', 'run', '-q', '--with', 'pillow', 'python3'] : ['python3'];
-    const env: NodeJS.ProcessEnv = ios ? {...process.env, ...(simulator ? {CAPTURE_SIMULATOR: simulator} : {})}
-      : {...process.env, CAPTURE_SERIAL: serial, ANDROID_SERIAL: serial};
+    // Tours import the studio's capture module (`from capture import Device`) from PYTHONPATH, and reach the studio's
+    // commands (`node $SCREENSHOT_STUDIO fixtures …`) and Playwright through the environment.
+    const studioEnv: NodeJS.ProcessEnv = {
+      PYTHONPATH: [STUDIO_DIR, process.env.PYTHONPATH].filter(Boolean).join(path.delimiter),
+      SCREENSHOT_STUDIO: path.join(STUDIO_DIR, 'studio.cjs'),
+      ...(findPlaywright() ? {PLAYWRIGHT_MODULE: process.env.PLAYWRIGHT_MODULE || findPlaywright()!} : {}),
+    };
+    const env: NodeJS.ProcessEnv = ios ? {...process.env, ...studioEnv, ...(simulator ? {CAPTURE_SIMULATOR: simulator} : {})}
+      : {...process.env, ...studioEnv, CAPTURE_SERIAL: serial, ANDROID_SERIAL: serial};
     const expand = (word: string) => String(word).replace(/\$\{(\w+)\}/g, (_, name: string) => {
       if (env[name] === undefined) throw new Error(`Set ${name} for this capture (studio.json capture args use it)`);
       return env[name]!;
@@ -133,7 +141,7 @@ export async function recapture(options: RecaptureOptions = {}): Promise<Recaptu
       return done.status === 0;
     };
 
-    const studioPy = path.relative(repo, path.join(__dirname, ios ? 'ios.py' : 'capture.py'));
+    const studioPy = path.join(STUDIO_DIR, ios ? 'ios.py' : 'capture.py');
     // iOS: every simulator the selected profiles capture on.
     const sims = ios && options.capture !== false ? simulatorsFor(profiles, captureProfiles.filter(name => !options.profile || name === options.profile), simulator) : [];
     const device = (sim?: string) => ios ? ['--simulator', sim!] : ['--serial', serial];
@@ -171,7 +179,7 @@ export async function recapture(options: RecaptureOptions = {}): Promise<Recaptu
       // One language's export failing (copy that no longer fits, say) does not stop the others.
       result.failedExports = locales.filter(locale => !(capture.export
         ? run(capture.export.replaceAll('{locale}', locale), [], {shell: true, check: false})
-        : run('node', [path.relative(repo, path.join(__dirname, 'studio.cjs')), 'export', '--locale', locale], {check: false})));
+        : run(process.execPath, [path.join(STUDIO_DIR, 'studio.cjs'), 'export', '--locale', locale], {check: false})));
       if (result.failedExports.length) throw new Error(`Export failed for ${result.failedExports.join(', ')}; captures are in place. Fix those and export again.`);
       for (const command of capture.after || []) run(command, [], {shell: true});
     }

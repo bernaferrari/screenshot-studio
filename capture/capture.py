@@ -34,7 +34,7 @@ tap map (the default), the reference locale records the UI tree path of each tap
 <default locale>/raw/tap-map.json and other locales replay those paths, so a tour written with English
 labels runs in every language. `d.scope` (default "<profile>|<theme>") prefixes each tap's key.
 
-Command line:  python3 capture.py install <apk> [--package p]  |  python3 capture.py reset
+Command line:  python3 capture.py install <apk> [--package p]  |  python3 capture.py reset   (or: npx screenshot-studio reset)
 """
 import argparse
 import json
@@ -139,7 +139,7 @@ class Device:
         overrides = self.shell('wm', 'size') + self.shell('wm', 'density')
         if 'Override' in overrides:
             raise SystemExit('The emulator still has a display override from an interrupted run: '
-                             'python3 store-listing/studio/capture.py reset')
+                             'npx screenshot-studio reset')
         for key in ('heads_up_notifications_enabled', 'auto_time', *SCALES):
             self.saved[('global', key)] = self.setting('global', key)
         for key in ('font_scale', 'accelerometer_rotation', 'user_rotation'):

@@ -15,7 +15,7 @@ const LIGHTS = [
 // SVG attributes can't read CSS variables, but style properties can: move each stop's color into its style.
 const styled = svg => svg.replace(/stop-color="([^"]+)"/g, 'style="stop-color:$1"');
 
-/** @type {import('./studio/types').Theme} */
+/** @type {import('screenshot-studio').Theme} */
 export default {
   continuous: true,
 

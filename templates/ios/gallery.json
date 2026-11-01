@@ -1,5 +1,5 @@
 {
-  "$schema": "./studio/schemas/gallery.schema.json",
+  "$schema": "https://unpkg.com/screenshot-studio/studio/schemas/gallery.schema.json",
   "iphone": [
     {"feature": "hero", "raw": "iphone/01-hero.png", "layout": "big"},
     {"feature": "second", "raw": "iphone/02-second.png", "layout": "big"}

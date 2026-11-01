@@ -8,7 +8,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import {validate, type Schema} from '../core/validate';
 import {cardsFor, devicesFor} from '../core/gallery';
-import {readJson} from './project';
+import {readJson, requireListing, STUDIO_DIR} from './project';
 import type {Copy, Galleries, Listing, Profiles, StudioConfig} from '../core/types';
 
 export interface Issue {
@@ -51,8 +51,8 @@ export function imageSize(file: string): {width: number; height: number} | null 
 }
 
 export function checkListing(listingDir?: string): CheckResult {
-  const listing = listingDir ? path.resolve(listingDir) : path.resolve(__dirname, '..');
-  const schemas = path.join(__dirname, 'schemas');
+  const listing = requireListing(listingDir);
+  const schemas = path.join(STUDIO_DIR, 'schemas');
   const issues: Issue[] = [];
   const error = (file: string, message: string, extra: Partial<Issue> = {}) => issues.push({level: 'error', file, message, ...extra});
   const warn = (file: string, message: string, extra: Partial<Issue> = {}) => issues.push({level: 'warning', file, message, ...extra});

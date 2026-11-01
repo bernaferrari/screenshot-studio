@@ -1,9 +1,8 @@
 /**
- * Set up Screenshot Studio in an app, and keep its copy of the studio current.
+ * Set up Screenshot Studio in an app.
  *   npx screenshot-studio init [app-folder] [--name "My App"] [--package com.example.app] [--theme starter]
  *                              [--screenshots ./folder] [--locales en-US,de-DE] [--platform android|ios]
- *   npx screenshot-studio sync [app-folder] [--check]
- * `init` creates store-listing/ (never overwriting a file), copies the studio into store-listing/studio/, and with
+ * `init` creates store-listing/ (never overwriting a file) and installs the agent skill. With
  * --screenshots builds the galleries from images you already have, so the first cards render with no emulator: a folder
  * (number the files to set the order) or a comma-separated list of files in card order.
  * --platform ios makes App Store galleries (iPhone 6.9″ and 6.3″, iPad 13″) and an iOS simulator tour instead.
@@ -15,15 +14,12 @@ import {readJson, writeJson} from './project';
 import {APP_STORE, defaultSimulators, iosGalleryFor} from './ios';
 import type {Card, Copy, Galleries, Profile, Profiles, StudioConfig} from '../core/types';
 
-/** The package this command runs from: its studio/, templates/ and themes/. */
+/** The package this command runs from: its templates/, themes/ and skills/. */
 const PACKAGE = path.resolve(__dirname, '..');
-const STUDIO = path.join(PACKAGE, 'studio');
 const TEMPLATES = path.join(PACKAGE, 'templates', 'starter');
 /** iOS files over the starter's: App Store profiles and gallery, the simulator tour, positions for the theme. */
 const IOS_TEMPLATES = path.join(PACKAGE, 'templates', 'ios');
 const THEMES = path.join(PACKAGE, 'themes');
-
-export const version = (): string => fs.readFileSync(path.join(STUDIO, 'VERSION'), 'utf8').trim();
 
 const requirePackage = () => {
   if (!fs.existsSync(TEMPLATES)) throw new Error('Run this from the Screenshot Studio package: `npx screenshot-studio init`.');
@@ -53,25 +49,6 @@ export function themes(): {name: string; description: string}[] {
     const first = fs.readFileSync(path.join(THEMES, name, 'theme.css'), 'utf8').match(/\/\*\s*([^*]+?)\s*\*\//);
     return {name, description: first ? first[1].replace(/^\{\{name\}\}:\s*/, '').split('\n')[0] : ''};
   });
-}
-
-/** Copy the package's studio into the app (store-listing/studio/), replacing the old copy. */
-export function syncStudio(app: string): string {
-  const target = path.join(path.resolve(app), 'store-listing', 'studio');
-  fs.rmSync(target, {recursive: true, force: true});
-  fs.cpSync(STUDIO, target, {recursive: true, filter: source => !/(__pycache__|\.pyc$|\.DS_Store$)/.test(source)});
-  return target;
-}
-
-/** Files that differ between the package's studio and the app's copy. */
-export function studioDrift(app: string): string[] {
-  const target = path.join(path.resolve(app), 'store-listing', 'studio');
-  const list = (root: string): string[] => fs.existsSync(root) ? fs.readdirSync(root, {recursive: true, withFileTypes: true})
-    .filter(entry => entry.isFile() && !/(__pycache__|\.pyc$|\.DS_Store$)/.test(path.join(entry.parentPath, entry.name)))
-    .map(entry => path.relative(root, path.join(entry.parentPath, entry.name))) : [];
-  const ours = new Set(list(STUDIO)), theirs = new Set(list(target));
-  return [...new Set([...ours, ...theirs])].filter(file => !ours.has(file) || !theirs.has(file) ||
-    !fs.readFileSync(path.join(STUDIO, file)).equals(fs.readFileSync(path.join(target, file)))).sort();
 }
 
 const slug = (text: string) => text.toLowerCase().replace(/\.[a-z]+$/, '').replace(/^\d+[-_ ]*/, '').replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '') || 'screen';
@@ -175,9 +152,9 @@ export function init(options: InitOptions = {}): InitResult {
     // Captured galleries keep the simulator a recapture would use.
     if (sims) for (const [kind, profile] of Object.entries(imported.profiles)) if (profile.captureWidth) profile.simulator = kind === 'iphone' ? sims.iphone : sims.ipad;
     write('studio.json', config);
-    write('profiles.json', {$schema: './studio/schemas/profiles.schema.json', ...imported.profiles});
-    write('gallery.json', {$schema: './studio/schemas/gallery.schema.json', ...imported.galleries});
-    write('en-US/copy.json', {$schema: '../studio/schemas/copy.schema.json', ...imported.copy});
+    write('profiles.json', {$schema: 'https://unpkg.com/screenshot-studio/studio/schemas/profiles.schema.json', ...imported.profiles});
+    write('gallery.json', {$schema: 'https://unpkg.com/screenshot-studio/studio/schemas/gallery.schema.json', ...imported.galleries});
+    write('en-US/copy.json', {$schema: 'https://unpkg.com/screenshot-studio/studio/schemas/copy.schema.json', ...imported.copy});
     result.cards = Object.values(imported.galleries).reduce((n, gallery) => n + (Array.isArray(gallery) ? gallery : gallery.cards).length, 0);
   } else {
     // An app to capture: the starter cards, a scene tour, and how to build and install the capture app.
@@ -218,8 +195,6 @@ export function init(options: InitOptions = {}): InitResult {
     fs.copyFileSync(path.join(THEMES, theme, 'assets', asset), target);
     result.created.push(`assets/${asset}`);
   }
-  syncStudio(app);
-  log(`synced    store-listing/studio (v${version()})`);
   // Agents working in the app find the playbook here.
   const skill = path.join(PACKAGE, 'skills', 'store-screenshots', 'SKILL.md');
   if (fs.existsSync(skill) && !fs.existsSync(path.join(app, '.claude', 'skills', 'store-screenshots', 'SKILL.md'))) {
@@ -248,19 +223,4 @@ export async function run(argv: string[]): Promise<number> {
         : `Next:\n  1. Add a capture build that fills the app with sample data (docs/playbook.md, section 1)\n  2. Write the tour in store-listing/capture-emulator.py\n  3. ${cd}npx screenshot-studio recapture --boot`);
     return 0;
   } catch (error) { console.error((error as Error).message); return 1; }
-}
-
-/** `sync [app] [--check]` */
-export async function runSync(argv: string[]): Promise<number> {
-  requirePackage();
-  const app = path.resolve(argv.find(word => !word.startsWith('--')) || '.');
-  if (!fs.existsSync(path.join(app, 'store-listing', 'studio.json'))) { console.error(`No store-listing/studio.json in ${app}`); return 1; }
-  if (argv.includes('--check')) {
-    const drift = studioDrift(app);
-    console.log(drift.length ? `${drift.length} file(s) differ from v${version()}:\n${drift.map(f => `  ${f}`).join('\n')}` : `store-listing/studio is current (v${version()}).`);
-    return drift.length ? 1 : 0;
-  }
-  syncStudio(app);
-  console.log(`Synced studio v${version()} into ${path.join(app, 'store-listing', 'studio')}`);
-  return 0;
 }

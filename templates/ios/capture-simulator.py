@@ -8,11 +8,7 @@ simctl can't tap, so the app takes you to each screen itself: its debug or captu
 (`-screenshotScene settings` → UserDefaults.standard.string(forKey: "screenshotScene")) or a deep link, and
 fills itself with fictional sample data. See docs/capture.md, "iOS".
 """
-import sys
-from pathlib import Path
-
-sys.path.insert(0, str(Path(__file__).resolve().parent / 'studio'))
-from ios import Simulator, parser  # noqa: E402
+from ios import Simulator, parser  # the studio's, on PYTHONPATH when recapture runs this tour
 
 args = parser(__doc__).parse_args()
 with Simulator(args, '{{package}}') as s:

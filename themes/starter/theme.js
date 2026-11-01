@@ -1,7 +1,7 @@
 // {{name}}: one soft field under the whole strip, laid out in panorama coordinates so it runs across every seam.
 import {panoramaGradient} from './studio/shapes.js';
 
-/** @type {import('./studio/types').Theme} */
+/** @type {import('screenshot-studio').Theme} */
 export default {
   // The field runs across every card; the exporter checks that it does.
   continuous: true,

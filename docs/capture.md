@@ -34,7 +34,7 @@ While the tour runs, the emulator gets:
 - animations on, or off with `animations=False` (useful when an endless animation blocks the UI tree);
 - the app's language (Android 13+ per-app language, checked by reading it back).
 
-Everything is restored on exit, even after a failure. `Device` only runs on an emulator, and refuses to start over a display override left by an interrupted run; clear one with `python3 store-listing/studio/capture.py reset` (add `--serial` for another emulator).
+Everything is restored on exit, even after a failure. `Device` only runs on an emulator, and refuses to start over a display override left by an interrupted run; clear one with `npx screenshot-studio reset` (add `--serial` for another emulator).
 
 It also recovers from a busy emulator: a stuck UiAutomation client, an "isn't responding" dialog, a slow first draw, and a full disk during install. Helper packages that would show up in an app list are hidden.
 
@@ -200,6 +200,6 @@ A URL scheme (`open_url('myapp://settings')`) works too, and keeps the running a
 }
 ```
 
-With `"platform": "ios"`, `recapture` builds, installs the `.app` on every simulator the capture profiles use, then runs `capture-simulator.py` (the default `script`) per language and profile, and exports. `--boot` boots those simulators first and leaves them running; `--simulator NAME` (or `capture.simulator`) is the simulator for profiles that name none. A failed run clears the status bar and appearance (`python3 store-listing/studio/ios.py reset --simulator NAME`) and tries again.
+With `"platform": "ios"`, `recapture` builds, installs the `.app` on every simulator the capture profiles use, then runs `capture-simulator.py` (the default `script`) per language and profile, and exports. `--boot` boots those simulators first and leaves them running; `--simulator NAME` (or `capture.simulator`) is the simulator for profiles that name none. A failed run clears the status bar and appearance (`python3 the studio's `ios.py` reset --simulator NAME`) and tries again.
 
 The exporter's store text checks and `export --fastlane` are still written for Google Play.

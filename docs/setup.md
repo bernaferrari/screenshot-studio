@@ -29,7 +29,6 @@ From screenshots, the first cards render right away: run `npx screenshot-studio 
 
 ```
 store-listing/
-  studio/              the studio itself, copied in by init and sync (never edit it here)
   studio.json          the app's settings: name, languages, capture, frames, bounds
   profiles.json        one entry per gallery: canvas size, capture size, device frame
   gallery.json         the cards: which capture, which layout, in which order
@@ -45,14 +44,9 @@ store-listing/
 
 `npx screenshot-studio` finds `store-listing/` in the current folder or above it; `--listing path/to/app` points it elsewhere.
 
-## Keeping the studio current
+## The studio itself
 
-The app runs its own copy in `store-listing/studio/`. After updating the package:
-
-```sh
-npx screenshot-studio sync            # copy this version into the app
-npx screenshot-studio sync --check    # only report whether it differs
-```
+The app keeps no copy of the studio. `npx screenshot-studio` serves its renderer and helpers at the app's `store-listing/studio/` address while it runs, so a theme's `import {panoramaGradient} from './studio/shapes.js'` just works. To pin a version for a project, run it as `npx screenshot-studio@0.0.1 …`.
 
 Every command says when the app's copy is older than the package.
 
@@ -74,7 +68,7 @@ It reads every file without rendering: each JSON file against its schema, captur
 
 `✗` is an error (the command fails), `!` a warning. Run it after every edit; `export` catches what only shows in a render.
 
-**Schemas.** `schemas/` has a JSON Schema for `studio.json`, `profiles.json`, `gallery.json` and `copy.json`; the app's copy is in `store-listing/studio/schemas/`. A file that names its schema gets autocomplete and inline errors in most editors:
+**Schemas.** `schemas/` has a JSON Schema for `studio.json`, `profiles.json`, `gallery.json` and `copy.json`. A file that names its schema gets autocomplete and inline errors in most editors:
 
 ```json
 {"$schema": "./studio/schemas/gallery.schema.json", "phone": [ … ]}

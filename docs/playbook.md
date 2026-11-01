@@ -37,7 +37,7 @@ tweak lives in those files ([Setting up an app](setup.md)). Pick a starting look
   check `adb devices` first and capture apps one after another.
 - **Emulator hygiene.** `Device` snoozes other apps' notifications, turns the network off, hides helper packages
   and recovers from a stuck UiAutomation or a full disk. Uninstall other apps' capture builds if they steal focus,
-  and run `python3 store-listing/studio/capture.py reset` if a run is killed (a capture refuses to start over a
+  and run `npx screenshot-studio reset` if a run is killed (a capture refuses to start over a
   leftover display override).
 - **Drive by visible text.** Tap tabs and buttons by their on-screen label from the node tree, not by fixed
   coordinates; layouts shift between phone and tablet. Clear app data before each device size.

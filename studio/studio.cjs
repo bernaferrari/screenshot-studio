@@ -43,12 +43,12 @@ let node_fs = require("node:fs");
 node_fs = __toESM(node_fs, 1);
 let node_path = require("node:path");
 node_path = __toESM(node_path, 1);
-let node_child_process = require("node:child_process");
 let node_os = require("node:os");
 node_os = __toESM(node_os, 1);
 let node_http = require("node:http");
 node_http = __toESM(node_http, 1);
 let node_crypto = require("node:crypto");
+let node_child_process = require("node:child_process");
 let node_util = require("node:util");
 let node_readline = require("node:readline");
 node_readline = __toESM(node_readline, 1);
@@ -176,6 +176,15 @@ var init_gallery = __esmMin((() => {
 }));
 // src/node/project.ts
 /** Finding and reading an app's store-listing folder: the one place every command loads it from. */
+var project_exports = /* @__PURE__ */ __exportAll({
+	STUDIO_DIR: () => STUDIO_DIR,
+	findListing: () => findListing,
+	loadListing: () => loadListing,
+	readCopy: () => readCopy,
+	readJson: () => readJson,
+	requireListing: () => requireListing,
+	writeJson: () => writeJson
+});
 /** Read a studio file (without its "$schema"), or `fallback` when it doesn't exist. Invalid JSON always throws. */
 function readJson(file, fallback) {
 	let text;
@@ -214,8 +223,8 @@ function loadListing(listing) {
 	};
 }
 /**
-* The store-listing folder for a command: an explicit path (an app folder or its store-listing), else the folder
-* this studio copy lives in, else the nearest store-listing/ above the working directory.
+* The store-listing folder for a command: an explicit path (an app folder or its store-listing), else the nearest
+* store-listing/ at or above the working directory.
 */
 function findListing(explicit, from = process.cwd()) {
 	const resolve = (dir) => {
@@ -224,48 +233,24 @@ function findListing(explicit, from = process.cwd()) {
 		return null;
 	};
 	if (explicit) return resolve(node_path.default.resolve(explicit));
-	const own = node_path.default.resolve(__dirname, "..");
-	if (node_fs.default.existsSync(node_path.default.join(own, "studio.json"))) return own;
 	for (let dir = node_path.default.resolve(from);; dir = node_path.default.dirname(dir)) {
 		const found = resolve(dir);
 		if (found) return found;
 		if (node_path.default.dirname(dir) === dir) return null;
 	}
 }
-var readCopy;
+/** findListing, or an error that says how to get one. */
+function requireListing(explicit) {
+	const found = findListing(explicit);
+	if (found) return found;
+	throw new Error(explicit ? `No store-listing/studio.json in ${node_path.default.resolve(explicit)}.` : "No store-listing/studio.json here or in any folder above. Run this in your app, or set it up with `npx screenshot-studio init`.");
+}
+var readCopy, STUDIO_DIR;
 var init_project = __esmMin((() => {
 	init_gallery();
 	readCopy = (listing, locale) => readJson(node_path.default.join(listing, locale, "copy.json"), {});
+	STUDIO_DIR = __dirname;
 }));
-// src/node/playwright.ts
-/** Finding Playwright, which renders every card: wherever it is, with a message that says how to get it when it isn't. */
-/** Where Playwright may live, most specific first. */
-function candidates() {
-	const found = [];
-	if (process.env.PLAYWRIGHT_MODULE) found.push(process.env.PLAYWRIGHT_MODULE);
-	for (const start of [__dirname, process.cwd()]) for (let dir = start;; dir = node_path.default.dirname(dir)) {
-		found.push(node_path.default.join(dir, "node_modules", "playwright"));
-		if (node_path.default.dirname(dir) === dir) break;
-	}
-	const cache = node_path.default.join(node_os.default.homedir(), ".npm", "_npx");
-	if (node_fs.default.existsSync(cache)) for (const entry of node_fs.default.readdirSync(cache)) found.push(node_path.default.join(cache, entry, "node_modules", "playwright"));
-	return found;
-}
-/** The directory of an installed Playwright, or null. */
-function findPlaywright() {
-	for (const dir of candidates()) if (node_fs.default.existsSync(node_path.default.join(dir, "package.json"))) return dir;
-	try {
-		return node_path.default.dirname(require.resolve("playwright/package.json"));
-	} catch {
-		return null;
-	}
-}
-function loadPlaywright() {
-	const dir = findPlaywright();
-	if (!dir) throw new Error("Playwright renders the cards and isn't installed. Run the studio with `npx screenshot-studio …`, or install it: `npm install -D playwright && npx playwright install chromium`.");
-	return require(dir);
-}
-var init_playwright = __esmMin((() => {}));
 // src/node/workspace/store.ts
 /** Local project registration and coverage. It never modifies a connected project's files. */
 function folder(input) {
@@ -939,8 +924,8 @@ function imageSize(file) {
 	}
 }
 function checkListing(listingDir) {
-	const listing = listingDir ? node_path.default.resolve(listingDir) : node_path.default.resolve(__dirname, "..");
-	const schemas = node_path.default.join(__dirname, "schemas");
+	const listing = requireListing(listingDir);
+	const schemas = node_path.default.join(STUDIO_DIR, "schemas");
 	const issues = [];
 	const error = (file, message, extra = {}) => issues.push({
 		level: "error",
@@ -1456,9 +1441,11 @@ var init_routes = __esmMin((() => {
 }));
 // src/node/server.ts
 /**
-* Local Screenshot Studio server. In the master repository it opens the project overview;
-* in an app repository it also keeps the standalone editor available.
-*   node studio/server.cjs [port] [--add /path/to/app] [--registry /path/to/projects.json]
+* The local Screenshot Studio server. It serves an app's files, and the studio itself (renderer, editor, theme helpers)
+* at the app's store-listing/studio/ address, so an app keeps no copy of the studio: a theme's
+* `import … from './studio/shapes.js'` and the renderer's `../theme.js` both resolve. With a workspace it also serves
+* the project overview and /p/<id>/ mounts for every connected project.
+*   npx screenshot-studio studio [port] [--add /path/to/app]… [--registry projects.json] [--open]
 */
 var server_exports = /* @__PURE__ */ __exportAll({
 	run: () => run$8,
@@ -1470,12 +1457,20 @@ function writable(file, listingRoot) {
 }
 function serve(root, port = 0, { editable = false, workspace = null, activeProjectId = null, selectFolder } = {}) {
 	root = node_path.default.resolve(root);
+	const listing = node_fs.default.existsSync(node_path.default.join(root, "studio.json")) ? root : node_path.default.join(root, "store-listing");
 	const hub = workspace ? workspaceRoutes({
 		store: workspace,
-		uiDirectory: __dirname,
+		uiDirectory: STUDIO_DIR,
 		activeProjectId,
 		selectFolder
 	}) : null;
+	/** `/<listing>/studio/<rest>` for any folder under root that holds a studio.json: the studio's own <rest>. */
+	const studioFile = (pathname) => {
+		const match = pathname.match(/^(.*?)\/studio(\/.*)?$/);
+		if (!match) return null;
+		const folder = node_path.default.resolve(root, `.${match[1] || "/"}`);
+		return inside(root, folder) && node_fs.default.existsSync(node_path.default.join(folder, "studio.json")) ? match[2] || "/" : null;
+	};
 	const server = node_http.default.createServer(async (request, response) => {
 		async function serveFile(allowedRoot, url, { editable: canWrite = editable, listingRoot = listing } = {}) {
 			allowedRoot = node_path.default.resolve(allowedRoot);
@@ -1553,7 +1548,9 @@ function serve(root, port = 0, { editable = false, workspace = null, activeProje
 			}
 			const pathname = decodeURIComponent(new URL(request.url || "/", "http://local").pathname);
 			if (hub && await hub(request, response, pathname, serveFile)) return;
-			await serveFile(root, pathname);
+			const own = studioFile(pathname);
+			if (own !== null) await serveFile(STUDIO_DIR, own, { editable: false });
+			else await serveFile(root, pathname);
 		} catch (error) {
 			if (!response.headersSent) response.writeHead(400).end(error.message);
 		}
@@ -1571,8 +1568,9 @@ async function run$8(argv) {
 	};
 	const port = Number(value("--port") || (argv[0] && !argv[0].startsWith("--") ? argv[0] : 8790));
 	const workspace = createWorkspaceStore({ registryFile: value("--registry") });
-	const app = node_fs.default.existsSync(node_path.default.join(listing, "studio.json"));
-	const root = app ? node_path.default.dirname(listing) : listing;
+	const listing = findListing();
+	const app = listing !== null;
+	const root = listing ? node_path.default.dirname(listing) : node_path.default.dirname(STUDIO_DIR);
 	let activeProjectId = null;
 	if (app) activeProjectId = (await workspace.add([root]))[0].id;
 	for (let index = 0; index < argv.length; index++) if (argv[index] === "--add") await workspace.add([argv[++index]]);
@@ -1581,7 +1579,7 @@ async function run$8(argv) {
 		workspace,
 		activeProjectId
 	});
-	const url = app ? `http://127.0.0.1:${port}/store-listing/studio/` : `http://127.0.0.1:${port}/studio/`;
+	const url = listing ? `http://127.0.0.1:${port}/${node_path.default.relative(root, listing).split(node_path.default.sep).join("/")}/studio/` : `http://127.0.0.1:${port}/studio/`;
 	console.log(`Screenshot Studio: ${url}`);
 	if (argv.includes("--open")) {
 		const opener = process.platform === "darwin" ? "open" : process.platform === "win32" ? "explorer.exe" : "xdg-open";
@@ -1592,9 +1590,10 @@ async function run$8(argv) {
 	}
 	return 0;
 }
-var types, listing;
+var types;
 var init_server = __esmMin((() => {
 	init_store();
+	init_project();
 	init_routes();
 	types = {
 		".html": "text/html",
@@ -1614,8 +1613,36 @@ var init_server = __esmMin((() => {
 		".otf": "font/otf",
 		".ttc": "font/collection"
 	};
-	listing = node_path.default.resolve(__dirname, "..");
 }));
+// src/node/playwright.ts
+/** Finding Playwright, which renders every card: wherever it is, with a message that says how to get it when it isn't. */
+/** Where Playwright may live, most specific first. */
+function candidates() {
+	const found = [];
+	if (process.env.PLAYWRIGHT_MODULE) found.push(process.env.PLAYWRIGHT_MODULE);
+	for (const start of [__dirname, process.cwd()]) for (let dir = start;; dir = node_path.default.dirname(dir)) {
+		found.push(node_path.default.join(dir, "node_modules", "playwright"));
+		if (node_path.default.dirname(dir) === dir) break;
+	}
+	const cache = node_path.default.join(node_os.default.homedir(), ".npm", "_npx");
+	if (node_fs.default.existsSync(cache)) for (const entry of node_fs.default.readdirSync(cache)) found.push(node_path.default.join(cache, entry, "node_modules", "playwright"));
+	return found;
+}
+/** The directory of an installed Playwright, or null. */
+function findPlaywright() {
+	for (const dir of candidates()) if (node_fs.default.existsSync(node_path.default.join(dir, "package.json"))) return dir;
+	try {
+		return node_path.default.dirname(require.resolve("playwright/package.json"));
+	} catch {
+		return null;
+	}
+}
+function loadPlaywright() {
+	const dir = findPlaywright();
+	if (!dir) throw new Error("Playwright renders the cards and isn't installed. Run the studio with `npx screenshot-studio …`, or install it: `npm install -D playwright && npx playwright install chromium`.");
+	return require(dir);
+}
+var init_playwright = __esmMin((() => {}));
 // src/node/export.ts
 /**
 * Render every card to a store-ready image and check the composition (with Playwright, found wherever it is installed).
@@ -1702,7 +1729,7 @@ async function rgba(page, png) {
 /** Render, check and write a listing's cards. Never throws for a card problem: the result says what failed. */
 async function exportListing(options = {}) {
 	const log = options.log || ((line) => console.log(line));
-	const listing = options.listing ? node_path.default.resolve(options.listing) : node_path.default.resolve(__dirname, "..");
+	const listing = requireListing(options.listing);
 	const repo = node_path.default.dirname(listing);
 	const { config, profiles, galleries } = loadListing(listing);
 	const defaultLocale = config.defaultLocale || "en-US";
@@ -2248,7 +2275,7 @@ async function bootEmulator(serial, avd, log) {
 }
 async function recapture(options = {}) {
 	const log = options.log || ((line) => console.log(line));
-	const { config, profiles, repo, defaultLocale, locales: configured } = loadListing(options.listing ? node_path.default.resolve(options.listing) : node_path.default.resolve(__dirname, ".."));
+	const { config, profiles, repo, defaultLocale, locales: configured } = loadListing(requireListing(options.listing));
 	const capture = config.capture;
 	const locales = options.locales?.length ? [...options.locales] : [...configured];
 	const result = {
@@ -2275,11 +2302,18 @@ async function recapture(options = {}) {
 			"pillow",
 			"python3"
 		] : ["python3"];
+		const studioEnv = {
+			PYTHONPATH: [STUDIO_DIR, process.env.PYTHONPATH].filter(Boolean).join(node_path.default.delimiter),
+			SCREENSHOT_STUDIO: node_path.default.join(STUDIO_DIR, "studio.cjs"),
+			...findPlaywright() ? { PLAYWRIGHT_MODULE: process.env.PLAYWRIGHT_MODULE || findPlaywright() } : {}
+		};
 		const env = ios ? {
 			...process.env,
+			...studioEnv,
 			...simulator ? { CAPTURE_SIMULATOR: simulator } : {}
 		} : {
 			...process.env,
+			...studioEnv,
 			CAPTURE_SERIAL: serial,
 			ANDROID_SERIAL: serial
 		};
@@ -2303,7 +2337,7 @@ async function recapture(options = {}) {
 			if (done.status !== 0 && check) throw new Error(`Failed (${done.status ?? done.signal}): ${line}`);
 			return done.status === 0;
 		};
-		const studioPy = node_path.default.relative(repo, node_path.default.join(__dirname, ios ? "ios.py" : "capture.py"));
+		const studioPy = node_path.default.join(STUDIO_DIR, ios ? "ios.py" : "capture.py");
 		const sims = ios && options.capture !== false ? simulatorsFor(profiles, captureProfiles.filter((name) => !options.profile || name === options.profile), simulator) : [];
 		const device = (sim) => ios ? ["--simulator", sim] : ["--serial", serial];
 		if (options.build !== false && capture.build) run(capture.build, [], { shell: true });
@@ -2358,8 +2392,8 @@ async function recapture(options = {}) {
 			result.failedExports = locales.filter((locale) => !(capture.export ? run(capture.export.replaceAll("{locale}", locale), [], {
 				shell: true,
 				check: false
-			}) : run("node", [
-				node_path.default.relative(repo, node_path.default.join(__dirname, "studio.cjs")),
+			}) : run(process.execPath, [
+				node_path.default.join(STUDIO_DIR, "studio.cjs"),
 				"export",
 				"--locale",
 				locale
@@ -2406,6 +2440,7 @@ var DEFAULT_SERIAL, sdkRoot, has, adb;
 var init_recapture = __esmMin((() => {
 	init_project();
 	init_ios();
+	init_playwright();
 	DEFAULT_SERIAL = "emulator-5578";
 	sdkRoot = () => process.env.ANDROID_HOME || process.env.ANDROID_SDK_ROOT || [node_path.default.join(node_os.default.homedir(), "Library/Android/sdk"), node_path.default.join(node_os.default.homedir(), "Android/Sdk")].find((dir) => node_fs.default.existsSync(dir)) || "";
 	has = (command) => (0, node_child_process.spawnSync)("sh", ["-c", `command -v ${command}`], { stdio: "ignore" }).status === 0;
@@ -2417,11 +2452,10 @@ var init_recapture = __esmMin((() => {
 }));
 // src/node/init.ts
 /**
-* Set up Screenshot Studio in an app, and keep its copy of the studio current.
+* Set up Screenshot Studio in an app.
 *   npx screenshot-studio init [app-folder] [--name "My App"] [--package com.example.app] [--theme starter]
 *                              [--screenshots ./folder] [--locales en-US,de-DE] [--platform android|ios]
-*   npx screenshot-studio sync [app-folder] [--check]
-* `init` creates store-listing/ (never overwriting a file), copies the studio into store-listing/studio/, and with
+* `init` creates store-listing/ (never overwriting a file) and installs the agent skill. With
 * --screenshots builds the galleries from images you already have, so the first cards render with no emulator: a folder
 * (number the files to set the order) or a comma-separated list of files in card order.
 * --platform ios makes App Store galleries (iPhone 6.9″ and 6.3″, iPad 13″) and an iOS simulator tour instead.
@@ -2429,11 +2463,7 @@ var init_recapture = __esmMin((() => {
 var init_exports = /* @__PURE__ */ __exportAll({
 	init: () => init,
 	run: () => run$5,
-	runSync: () => runSync,
-	studioDrift: () => studioDrift,
-	syncStudio: () => syncStudio,
-	themes: () => themes,
-	version: () => version$1
+	themes: () => themes
 });
 /** Every theme the package ships, with its one-line description. */
 function themes() {
@@ -2445,29 +2475,6 @@ function themes() {
 			description: first ? first[1].replace(/^\{\{name\}\}:\s*/, "").split("\n")[0] : ""
 		};
 	});
-}
-/** Copy the package's studio into the app (store-listing/studio/), replacing the old copy. */
-function syncStudio(app) {
-	const target = node_path.default.join(node_path.default.resolve(app), "store-listing", "studio");
-	node_fs.default.rmSync(target, {
-		recursive: true,
-		force: true
-	});
-	node_fs.default.cpSync(STUDIO, target, {
-		recursive: true,
-		filter: (source) => !/(__pycache__|\.pyc$|\.DS_Store$)/.test(source)
-	});
-	return target;
-}
-/** Files that differ between the package's studio and the app's copy. */
-function studioDrift(app) {
-	const target = node_path.default.join(node_path.default.resolve(app), "store-listing", "studio");
-	const list = (root) => node_fs.default.existsSync(root) ? node_fs.default.readdirSync(root, {
-		recursive: true,
-		withFileTypes: true
-	}).filter((entry) => entry.isFile() && !/(__pycache__|\.pyc$|\.DS_Store$)/.test(node_path.default.join(entry.parentPath, entry.name))).map((entry) => node_path.default.relative(root, node_path.default.join(entry.parentPath, entry.name))) : [];
-	const ours = new Set(list(STUDIO)), theirs = new Set(list(target));
-	return [.../* @__PURE__ */ new Set([...ours, ...theirs])].filter((file) => !ours.has(file) || !theirs.has(file) || !node_fs.default.readFileSync(node_path.default.join(STUDIO, file)).equals(node_fs.default.readFileSync(node_path.default.join(target, file)))).sort();
 }
 /** Which gallery an image belongs to, by its shape. */
 function galleryFor(width, height) {
@@ -2633,15 +2640,15 @@ function init(options = {}) {
 		}
 		write("studio.json", config);
 		write("profiles.json", {
-			$schema: "./studio/schemas/profiles.schema.json",
+			$schema: "https://unpkg.com/screenshot-studio/studio/schemas/profiles.schema.json",
 			...imported.profiles
 		});
 		write("gallery.json", {
-			$schema: "./studio/schemas/gallery.schema.json",
+			$schema: "https://unpkg.com/screenshot-studio/studio/schemas/gallery.schema.json",
 			...imported.galleries
 		});
 		write("en-US/copy.json", {
-			$schema: "../studio/schemas/copy.schema.json",
+			$schema: "https://unpkg.com/screenshot-studio/studio/schemas/copy.schema.json",
 			...imported.copy
 		});
 		result.cards = Object.values(imported.galleries).reduce((n, gallery) => n + (Array.isArray(gallery) ? gallery : gallery.cards).length, 0);
@@ -2689,8 +2696,6 @@ function init(options = {}) {
 		node_fs.default.copyFileSync(node_path.default.join(THEMES, theme, "assets", asset), target);
 		result.created.push(`assets/${asset}`);
 	}
-	syncStudio(app);
-	log(`synced    store-listing/studio (v${version$1()})`);
 	const skill = node_path.default.join(PACKAGE, "skills", "store-screenshots", "SKILL.md");
 	if (node_fs.default.existsSync(skill) && !node_fs.default.existsSync(node_path.default.join(app, ".claude", "skills", "store-screenshots", "SKILL.md"))) {
 		node_fs.default.mkdirSync(node_path.default.join(app, ".claude", "skills", "store-screenshots"), { recursive: true });
@@ -2734,34 +2739,15 @@ async function run$5(argv) {
 		return 1;
 	}
 }
-/** `sync [app] [--check]` */
-async function runSync(argv) {
-	requirePackage();
-	const app = node_path.default.resolve(argv.find((word) => !word.startsWith("--")) || ".");
-	if (!node_fs.default.existsSync(node_path.default.join(app, "store-listing", "studio.json"))) {
-		console.error(`No store-listing/studio.json in ${app}`);
-		return 1;
-	}
-	if (argv.includes("--check")) {
-		const drift = studioDrift(app);
-		console.log(drift.length ? `${drift.length} file(s) differ from v${version$1()}:\n${drift.map((f) => `  ${f}`).join("\n")}` : `store-listing/studio is current (v${version$1()}).`);
-		return drift.length ? 1 : 0;
-	}
-	syncStudio(app);
-	console.log(`Synced studio v${version$1()} into ${node_path.default.join(app, "store-listing", "studio")}`);
-	return 0;
-}
-var PACKAGE, STUDIO, TEMPLATES, IOS_TEMPLATES, THEMES, version$1, requirePackage, slug, words;
+var PACKAGE, TEMPLATES, IOS_TEMPLATES, THEMES, requirePackage, slug, words;
 var init_init = __esmMin((() => {
 	init_check();
 	init_project();
 	init_ios();
 	PACKAGE = node_path.default.resolve(__dirname, "..");
-	STUDIO = node_path.default.join(PACKAGE, "studio");
 	TEMPLATES = node_path.default.join(PACKAGE, "templates", "starter");
 	IOS_TEMPLATES = node_path.default.join(PACKAGE, "templates", "ios");
 	THEMES = node_path.default.join(PACKAGE, "themes");
-	version$1 = () => node_fs.default.readFileSync(node_path.default.join(STUDIO, "VERSION"), "utf8").trim();
 	requirePackage = () => {
 		if (!node_fs.default.existsSync(TEMPLATES)) throw new Error("Run this from the Screenshot Studio package: `npx screenshot-studio init`.");
 	};
@@ -2891,7 +2877,7 @@ var init_locales = __esmMin((() => {
 	init_gallery();
 	init_project();
 	LOCALE = /^[a-z]{2,3}(-[A-Za-z0-9]{2,8})*$/;
-	resolveListing = (listing) => listing ? node_path.default.resolve(listing) : node_path.default.resolve(__dirname, "..");
+	resolveListing = (listing) => requireListing(listing);
 	fieldCount = (copy) => Object.values(copy).reduce((n, entry) => n + Object.keys(entry).length, 0);
 	USAGE$3 = `Usage:
   npx screenshot-studio locales                 words translated, captures present and layout sidecars per locale
@@ -3038,7 +3024,7 @@ function importVector(file) {
 /** Draw every icon brand/icon.json lists, plus brand/icon-preview.png (one per icon). */
 async function buildIcons(options = {}) {
 	const log = options.log || ((line) => console.log(line));
-	const listing = options.listing ? node_path.default.resolve(options.listing) : node_path.default.resolve(__dirname, "..");
+	const listing = requireListing(options.listing);
 	const specFile = options.spec ? node_path.default.resolve(options.spec) : node_path.default.join(listing, "brand", "icon.json");
 	if (!node_fs.default.existsSync(specFile)) throw new Error(`No ${specFile}. Draw brand/background.svg and brand/foreground.svg, then list the targets in brand/icon.json.`);
 	const brand = node_path.default.dirname(specFile);
@@ -4030,16 +4016,13 @@ var init_readme_preview = __esmMin((() => {
 }));
 // src/cli/main.ts
 /**
-* screenshot-studio: one command for everything. From the package (`npx screenshot-studio …`) it sets apps up and
-* runs every other command through the app's own copy of the studio (store-listing/studio/), so an app's images
-* always come from the studio version it was made with. Inside an app, `node store-listing/studio/studio.cjs …`
-* runs the same commands directly.
+* screenshot-studio: one command for everything. Run it in an app (or anywhere below one); every command finds the
+* app's store-listing/ from there, or from `--listing <path>`.
 */
-init_project();
-init_playwright();
 init_export();
 init_recapture();
 init_check();
+init_project();
 init_server();
 init_store();
 init_gallery();
@@ -4047,19 +4030,11 @@ init_validate();
 const COMMANDS = {
 	init: {
 		summary: "Set up Screenshot Studio in an app (or from a folder of screenshots)",
-		package: true,
 		usage: "init [app] [--name \"My App\"] [--package com.example.app] [--theme starter] [--screenshots ./folder] [--locales en-US,de-DE] [--platform ios]",
 		run: async (argv) => (await Promise.resolve().then(() => (init_init(), init_exports))).run(argv)
 	},
-	sync: {
-		summary: "Update the app's copy of the studio to this version",
-		package: true,
-		usage: "sync [app] [--check]",
-		run: async (argv) => (await Promise.resolve().then(() => (init_init(), init_exports))).runSync(argv)
-	},
 	themes: {
 		summary: "List the themes init can start from",
-		package: true,
 		usage: "themes",
 		run: async () => {
 			const { themes } = await Promise.resolve().then(() => (init_init(), init_exports));
@@ -4086,6 +4061,19 @@ const COMMANDS = {
 		summary: "Build the app, capture on the emulator or simulator and export",
 		usage: "recapture [locale…] [--boot] [--profile phone] [--serial emulator-5578] [--simulator \"iPhone 17 Pro Max\"] [--no-build] [--no-capture] [--no-export] [--dry-run]",
 		run: async (argv) => (await Promise.resolve().then(() => (init_recapture(), recapture_exports))).run(argv)
+	},
+	reset: {
+		summary: "Undo a capture that was interrupted (display size, density, demo mode on the emulator)",
+		usage: "reset [--serial emulator-5578]",
+		run: async (argv) => {
+			const { spawnSync } = await import("node:child_process");
+			const { STUDIO_DIR } = await Promise.resolve().then(() => (init_project(), project_exports));
+			return spawnSync("python3", [
+				node_path.default.join(STUDIO_DIR, "capture.py"),
+				"reset",
+				...argv
+			], { stdio: "inherit" }).status ?? 1;
+		}
 	},
 	locales: {
 		summary: "Language coverage, or add a language",
@@ -4120,12 +4108,9 @@ const ALIASES = {
 	"fixture-apps": "fixtures",
 	"readme-preview": "readme"
 };
-/** This file's folder: the package's studio/, or an app's store-listing/studio/. */
-const HERE = __dirname;
-const VENDORED = node_fs.default.existsSync(node_path.default.join(HERE, "..", "studio.json"));
 const version = () => {
 	try {
-		return node_fs.default.readFileSync(node_path.default.join(HERE, "VERSION"), "utf8").trim();
+		return node_fs.default.readFileSync(node_path.default.join(__dirname, "VERSION"), "utf8").trim();
 	} catch {
 		return "?";
 	}
@@ -4133,29 +4118,20 @@ const version = () => {
 function help() {
 	console.log(`Screenshot Studio ${version()}: real app screens in, store and README art out.\n\nUsage: npx screenshot-studio <command> [options]\n`);
 	for (const [name, command] of Object.entries(COMMANDS)) console.log(`  ${name.padEnd(11)} ${command.summary}`);
-	console.log("\nRun `npx screenshot-studio <command> --help` for its options. Docs: https://github.com/bernaferrari/screenshot-studio");
-}
-/** Run a command in the app's own copy of the studio, with Playwright found. */
-function delegate(listing, name, argv) {
-	const entry = node_path.default.join(listing, "studio", "studio.cjs");
-	if (!node_fs.default.existsSync(entry)) {
-		console.error(`${node_path.default.relative(process.cwd(), listing) || "."} has an older copy of the studio. Update it with \`npx screenshot-studio sync\`.`);
-		return 1;
-	}
-	const theirs = node_fs.default.readFileSync(node_path.default.join(listing, "studio", "VERSION"), "utf8").trim();
-	if (theirs !== version()) console.error(`(The app uses studio ${theirs}; this is ${version()}. \`npx screenshot-studio sync\` updates it.)`);
-	const env = { ...process.env };
-	if (!env.PLAYWRIGHT_MODULE) env.PLAYWRIGHT_MODULE = findPlaywright() ?? void 0;
-	return (0, node_child_process.spawnSync)(process.execPath, [
-		entry,
-		name,
-		...argv
-	], {
-		stdio: "inherit",
-		env
-	}).status ?? 1;
+	console.log("\nEvery command works on the app you run it in, or on `--listing path/to/app`.");
+	console.log("Run `npx screenshot-studio <command> --help` for its options. Docs: https://github.com/bernaferrari/screenshot-studio");
 }
 async function main(argv) {
+	const at = argv.indexOf("--listing");
+	if (at >= 0) {
+		const target = node_path.default.resolve(argv[at + 1] || "");
+		if (!node_fs.default.existsSync(target)) {
+			console.error(`No folder ${target}`);
+			return 1;
+		}
+		process.chdir(node_path.default.basename(target) === "store-listing" ? node_path.default.dirname(target) : target);
+		argv = argv.filter((_, i) => i !== at && i !== at + 1);
+	}
 	const [first, ...rest] = argv;
 	if (!first || first === "help" || first === "--help" || first === "-h") {
 		help();
@@ -4176,22 +4152,12 @@ async function main(argv) {
 		console.log(`${command.summary}\n\n  npx screenshot-studio ${command.usage}`);
 		return 0;
 	}
-	if (command.package) {
-		if (VENDORED) {
-			console.error(`Run \`${name}\` from the package: npx screenshot-studio ${name}`);
-			return 1;
-		}
-		return command.run(rest);
-	}
-	if (VENDORED) return command.run(rest);
-	const at = rest.indexOf("--listing");
-	const listing = findListing(at >= 0 ? rest[at + 1] : void 0);
-	if (!listing) {
-		if (name === "studio") return command.run(rest);
-		console.error("No store-listing/studio.json here or above. Set one up with `npx screenshot-studio init`.");
+	try {
+		return await command.run(rest);
+	} catch (error) {
+		console.error(error.message);
 		return 1;
 	}
-	return delegate(listing, name, at >= 0 ? rest.filter((_, i) => i !== at && i !== at + 1) : rest);
 }
 if (require.main === module) main(process.argv.slice(2)).then((code) => {
 	process.exitCode = code;
@@ -4217,6 +4183,7 @@ exports.nodesFile = nodesFile;
 exports.outputFile = outputFile;
 exports.readJson = readJson;
 exports.recapture = recapture;
+exports.requireListing = requireListing;
 exports.serve = serve;
 exports.validate = validate;
 exports.withCopy = withCopy;

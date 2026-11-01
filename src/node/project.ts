@@ -46,9 +46,12 @@ export function loadListing(listing: string): ListingFiles {
 
 export const readCopy = (listing: string, locale: string): Copy => readJson<Copy>(path.join(listing, locale, 'copy.json'), {});
 
+/** The studio's own files (renderer, editor, schemas, capture): the folder this bundle runs from. */
+export const STUDIO_DIR = __dirname;
+
 /**
- * The store-listing folder for a command: an explicit path (an app folder or its store-listing), else the folder
- * this studio copy lives in, else the nearest store-listing/ above the working directory.
+ * The store-listing folder for a command: an explicit path (an app folder or its store-listing), else the nearest
+ * store-listing/ at or above the working directory.
  */
 export function findListing(explicit?: string, from = process.cwd()): string | null {
   const resolve = (dir: string) => {
@@ -57,11 +60,18 @@ export function findListing(explicit?: string, from = process.cwd()): string | n
     return null;
   };
   if (explicit) return resolve(path.resolve(explicit));
-  const own = path.resolve(__dirname, '..');
-  if (fs.existsSync(path.join(own, 'studio.json'))) return own;
   for (let dir = path.resolve(from); ; dir = path.dirname(dir)) {
     const found = resolve(dir);
     if (found) return found;
     if (path.dirname(dir) === dir) return null;
   }
+}
+
+/** findListing, or an error that says how to get one. */
+export function requireListing(explicit?: string): string {
+  const found = findListing(explicit);
+  if (found) return found;
+  throw new Error(explicit
+    ? `No store-listing/studio.json in ${path.resolve(explicit)}.`
+    : 'No store-listing/studio.json here or in any folder above. Run this in your app, or set it up with `npx screenshot-studio init`.');
 }

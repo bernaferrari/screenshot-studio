@@ -9,7 +9,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import type {Copy} from '../core/types';
 import {cardsFor, devicesFor, nodesFile} from '../core/gallery';
-import {loadListing, readCopy, writeJson, type ListingFiles} from './project';
+import {loadListing, readCopy, writeJson, type ListingFiles, requireListing} from './project';
 
 export interface Tally {
   done: number;
@@ -48,7 +48,7 @@ export interface AddedLocale {
 }
 
 const LOCALE = /^[a-z]{2,3}(-[A-Za-z0-9]{2,8})*$/;
-const resolveListing = (listing?: string): string => listing ? path.resolve(listing) : path.resolve(__dirname, '..');
+const resolveListing = (listing?: string): string => requireListing(listing);
 
 /** Every capture a locale's cards draw (device screens and callout crops); galleries marked defaultLocaleOnly count only for the default. */
 function capturesFor({galleries, profiles, defaultLocale}: ListingFiles, locale: string): Set<string> {

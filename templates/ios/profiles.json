@@ -1,5 +1,5 @@
 {
-  "$schema": "./studio/schemas/profiles.schema.json",
+  "$schema": "https://unpkg.com/screenshot-studio/studio/schemas/profiles.schema.json",
   "iphone": {"width": 1320, "height": 2868, "captureWidth": 1320, "captureHeight": 2868, "frame": "iphone", "platform": "ios", "simulator": "{{iphoneSimulator}}", "label": "iPhone 6.9″"},
   "iphone63": {"width": 1206, "height": 2622, "frame": "iphone", "platform": "ios", "label": "iPhone 6.3″"},
   "ipad": {"width": 2064, "height": 2752, "captureWidth": 2064, "captureHeight": 2752, "frame": "tablet", "platform": "ios", "simulator": "{{ipadSimulator}}", "label": "iPad 13″"}

@@ -14,7 +14,7 @@ import path from 'node:path';
 import type {Server} from 'node:http';
 import type {Browser, Page} from 'playwright';
 import type {CardReport, Listing} from '../core/types';
-import {loadListing, readJson} from './project';
+import {loadListing, readJson, requireListing} from './project';
 import {serve} from './server';
 import {loadPlaywright} from './playwright';
 
@@ -127,7 +127,7 @@ async function rgba(page: Page, png: Buffer): Promise<Buffer> {
 /** Render, check and write a listing's cards. Never throws for a card problem: the result says what failed. */
 export async function exportListing(options: ExportOptions = {}): Promise<ExportResult> {
   const log = options.log || ((line: string) => console.log(line));
-  const listing = options.listing ? path.resolve(options.listing) : path.resolve(__dirname, '..');
+  const listing = requireListing(options.listing);
   const repo = path.dirname(listing);
   const {config, profiles, galleries} = loadListing(listing);
   const defaultLocale = config.defaultLocale || 'en-US';

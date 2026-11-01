@@ -50,7 +50,7 @@ import path from 'node:path';
 import os from 'node:os';
 import {execFileSync} from 'node:child_process';
 import type {Page} from 'playwright';
-import {readJson} from './project';
+import {readJson, requireListing} from './project';
 import {loadPlaywright} from './playwright';
 
 type Shape = 'square' | 'rounded' | 'circle' | 'mark';
@@ -193,7 +193,7 @@ export interface IconResult {
 /** Draw every icon brand/icon.json lists, plus brand/icon-preview.png (one per icon). */
 export async function buildIcons(options: IconOptions = {}): Promise<IconResult> {
   const log = options.log || ((line: string) => console.log(line));
-  const listing = options.listing ? path.resolve(options.listing) : path.resolve(__dirname, '..');
+  const listing = requireListing(options.listing);
   const specFile = options.spec ? path.resolve(options.spec) : path.join(listing, 'brand', 'icon.json');
   if (!fs.existsSync(specFile)) {
     throw new Error(`No ${specFile}. Draw brand/background.svg and brand/foreground.svg, then list the targets in brand/icon.json.`);

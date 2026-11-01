@@ -34,7 +34,7 @@ test('init --platform ios builds App Store galleries from simulator screenshots'
   assert.deepEqual([profiles.ipad.width, profiles.ipad.height], [2064, 2752]);
   assert.deepEqual(json(path.join(listing, 'gallery.json')).iphone63, {inherits: 'iphone', cards: [{}]});
   assert.ok(fs.existsSync(path.join(listing, 'capture-simulator.py')));
-  assert.ok(fs.existsSync(path.join(listing, 'studio', 'ios.py')));
+  assert.ok(!fs.existsSync(path.join(listing, 'studio')), 'init no longer copies the studio into the app');
   assert.match(fs.readFileSync(path.join(listing, 'theme.css'), 'utf8'), /\.iphone63 \.big \.device/);
   const result = checkListing(listing);
   assert.deepEqual(result.issues.filter(i => i.level === 'error'), []);

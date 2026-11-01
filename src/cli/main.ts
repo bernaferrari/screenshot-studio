@@ -1,24 +1,17 @@
 /**
- * screenshot-studio: one command for everything. From the package (`npx screenshot-studio …`) it sets apps up and
- * runs every other command through the app's own copy of the studio (store-listing/studio/), so an app's images
- * always come from the studio version it was made with. Inside an app, `node store-listing/studio/studio.cjs …`
- * runs the same commands directly.
+ * screenshot-studio: one command for everything. Run it in an app (or anywhere below one); every command finds the
+ * app's store-listing/ from there, or from `--listing <path>`.
  */
 import fs from 'node:fs';
 import path from 'node:path';
-import {spawnSync} from 'node:child_process';
-import {findListing} from '../node/project';
-import {findPlaywright} from '../node/playwright';
 
-type Command = {summary: string; usage: string; package?: boolean; run: (argv: string[]) => Promise<number>};
+type Command = {summary: string; usage: string; run: (argv: string[]) => Promise<number>};
 
 const COMMANDS: Record<string, Command> = {
-  init: {summary: 'Set up Screenshot Studio in an app (or from a folder of screenshots)', package: true,
+  init: {summary: 'Set up Screenshot Studio in an app (or from a folder of screenshots)',
     usage: 'init [app] [--name "My App"] [--package com.example.app] [--theme starter] [--screenshots ./folder] [--locales en-US,de-DE] [--platform ios]',
     run: async argv => (await import('../node/init')).run(argv)},
-  sync: {summary: "Update the app's copy of the studio to this version", package: true, usage: 'sync [app] [--check]',
-    run: async argv => (await import('../node/init')).runSync(argv)},
-  themes: {summary: 'List the themes init can start from', package: true, usage: 'themes',
+  themes: {summary: 'List the themes init can start from', usage: 'themes',
     run: async () => { const {themes} = await import('../node/init'); for (const t of themes()) console.log(`${t.name.padEnd(14)} ${t.description}`); return 0; }},
   studio: {summary: 'Open the editor', usage: 'studio [port] [--open] [--add /path/to/app]…',
     run: async argv => (await import('../node/server')).run(argv)},
@@ -28,6 +21,12 @@ const COMMANDS: Record<string, Command> = {
     run: async argv => (await import('../node/export')).run(argv)},
   recapture: {summary: 'Build the app, capture on the emulator or simulator and export', usage: 'recapture [locale…] [--boot] [--profile phone] [--serial emulator-5578] [--simulator "iPhone 17 Pro Max"] [--no-build] [--no-capture] [--no-export] [--dry-run]',
     run: async argv => (await import('../node/recapture')).run(argv)},
+  reset: {summary: 'Undo a capture that was interrupted (display size, density, demo mode on the emulator)', usage: 'reset [--serial emulator-5578]',
+    run: async argv => {
+      const {spawnSync} = await import('node:child_process');
+      const {STUDIO_DIR} = await import('../node/project');
+      return spawnSync('python3', [path.join(STUDIO_DIR, 'capture.py'), 'reset', ...argv], {stdio: 'inherit'}).status ?? 1;
+    }},
   locales: {summary: 'Language coverage, or add a language', usage: 'locales [--init de-DE]',
     run: async argv => (await import('../node/locales')).run(argv)},
   icons: {summary: 'Every app icon from one drawing', usage: 'icons [brand/icon.json] | icons --import drawable.xml',
@@ -41,32 +40,24 @@ const COMMANDS: Record<string, Command> = {
 };
 const ALIASES: Record<string, string> = {serve: 'studio', editor: 'studio', icon: 'icons', 'fixture-apps': 'fixtures', 'readme-preview': 'readme'};
 
-/** This file's folder: the package's studio/, or an app's store-listing/studio/. */
-const HERE = __dirname;
-const VENDORED = fs.existsSync(path.join(HERE, '..', 'studio.json'));
-const version = () => { try { return fs.readFileSync(path.join(HERE, 'VERSION'), 'utf8').trim(); } catch { return '?'; } };
+const version = () => { try { return fs.readFileSync(path.join(__dirname, 'VERSION'), 'utf8').trim(); } catch { return '?'; } };
 
 function help(): void {
   console.log(`Screenshot Studio ${version()}: real app screens in, store and README art out.\n\nUsage: npx screenshot-studio <command> [options]\n`);
   for (const [name, command] of Object.entries(COMMANDS)) console.log(`  ${name.padEnd(11)} ${command.summary}`);
-  console.log('\nRun `npx screenshot-studio <command> --help` for its options. Docs: https://github.com/bernaferrari/screenshot-studio');
-}
-
-/** Run a command in the app's own copy of the studio, with Playwright found. */
-function delegate(listing: string, name: string, argv: string[]): number {
-  const entry = path.join(listing, 'studio', 'studio.cjs');
-  if (!fs.existsSync(entry)) {
-    console.error(`${path.relative(process.cwd(), listing) || '.'} has an older copy of the studio. Update it with \`npx screenshot-studio sync\`.`);
-    return 1;
-  }
-  const theirs = fs.readFileSync(path.join(listing, 'studio', 'VERSION'), 'utf8').trim();
-  if (theirs !== version()) console.error(`(The app uses studio ${theirs}; this is ${version()}. \`npx screenshot-studio sync\` updates it.)`);
-  const env = {...process.env};
-  if (!env.PLAYWRIGHT_MODULE) env.PLAYWRIGHT_MODULE = findPlaywright() ?? undefined;
-  return spawnSync(process.execPath, [entry, name, ...argv], {stdio: 'inherit', env}).status ?? 1;
+  console.log('\nEvery command works on the app you run it in, or on `--listing path/to/app`.');
+  console.log('Run `npx screenshot-studio <command> --help` for its options. Docs: https://github.com/bernaferrari/screenshot-studio');
 }
 
 export async function main(argv: string[]): Promise<number> {
+  // --listing <path> works for every command: it's where the command runs.
+  const at = argv.indexOf('--listing');
+  if (at >= 0) {
+    const target = path.resolve(argv[at + 1] || '');
+    if (!fs.existsSync(target)) { console.error(`No folder ${target}`); return 1; }
+    process.chdir(path.basename(target) === 'store-listing' ? path.dirname(target) : target);
+    argv = argv.filter((_, i) => i !== at && i !== at + 1);
+  }
   const [first, ...rest] = argv;
   if (!first || first === 'help' || first === '--help' || first === '-h') { help(); return 0; }
   if (first === '--version' || first === '-v' || first === 'version') { console.log(version()); return 0; }
@@ -74,27 +65,15 @@ export async function main(argv: string[]): Promise<number> {
   const command = COMMANDS[name];
   if (!command) { console.error(`Unknown command "${first}".\n`); help(); return 1; }
   if (rest.includes('--help') || rest.includes('-h')) { console.log(`${command.summary}\n\n  npx screenshot-studio ${command.usage}`); return 0; }
-  if (command.package) {
-    if (VENDORED) { console.error(`Run \`${name}\` from the package: npx screenshot-studio ${name}`); return 1; }
-    return command.run(rest);
-  }
-  if (VENDORED) return command.run(rest);
-  // From the package: find the app and use its copy.
-  const at = rest.indexOf('--listing');
-  const listing = findListing(at >= 0 ? rest[at + 1] : undefined);
-  if (!listing) {
-    if (name === 'studio') return command.run(rest);
-    console.error('No store-listing/studio.json here or above. Set one up with `npx screenshot-studio init`.');
-    return 1;
-  }
-  return delegate(listing, name, at >= 0 ? rest.filter((_, i) => i !== at && i !== at + 1) : rest);
+  try { return await command.run(rest); }
+  catch (error) { console.error((error as Error).message); return 1; }
 }
 
-// The library, for tools and tests: `require('store-listing/studio/studio.cjs')`.
+// The library, for tools and tests: `require('screenshot-studio')`.
 export {exportListing, formatSummary} from '../node/export';
 export {recapture, bootEmulator} from '../node/recapture';
 export {checkListing, formatIssues, imageSize} from '../node/check';
-export {loadListing, findListing, readJson, writeJson} from '../node/project';
+export {loadListing, findListing, requireListing, readJson, writeJson} from '../node/project';
 export {serve} from '../node/server';
 export {createWorkspaceStore} from '../node/workspace/store';
 export {cardsFor, withCopy, copyKeys, devicesFor, outputFile, nodesFile, followCallout, withoutMeta} from '../core/gallery';

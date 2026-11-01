@@ -4,7 +4,7 @@
 
 const marker = color => `url("data:image/svg+xml,${encodeURIComponent(`<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100' preserveAspectRatio='none'><path d='M1.2 6 L98.6 2 L100 48 L98.8 97 L0.6 99 L0 52 Z' fill='${color}'/></svg>`)}")`;
 
-/** @type {import('./studio/types').Theme} */
+/** @type {import('screenshot-studio').Theme} */
 export default {
   continuous: true,
 
