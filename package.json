@@ -33,7 +33,8 @@
     "skills",
     "studio",
     "templates",
-    "themes"
+    "themes",
+    "!themes/*/preview.jpg"
   ],
   "engines": {
     "node": ">=20"
