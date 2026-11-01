@@ -1703,13 +1703,14 @@ var init_playwright = __esmMin((() => {}));
 // src/node/export.ts
 /**
 * Render every card to a store-ready image and check the composition (with Playwright, found wherever it is installed).
-*   node store-listing/studio/export.cjs [--locale de-DE] [--kind phone] [--card 3] [--strict] [--fastlane] [--json]
+*   node store-listing/studio/export.cjs [--locale de-DE] [--kind phone] [--card 3] [--strict] [--fastlane] [--jobs 4] [--json]
 * Without --locale every locale in studio.json is rendered. --strict fails when a non-default locale
 * still borrows default-locale words or captures, or a callout could not follow its UI element.
 * It also warns (and --strict fails) when a gallery folder holds images no card writes any more, when a
 * continuous background (theme `continuous`) breaks at a seam, and when <locale>/listing.json is over Play's
 * limits. --fastlane writes fastlane/metadata/android/<locale>/ text and screenshots (studio.json "fastlane").
-* --prune deletes images no card writes any more. --json prints the result as JSON (for agents and tools); exportListing() returns the same result.
+* --prune deletes images no card writes any more. --jobs sets how many cards render at once.
+* --json prints the result as JSON (for agents and tools); exportListing() returns the same result.
 */
 var export_exports = /* @__PURE__ */ __exportAll({
 	exportListing: () => exportListing,
@@ -1783,13 +1784,54 @@ async function rgba(page, png) {
 		return canvas.toDataURL("image/png").split(",")[1];
 	}, png.toString("base64")), "base64");
 }
+/**
+* Renders cards `jobs` at a time, each browser one card at a time: a browser draws every page's WebGL in one GPU
+* process, so cards sharing a browser wait for each other. The first browser is the export's own; the others launch
+* when first needed. Tasks run in the order they were added, at most `jobs * 2` ahead of the last one taken. add()
+* returns a function that takes the task's result: the export takes them in order, so it writes, warns and logs in order.
+*/
+function renderQueue(jobs, browser) {
+	const browsers = [Promise.resolve(browser)];
+	const idle = [...Array(jobs).keys()].reverse();
+	const starts = [];
+	const running = /* @__PURE__ */ new Set();
+	let next = 0, taken = 0, stopped = false;
+	const pump = () => {
+		while (!stopped && idle.length && next < starts.length && next < taken + jobs * 2) starts[next++](idle.pop());
+	};
+	return {
+		add(task) {
+			const index = starts.length;
+			const result = new Promise((resolve, reject) => starts.push((slot) => {
+				browsers[slot] ??= launchBrowser();
+				const run = browsers[slot].then(task).then(resolve, reject).finally(() => {
+					running.delete(run);
+					idle.push(slot);
+					pump();
+				});
+				running.add(run);
+			}));
+			result.catch(() => {});
+			pump();
+			return () => {
+				taken = Math.max(taken, index);
+				pump();
+				return result;
+			};
+		},
+		/** Start nothing more, close the browsers (so cards still rendering stop too) and wait for them. */
+		async close() {
+			stopped = true;
+			await Promise.allSettled(browsers.map(async (b) => (await b).close()));
+			await Promise.allSettled(running);
+		}
+	};
+}
 /** Render, check and write a listing's cards. Never throws for a card problem: the result says what failed. */
 async function exportListing(options = {}) {
 	const log = options.log || ((line) => console.log(line));
 	const listing = requireListing(options.listing);
-	const repo = node_path.default.dirname(listing);
-	const { config, profiles, galleries } = loadListing(listing);
-	const defaultLocale = config.defaultLocale || "en-US";
+	const files = loadListing(listing);
 	const warnings = [];
 	const cards = [];
 	const tallies = [];
@@ -1814,242 +1856,33 @@ async function exportListing(options = {}) {
 		} catch {}
 		return result;
 	};
-	const lane = {
-		dir: "fastlane/metadata/android",
-		screenshots: { phone: "images/phoneScreenshots" },
-		screenshotLocales: [defaultLocale],
-		locales: {},
-		...config.fastlane
-	};
-	const laneDir = (locale) => node_path.default.join(repo, lane.dir, lane.locales[locale] || locale);
-	const laneShots = (locale, kind) => options.fastlane && lane.screenshots[kind] && (lane.screenshotLocales === "all" || lane.screenshotLocales.includes(locale)) ? node_path.default.join(laneDir(locale), lane.screenshots[kind]) : null;
-	const listingFor = (locale) => {
-		const json = readJson(node_path.default.join(listing, locale, "listing.json"), null);
-		return json && {
-			...json,
-			title: json.title ?? json.appName
-		};
-	};
-	const { cardsFor, devicesFor, outputFile } = await Promise.resolve().then(() => (init_gallery(), gallery_exports));
-	let server = null, browser = null;
-	let failures = 0;
+	const gallery = await Promise.resolve().then(() => (init_gallery(), gallery_exports));
+	let server = null, browser = null, queue = null;
 	try {
-		server = await serve(repo);
+		server = await serve(files.repo);
 		const address = server.address();
-		const base = `http://127.0.0.1:${typeof address === "object" && address ? address.port : 0}/${node_path.default.relative(repo, listing).split(node_path.default.sep).join("/")}`;
+		const base = `http://127.0.0.1:${typeof address === "object" && address ? address.port : 0}/${node_path.default.relative(files.repo, listing).split(node_path.default.sep).join("/")}`;
 		browser = await launchBrowser();
-		for (const locale of options.locales?.length ? options.locales : config.locales || [defaultLocale]) {
-			const dir = node_path.default.join(listing, locale);
-			const manifest = { galleries: {} };
-			const written = /* @__PURE__ */ new Set();
-			const tally = {
-				locale,
-				cards: 0,
-				untranslated: 0,
-				borrowedCaptures: 0,
-				movedCallouts: 0,
-				fixedCallouts: 0,
-				shrunk: 0
-			};
-			for (const kind of Object.keys(galleries)) {
-				if (options.kind && options.kind !== kind) continue;
-				if (profiles[kind].defaultLocaleOnly && locale !== defaultLocale) continue;
-				const slides = cardsFor(galleries, kind);
-				const { width, height } = profiles[kind];
-				manifest.galleries[kind] = [];
-				const edges = [];
-				const destination = options.card === void 0 ? laneShots(locale, kind) : null;
-				const shots = destination ? node_fs.default.mkdtempSync(node_path.default.join(node_os.default.tmpdir(), "studio-fastlane-")) : null;
-				if (shots && destination) staged.push({
-					shots,
-					destination
-				});
-				for (const [i, slide] of slides.entries()) {
-					if (options.card !== void 0 && options.card !== i) continue;
-					const file = outputFile(kind, slide, i);
-					const page = await browser.newPage({
-						viewport: {
-							width,
-							height
-						},
-						deviceScaleFactor: config.supersample || 1,
-						locale
-					});
-					const errors = [];
-					page.on("pageerror", (e) => errors.push(e.message));
-					page.on("requestfailed", (r) => {
-						if (r.method() !== "HEAD") errors.push(`Failed to load ${r.url()}`);
-					});
-					page.on("response", (r) => {
-						if (r.status() >= 400 && r.request().method() !== "HEAD" && !/\/(copy|[^/]+\.nodes)\.json$|\/raw\//.test(new URL(r.url()).pathname)) errors.push(`${r.status()} ${r.url()}`);
-					});
-					const label = `${locale}/${file}`;
-					await page.goto(`${base}/studio/preview.html?locale=${locale}&kind=${kind}&slide=${i}`);
-					await page.locator("html[data-ready=\"true\"]").waitFor({ timeout: 3e4 }).catch(() => {
-						throw new Error(`${label}: ${errors.join("\n") || "never became ready"}`);
-					});
-					const report = JSON.parse(await page.locator("html").getAttribute("data-report") || "{}");
-					const fonts = await page.evaluate(() => [...document.fonts].map((f) => f.status));
-					if (fonts.includes("error") || slide.title && !fonts.includes("loaded")) throw new Error(`Fonts failed to load: ${label}`);
-					if (!(report.fit > 0)) throw new Error(`Copy does not fit even at ${config.minFit || .72}× size; shorten it: ${label}`);
-					const inside = (b) => !!b && b.x >= -.5 && b.y >= -.5 && b.x + b.width <= width + .5 && b.y + b.height <= height + .5;
-					for (const el of await page.locator("[data-check-bounds]").all()) if (!inside(await el.boundingBox())) throw new Error(`Callout or label leaves the canvas: ${label}`);
-					if (errors.length) throw new Error(errors.join("\n"));
-					const png = file.endsWith(".png");
-					const shot = await page.screenshot({
-						type: png ? "png" : "jpeg",
-						scale: "css",
-						omitBackground: png && !!slide.transparent,
-						...png ? {} : { quality: config.jpegQuality || 94 }
-					});
-					const bytes = png && slide.transparent ? await rgba(page, shot) : shot;
-					node_fs.default.mkdirSync(node_path.default.dirname(node_path.default.join(dir, file)), { recursive: true });
-					node_fs.default.writeFileSync(node_path.default.join(dir, file), bytes);
-					written.add(node_path.default.join(dir, file));
-					if (shots) node_fs.default.writeFileSync(node_path.default.join(shots, `${i + 1}.png`), await page.screenshot({
-						type: "png",
-						scale: "css"
-					}));
-					if (report.continuous && !profiles[kind].defaultLocaleOnly) edges[i] = await edgeColumns(page, width, height);
-					await page.close();
-					const notes = [];
-					if (locale !== defaultLocale) {
-						tally.movedCallouts += report.movedCallouts.length;
-						if (report.missingCopy.length) {
-							tally.untranslated++;
-							notes.push(`untranslated: ${report.missingCopy.join(", ")}`);
-						}
-						if (report.fallbackCaptures.length) {
-							tally.borrowedCaptures++;
-							notes.push(`${defaultLocale} capture: ${report.fallbackCaptures.join(", ")}`);
-						}
-						if (report.fixedCallouts.length) {
-							tally.fixedCallouts++;
-							notes.push("callout kept its default-locale position");
-						}
-					}
-					if (report.fit < 1) {
-						tally.shrunk++;
-						notes.push(`copy shrunk to ${Math.round(report.fit * 100)}%`);
-					}
-					if (report.widows?.length) warn(`${label}: "${report.widows.join("\", \"")}" is left on a short last line; reword or shorten the copy`);
-					tally.cards++;
-					const card = {
-						locale,
-						kind,
-						index: i,
-						feature: slide.feature,
-						file: node_path.default.join(locale, file).split(node_path.default.sep).join("/"),
-						width,
-						height,
-						bytes: bytes.length,
-						notes
-					};
-					cards.push(card);
-					manifest.galleries[kind].push({
-						...card,
-						file,
-						slide: i,
-						sources: devicesFor(slide).map((d) => `raw/${d.raw}`)
-					});
-					log(`${label}${notes.length ? `  (${notes.join("; ")})` : ""}`);
-				}
-				for (let i = 0; i + 1 < edges.length; i++) {
-					const rows = edges[i] && edges[i + 1] ? seamBreak(edges[i][1], edges[i + 1][0]) : null;
-					if (rows !== null) warn(`${locale}/${kind}: the background breaks at the seam between cards ${i + 1} and ${i + 2} (${rows}% of rows differ)`);
-				}
-				if (options.card !== void 0 || slides.length < 2 || profiles[kind].defaultLocaleOnly || (config.contactSheets || {})[kind] === false) continue;
-				const h = width > height ? 600 : 960, w = Math.round(h * width / height);
-				const sheet = await browser.newPage({ viewport: {
-					width: w * slides.length,
-					height: h
-				} });
-				await sheet.setContent(`<body style="margin:0;display:flex">${manifest.galleries[kind].map((m) => `<img src="${base}/${locale}/${m.file}?t=${Date.now()}" style="height:${h}px;width:${w}px">`).join("")}</body>`);
-				await sheet.waitForLoadState("networkidle");
-				const sheetName = (config.contactSheets || {})[kind] || `contact-${kind}.jpg`;
-				written.add(node_path.default.join(dir, sheetName));
-				node_fs.default.mkdirSync(node_path.default.dirname(node_path.default.join(dir, sheetName)), { recursive: true });
-				await sheet.screenshot({
-					path: node_path.default.join(dir, sheetName),
-					type: "jpeg",
-					quality: 90
-				});
-				await sheet.close();
-			}
-			for (const strip of locale === defaultLocale && options.card === void 0 ? config.readmeStrips || [] : []) {
-				if (options.kind && options.kind !== strip.kind && options.kind !== "strips") continue;
-				const { width, height } = profiles[strip.kind];
-				const shots = [];
-				for (const [n, i] of strip.cards.entries()) {
-					const position = strip.cards.length === 1 ? "only" : n === 0 ? "first" : n === strip.cards.length - 1 ? "last" : "middle";
-					const page = await browser.newPage({
-						viewport: {
-							width,
-							height
-						},
-						deviceScaleFactor: config.supersample || 1,
-						locale
-					});
-					await page.goto(`${base}/studio/preview.html?locale=${locale}&kind=${strip.kind}&slide=${i}&strip=${position}`);
-					await page.locator("html[data-ready=\"true\"]").waitFor({ timeout: 3e4 });
-					shots.push((await page.screenshot({
-						type: "png",
-						scale: "css"
-					})).toString("base64"));
-					await page.close();
-				}
-				const h = strip.height || 1200, w = Math.round(h * width / height);
-				const sheet = await browser.newPage({ viewport: {
-					width: w * shots.length,
-					height: h
-				} });
-				await sheet.setContent(`<body style="margin:0;display:flex">${shots.map((s) => `<img src="data:image/png;base64,${s}" style="height:${h}px;width:${w}px">`).join("")}</body>`);
-				await sheet.waitForLoadState("load");
-				node_fs.default.mkdirSync(node_path.default.dirname(node_path.default.join(dir, strip.file)), { recursive: true });
-				written.add(node_path.default.join(dir, strip.file));
-				await sheet.screenshot({
-					path: node_path.default.join(dir, strip.file),
-					type: "jpeg",
-					quality: config.jpegQuality || 92
-				});
-				await sheet.close();
-				log(`${locale}/${strip.file}  (strip of ${strip.kind} ${strip.cards.map((i) => i + 1).join(", ")})`);
-			}
-			if (!options.kind && options.card === void 0) {
-				const files = Object.values(manifest.galleries).flat().map((m) => node_path.default.join(dir, m.file));
-				for (const folder of new Set(files.map((f) => node_path.default.dirname(f)))) for (const f of node_fs.default.readdirSync(folder)) {
-					if (!IMAGES.test(f) || written.has(node_path.default.join(folder, f))) continue;
-					const stale = node_path.default.relative(listing, node_path.default.join(folder, f));
-					if (options.prune) {
-						node_fs.default.rmSync(node_path.default.join(folder, f));
-						log(`deleted ${stale} (no card writes it any more)`);
-					} else warn(`${stale} is no longer in the gallery; delete it, or export with --prune`);
-				}
-			}
-			const words = listingFor(locale);
-			for (const problem of words ? listingProblems(words, storeFor(config, profiles)) : []) warn(`${locale}/listing.json ${problem.message}`);
-			if (options.fastlane && words) {
-				node_fs.default.mkdirSync(laneDir(locale), { recursive: true });
-				for (const [field, name] of [
-					["title", "title"],
-					["shortDescription", "short_description"],
-					["fullDescription", "full_description"]
-				]) {
-					const value = words[field];
-					if (typeof value === "string") node_fs.default.writeFileSync(node_path.default.join(laneDir(locale), `${name}.txt`), `${value.trimEnd()}\n`);
-				}
-			}
-			if (config.writeAssets !== false && !options.kind) node_fs.default.writeFileSync(node_path.default.join(dir, "assets.json"), JSON.stringify(manifest, null, 2) + "\n");
-			tallies.push(tally);
-			if (options.strict && locale !== defaultLocale && (tally.untranslated || tally.borrowedCaptures || tally.fixedCallouts)) failures++;
-		}
-		if (failures) throw new Error(`--strict: ${failures} locale(s) still borrow ${defaultLocale} words, captures or callout positions`);
+		queue = renderQueue(Math.max(1, Math.floor(options.jobs || defaultJobs())), browser);
+		const run = {
+			...files,
+			options,
+			browser,
+			base,
+			queue,
+			gallery,
+			cards,
+			tallies,
+			staged,
+			log,
+			warn
+		};
+		const plans = plan(run);
+		let failures = 0;
+		for (const locale of plans) if (!await writeLocale(run, locale)) failures++;
+		if (failures) throw new Error(`--strict: ${failures} locale(s) still borrow ${files.defaultLocale} words, captures or callout positions`);
 		if (options.strict && warnings.length) throw new Error(`--strict: ${warnings.length} warning(s)`);
-		for (const { shots, destination } of staged) {
-			node_fs.default.mkdirSync(destination, { recursive: true });
-			for (const f of node_fs.default.readdirSync(destination)) if (IMAGES.test(f)) node_fs.default.rmSync(node_path.default.join(destination, f));
-			for (const f of node_fs.default.readdirSync(shots)) node_fs.default.copyFileSync(node_path.default.join(shots, f), node_path.default.join(destination, f));
-		}
+		commitFastlane(staged);
 		return finish({
 			ok: true,
 			cards,
@@ -2065,12 +1898,325 @@ async function exportListing(options = {}) {
 			error: error instanceof Error ? error.message : String(error)
 		});
 	} finally {
+		await (queue ? queue.close() : browser?.close());
 		for (const { shots } of staged) node_fs.default.rmSync(shots, {
 			recursive: true,
 			force: true
 		});
-		await browser?.close();
 		server?.close();
+	}
+}
+/** Every card the export will write, queued to render in the order the export reads them. */
+function plan(run) {
+	const { config, profiles, galleries, defaultLocale, options, gallery: { cardsFor, outputFile } } = run;
+	return (options.locales?.length ? options.locales : run.locales).map((locale) => {
+		const galleryPlans = [];
+		for (const kind of Object.keys(galleries)) {
+			if (options.kind && options.kind !== kind) continue;
+			if (profiles[kind].defaultLocaleOnly && locale !== defaultLocale) continue;
+			const slides = cardsFor(galleries, kind);
+			const { width, height } = profiles[kind];
+			const destination = options.card === void 0 ? laneShots(run, locale, kind) : null;
+			const cards = [...slides.entries()].filter(([i]) => options.card === void 0 || options.card === i).map(([index, slide]) => {
+				const file = outputFile(kind, slide, index);
+				const job = {
+					locale,
+					kind,
+					index,
+					slide,
+					file,
+					label: `${locale}/${file}`
+				};
+				return {
+					...job,
+					rendered: run.queue.add((browser) => withCardPage(run, browser, locale, kind, (page) => renderCard(run, page, job, !!destination)))
+				};
+			});
+			galleryPlans.push({
+				kind,
+				width,
+				height,
+				slides,
+				cards,
+				destination
+			});
+		}
+		const strips = [];
+		for (const strip of locale === defaultLocale && options.card === void 0 ? config.readmeStrips || [] : []) {
+			if (options.kind && options.kind !== strip.kind && options.kind !== "strips") continue;
+			const shots = strip.cards.map((i, n) => {
+				const position = strip.cards.length === 1 ? "only" : n === 0 ? "first" : n === strip.cards.length - 1 ? "last" : "middle";
+				return run.queue.add((browser) => withCardPage(run, browser, locale, strip.kind, (page) => renderStripCard(run, page, locale, strip.kind, i, position)));
+			});
+			strips.push({
+				strip,
+				shots
+			});
+		}
+		return {
+			locale,
+			dir: node_path.default.join(run.listing, locale),
+			galleries: galleryPlans,
+			strips
+		};
+	});
+}
+function fastlaneConfig({ config, defaultLocale }) {
+	return {
+		dir: "fastlane/metadata/android",
+		screenshots: { phone: "images/phoneScreenshots" },
+		screenshotLocales: [defaultLocale],
+		locales: {},
+		...config.fastlane
+	};
+}
+function laneShots(run, locale, kind) {
+	const { screenshots, screenshotLocales } = fastlaneConfig(run);
+	return run.options.fastlane && screenshots[kind] && (screenshotLocales === "all" || screenshotLocales.includes(locale)) ? node_path.default.join(laneDir(run, locale), screenshots[kind]) : null;
+}
+/** Use a fresh page, in a context of its own, sized for a card of `kind`; it closes even when the card fails. */
+async function withCardPage(run, browser, locale, kind, use) {
+	const { width, height } = run.profiles[kind];
+	const page = await browser.newPage({
+		viewport: {
+			width,
+			height
+		},
+		deviceScaleFactor: run.config.supersample || 1,
+		locale
+	});
+	try {
+		return await use(page);
+	} finally {
+		await page.close().catch(() => {});
+	}
+}
+/** Render a gallery card on a fresh page and check it; throws what is wrong with it. */
+async function renderCard(run, page, { locale, kind, index, slide, file, label }, withFastlane) {
+	const { config, profiles } = run;
+	const { width, height } = profiles[kind];
+	const errors = [];
+	page.on("pageerror", (e) => errors.push(e.message));
+	page.on("requestfailed", (r) => {
+		if (r.method() !== "HEAD") errors.push(`Failed to load ${r.url()}`);
+	});
+	page.on("response", (r) => {
+		if (r.status() >= 400 && r.request().method() !== "HEAD" && !/\/(copy|[^/]+\.nodes)\.json$|\/raw\//.test(new URL(r.url()).pathname)) errors.push(`${r.status()} ${r.url()}`);
+	});
+	await page.goto(`${run.base}/studio/preview.html?locale=${locale}&kind=${kind}&slide=${index}`);
+	await page.locator("html[data-ready=\"true\"]").waitFor({ timeout: 3e4 }).catch(() => {
+		throw new Error(`${label}: ${errors.join("\n") || "never became ready"}`);
+	});
+	const report = JSON.parse(await page.locator("html").getAttribute("data-report") || "{}");
+	const fonts = await page.evaluate(() => [...document.fonts].map((f) => f.status));
+	if (fonts.includes("error") || slide.title && !fonts.includes("loaded")) throw new Error(`Fonts failed to load: ${label}`);
+	if (!(report.fit > 0)) throw new Error(`Copy does not fit even at ${config.minFit || .72}× size; shorten it: ${label}`);
+	const inside = (b) => !!b && b.x >= -.5 && b.y >= -.5 && b.x + b.width <= width + .5 && b.y + b.height <= height + .5;
+	for (const el of await page.locator("[data-check-bounds]").all()) if (!inside(await el.boundingBox())) throw new Error(`Callout or label leaves the canvas: ${label}`);
+	if (errors.length) throw new Error(errors.join("\n"));
+	const png = file.endsWith(".png");
+	const shot = await page.screenshot({
+		type: png ? "png" : "jpeg",
+		scale: "css",
+		omitBackground: png && !!slide.transparent,
+		...png ? {} : { quality: config.jpegQuality || 94 }
+	});
+	return {
+		report,
+		bytes: png && slide.transparent ? await rgba(page, shot) : shot,
+		fastlane: withFastlane ? await page.screenshot({
+			type: "png",
+			scale: "css"
+		}) : null,
+		edges: report.continuous && !profiles[kind].defaultLocaleOnly ? await edgeColumns(page, width, height) : null
+	};
+}
+/** One card of a README strip, drawn for its place in the strip, as PNG. */
+async function renderStripCard(run, page, locale, kind, index, position) {
+	await page.goto(`${run.base}/studio/preview.html?locale=${locale}&kind=${kind}&slide=${index}&strip=${position}`);
+	await page.locator("html[data-ready=\"true\"]").waitFor({ timeout: 3e4 });
+	return page.screenshot({
+		type: "png",
+		scale: "css"
+	});
+}
+/** Write one language: its cards, seams and contact sheets, strips, stale-file check, text and assets.json. False when --strict fails it. */
+async function writeLocale(run, plan) {
+	const { locale, dir } = plan;
+	const { options, defaultLocale, config, profiles } = run;
+	const manifest = { galleries: {} };
+	const written = /* @__PURE__ */ new Set();
+	const tally = {
+		locale,
+		cards: 0,
+		untranslated: 0,
+		borrowedCaptures: 0,
+		movedCallouts: 0,
+		fixedCallouts: 0,
+		shrunk: 0
+	};
+	for (const gallery of plan.galleries) {
+		manifest.galleries[gallery.kind] = [];
+		const edges = await writeCards(run, plan, gallery, manifest, written, tally);
+		checkSeams(run, locale, gallery.kind, edges);
+		if (options.card !== void 0 || gallery.slides.length < 2 || profiles[gallery.kind].defaultLocaleOnly || (config.contactSheets || {})[gallery.kind] === false) continue;
+		await contactSheet(run, plan, gallery, manifest, written);
+	}
+	for (const strip of plan.strips) await writeStrip(run, plan, strip, written);
+	if (!options.kind && options.card === void 0) staleOutputs(run, plan, manifest, written);
+	writeListingText(run, locale);
+	if (config.writeAssets !== false && !options.kind) node_fs.default.writeFileSync(node_path.default.join(dir, "assets.json"), JSON.stringify(manifest, null, 2) + "\n");
+	run.tallies.push(tally);
+	return !(options.strict && locale !== defaultLocale && (tally.untranslated || tally.borrowedCaptures || tally.fixedCallouts));
+}
+/** Take a gallery's rendered cards in order: write each, note what it borrowed or shrank, and stage it for fastlane. Returns each card's edges. */
+async function writeCards(run, { locale, dir }, gallery, manifest, written, tally) {
+	const { defaultLocale, log, warn } = run;
+	const { kind, width, height, destination } = gallery;
+	const edges = [];
+	const shots = destination ? node_fs.default.mkdtempSync(node_path.default.join(node_os.default.tmpdir(), "studio-fastlane-")) : null;
+	if (shots && destination) run.staged.push({
+		shots,
+		destination
+	});
+	for (const { index: i, slide, file, label, rendered } of gallery.cards) {
+		const { report, bytes, fastlane, edges: edge } = await rendered();
+		node_fs.default.mkdirSync(node_path.default.dirname(node_path.default.join(dir, file)), { recursive: true });
+		node_fs.default.writeFileSync(node_path.default.join(dir, file), bytes);
+		written.add(node_path.default.join(dir, file));
+		if (shots && fastlane) node_fs.default.writeFileSync(node_path.default.join(shots, `${i + 1}.png`), fastlane);
+		if (edge) edges[i] = edge;
+		const notes = [];
+		if (locale !== defaultLocale) {
+			tally.movedCallouts += report.movedCallouts.length;
+			if (report.missingCopy.length) {
+				tally.untranslated++;
+				notes.push(`untranslated: ${report.missingCopy.join(", ")}`);
+			}
+			if (report.fallbackCaptures.length) {
+				tally.borrowedCaptures++;
+				notes.push(`${defaultLocale} capture: ${report.fallbackCaptures.join(", ")}`);
+			}
+			if (report.fixedCallouts.length) {
+				tally.fixedCallouts++;
+				notes.push("callout kept its default-locale position");
+			}
+		}
+		if (report.fit < 1) {
+			tally.shrunk++;
+			notes.push(`copy shrunk to ${Math.round(report.fit * 100)}%`);
+		}
+		if (report.widows?.length) warn(`${label}: "${report.widows.join("\", \"")}" is left on a short last line; reword or shorten the copy`);
+		tally.cards++;
+		const card = {
+			locale,
+			kind,
+			index: i,
+			feature: slide.feature,
+			file: node_path.default.join(locale, file).split(node_path.default.sep).join("/"),
+			width,
+			height,
+			bytes: bytes.length,
+			notes
+		};
+		run.cards.push(card);
+		manifest.galleries[kind].push({
+			...card,
+			file,
+			slide: i,
+			sources: run.gallery.devicesFor(slide).map((d) => `raw/${d.raw}`)
+		});
+		log(`${label}${notes.length ? `  (${notes.join("; ")})` : ""}`);
+	}
+	return edges;
+}
+/** Warn where a continuous background breaks between neighbouring cards. */
+function checkSeams(run, locale, kind, edges) {
+	for (let i = 0; i + 1 < edges.length; i++) {
+		const rows = edges[i] && edges[i + 1] ? seamBreak(edges[i][1], edges[i + 1][0]) : null;
+		if (rows !== null) run.warn(`${locale}/${kind}: the background breaks at the seam between cards ${i + 1} and ${i + 2} (${rows}% of rows differ)`);
+	}
+}
+/** Contact sheet: the set edge to edge, so seams can be checked at a glance. */
+async function contactSheet(run, { locale, dir }, { kind, width, height, slides }, manifest, written) {
+	const h = width > height ? 600 : 960, w = Math.round(h * width / height);
+	const sheet = await run.browser.newPage({ viewport: {
+		width: w * slides.length,
+		height: h
+	} });
+	await sheet.setContent(`<body style="margin:0;display:flex">${manifest.galleries[kind].map((m) => `<img src="${run.base}/${locale}/${m.file}?t=${Date.now()}" style="height:${h}px;width:${w}px">`).join("")}</body>`);
+	await sheet.waitForLoadState("networkidle");
+	await decoded(sheet);
+	const sheetName = (run.config.contactSheets || {})[kind] || `contact-${kind}.jpg`;
+	written.add(node_path.default.join(dir, sheetName));
+	node_fs.default.mkdirSync(node_path.default.dirname(node_path.default.join(dir, sheetName)), { recursive: true });
+	await sheet.screenshot({
+		path: node_path.default.join(dir, sheetName),
+		type: "jpeg",
+		quality: 90
+	});
+	await sheet.close();
+}
+/** Join a strip's rendered cards into one image. */
+async function writeStrip(run, { locale, dir }, { strip, shots: rendered }, written) {
+	const { width, height } = run.profiles[strip.kind];
+	const shots = [];
+	for (const shot of rendered) shots.push((await shot()).toString("base64"));
+	const h = strip.height || 1200, w = Math.round(h * width / height);
+	const sheet = await run.browser.newPage({ viewport: {
+		width: w * shots.length,
+		height: h
+	} });
+	await sheet.setContent(`<body style="margin:0;display:flex">${shots.map((s) => `<img src="data:image/png;base64,${s}" style="height:${h}px;width:${w}px">`).join("")}</body>`);
+	await sheet.waitForLoadState("load");
+	await decoded(sheet);
+	node_fs.default.mkdirSync(node_path.default.dirname(node_path.default.join(dir, strip.file)), { recursive: true });
+	written.add(node_path.default.join(dir, strip.file));
+	await sheet.screenshot({
+		path: node_path.default.join(dir, strip.file),
+		type: "jpeg",
+		quality: run.config.jpegQuality || 92
+	});
+	await sheet.close();
+	run.log(`${locale}/${strip.file}  (strip of ${strip.kind} ${strip.cards.map((i) => i + 1).join(", ")})`);
+}
+function staleOutputs(run, { dir }, manifest, written) {
+	const files = Object.values(manifest.galleries).flat().map((m) => node_path.default.join(dir, m.file));
+	for (const folder of new Set(files.map((f) => node_path.default.dirname(f)))) for (const f of node_fs.default.readdirSync(folder)) {
+		if (!IMAGES.test(f) || written.has(node_path.default.join(folder, f))) continue;
+		const stale = node_path.default.relative(run.listing, node_path.default.join(folder, f));
+		if (run.options.prune) {
+			node_fs.default.rmSync(node_path.default.join(folder, f));
+			run.log(`deleted ${stale} (no card writes it any more)`);
+		} else run.warn(`${stale} is no longer in the gallery; delete it, or export with --prune`);
+	}
+}
+/** Check <locale>/listing.json against the store's limits, and write it as fastlane text when asked. */
+function writeListingText(run, locale) {
+	const json = readJson(node_path.default.join(run.listing, locale, "listing.json"), null);
+	const words = json && {
+		...json,
+		title: json.title ?? json.appName
+	};
+	for (const problem of words ? listingProblems(words, storeFor(run.config, run.profiles)) : []) run.warn(`${locale}/listing.json ${problem.message}`);
+	if (!run.options.fastlane || !words) return;
+	const dir = laneDir(run, locale);
+	node_fs.default.mkdirSync(dir, { recursive: true });
+	for (const [field, name] of [
+		["title", "title"],
+		["shortDescription", "short_description"],
+		["fullDescription", "full_description"]
+	]) {
+		const value = words[field];
+		if (typeof value === "string") node_fs.default.writeFileSync(node_path.default.join(dir, `${name}.txt`), `${value.trimEnd()}\n`);
+	}
+}
+/** Replace each fastlane screenshot folder's images with the staged ones; only a successful export gets here. */
+function commitFastlane(staged) {
+	for (const { shots, destination } of staged) {
+		node_fs.default.mkdirSync(destination, { recursive: true });
+		for (const f of node_fs.default.readdirSync(destination)) if (IMAGES.test(f)) node_fs.default.rmSync(node_path.default.join(destination, f));
+		for (const f of node_fs.default.readdirSync(shots)) node_fs.default.copyFileSync(node_path.default.join(shots, f), node_path.default.join(destination, f));
 	}
 }
 /** The summary table the command line prints. */
@@ -2080,14 +2226,14 @@ function formatSummary(result) {
 	if (result.warnings.length) lines.push("", `${result.warnings.length} warning(s):`, ...result.warnings.map((w) => `  ${w}`));
 	return lines.join("\n");
 }
-/** `export [--locale de-DE] [--kind phone] [--card 3] [--strict] [--fastlane] [--prune] [--json]` */
+/** `export [--locale de-DE] [--kind phone] [--card 3] [--strict] [--fastlane] [--prune] [--jobs 4] [--json]` */
 async function run$7(argv) {
 	const arg = (name) => {
 		const i = argv.indexOf(`--${name}`);
 		return i >= 0 ? argv[i + 1] : void 0;
 	};
 	const json = argv.includes("--json");
-	const card = arg("card");
+	const card = arg("card"), jobs = arg("jobs");
 	const result = await exportListing({
 		locales: arg("locale") ? [arg("locale")] : void 0,
 		kind: arg("kind"),
@@ -2096,6 +2242,7 @@ async function run$7(argv) {
 		fastlane: argv.includes("--fastlane"),
 		prune: argv.includes("--prune"),
 		listing: arg("listing"),
+		jobs: jobs === void 0 ? void 0 : Number(jobs),
 		log: json ? () => {} : void 0
 	});
 	if (json) console.log(JSON.stringify(result, null, 2));
@@ -2105,13 +2252,19 @@ async function run$7(argv) {
 	}
 	return result.ok ? 0 : 1;
 }
-var IMAGES;
+var IMAGES, defaultJobs, laneDir, decoded;
 var init_export = __esmMin((() => {
 	init_project();
 	init_server();
 	init_playwright();
 	init_stores();
 	IMAGES = /\.(jpe?g|png|webp)$/i;
+	defaultJobs = () => Math.min(4, node_os.default.availableParallelism());
+	laneDir = (run, locale) => {
+		const { dir, locales } = fastlaneConfig(run);
+		return node_path.default.join(run.repo, dir, locales[locale] || locale);
+	};
+	decoded = (sheet) => sheet.evaluate(() => Promise.all([...document.images].map((image) => image.decode())));
 }));
 // src/node/ios.ts
 /**
@@ -4161,7 +4314,7 @@ const COMMANDS = {
 	},
 	export: {
 		summary: "Render and check every card",
-		usage: "export [--locale de-DE] [--kind phone] [--card 0] [--strict] [--fastlane] [--prune] [--json]",
+		usage: "export [--locale de-DE] [--kind phone] [--card 0] [--strict] [--fastlane] [--prune] [--jobs 4] [--json]",
 		run: async (argv) => (await Promise.resolve().then(() => (init_export(), export_exports))).run(argv)
 	},
 	recapture: {

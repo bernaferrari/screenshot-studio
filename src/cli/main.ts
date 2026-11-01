@@ -17,7 +17,7 @@ const COMMANDS: Record<string, Command> = {
     run: async argv => (await import('../node/server')).run(argv)},
   check: {summary: 'Check every file without rendering (fast; run it after each edit)', usage: 'check [--json]',
     run: async argv => (await import('../node/check')).run(argv)},
-  export: {summary: 'Render and check every card', usage: 'export [--locale de-DE] [--kind phone] [--card 0] [--strict] [--fastlane] [--prune] [--json]',
+  export: {summary: 'Render and check every card', usage: 'export [--locale de-DE] [--kind phone] [--card 0] [--strict] [--fastlane] [--prune] [--jobs 4] [--json]',
     run: async argv => (await import('../node/export')).run(argv)},
   recapture: {summary: 'Build the app, capture on the emulator or simulator and export', usage: 'recapture [locale…] [--boot] [--profile phone] [--serial emulator-5578] [--simulator "iPhone 17 Pro Max"] [--no-build] [--no-capture] [--no-export] [--dry-run]',
     run: async argv => (await import('../node/recapture')).run(argv)},

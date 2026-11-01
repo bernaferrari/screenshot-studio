@@ -73,7 +73,7 @@ The same studio makes the store listings and READMEs of [SDK Monitor](https://gi
 | `init` | Set up an app: from screenshots (`--screenshots`), for capture (`--package`), Android or iOS (`--platform`), with a theme |
 | `studio` | The editor |
 | `check` | Check every file, fast; run it after each edit |
-| `export` | Render and check every card (`--locale`, `--kind`, `--card`, `--strict`, `--fastlane`, `--prune`, `--json`) |
+| `export` | Render and check every card (`--locale`, `--kind`, `--card`, `--strict`, `--fastlane`, `--prune`, `--jobs`, `--json`) |
 | `recapture` | Build, capture on the emulator or simulator, export (`--boot`) |
 | `locales` | Language coverage; `--init de-DE` adds one |
 | `icons` | Every app icon from one drawing |
