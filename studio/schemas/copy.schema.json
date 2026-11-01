@@ -2,10 +2,37 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://github.com/bernaferrari/screenshot-studio/schemas/copy.schema.json",
   "title": "Screenshot Studio words (store-listing/<locale>/copy.json)",
+  "description": "<locale>/copy.json: words per card feature, or \"<gallery>/<feature>\" for one gallery.",
   "type": "object",
-  "properties": {"$schema": {"type": "string"}},
-  "additionalProperties": {"type": "object", "properties": {
-    "title": {"type": "string", "description": "The headline: *highlight*, ~old~, [new], \\n for a new line."},
-    "body": {"type": "string"}, "alt": {"type": "string"}, "tagline": {"type": "string"}
-  }, "additionalProperties": {"type": "string"}}
+  "additionalProperties": {
+    "$ref": "#/$defs/CopyEntry"
+  },
+  "properties": {
+    "$schema": {
+      "type": "string"
+    }
+  },
+  "$defs": {
+    "CopyEntry": {
+      "type": "object",
+      "properties": {
+        "title": {
+          "type": "string",
+          "description": "The headline: *highlight*, ~old~, [new], \\n for a new line."
+        },
+        "body": {
+          "type": "string"
+        },
+        "alt": {
+          "type": "string"
+        },
+        "tagline": {
+          "type": "string"
+        }
+      },
+      "additionalProperties": {
+        "type": "string"
+      }
+    }
+  }
 }

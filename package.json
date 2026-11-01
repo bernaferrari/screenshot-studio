@@ -42,10 +42,11 @@
   "scripts": {
     "dev": "vite --host 127.0.0.1",
     "build": "npm run build:studio && npm run build:ui",
-    "test": "node --test test/gallery.test.cjs test/layout.test.cjs test/workspace.test.cjs test/ios.test.cjs",
+    "test": "node --test test/gallery.test.cjs test/layout.test.cjs test/workspace.test.cjs test/ios.test.cjs test/schemas.test.cjs",
     "test:ui": "node --test test/navigation.browser.cjs",
-    "build:studio": "tsc -p tsconfig.json && node scripts/build-studio.mjs",
+    "build:studio": "npm run schemas && tsc -p tsconfig.json && node scripts/build-studio.mjs",
     "build:ui": "vite build && node scripts/install-ui.mjs",
+    "schemas": "node scripts/schemas.mjs",
     "typecheck": "tsc -p tsconfig.json && tsc -p tsconfig.ui.json",
     "test:golden": "node --test test/golden.test.cjs"
   },
@@ -72,6 +73,7 @@
     "@vitejs/plugin-react": "^6.1.2",
     "prettier": "^3.9.10",
     "tailwindcss": "^4.3.3",
+    "ts-json-schema-generator": "^2.9.0",
     "tw-animate-css": "^1.4.0",
     "typescript": "^7.0.2",
     "vite": "^8.3.5"

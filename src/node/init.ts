@@ -177,7 +177,7 @@ export function init(options: InitOptions = {}): InitResult {
   const template = (relative: string, target = relative) => write(target, fill(fs.readFileSync(source(relative), 'utf8')));
 
   fs.mkdirSync(listing, {recursive: true});
-  const config: StudioConfig & {$schema: string; package?: string} = {...readJson<StudioConfig & {$schema: string}>(path.join(TEMPLATES, 'studio.json')), app: name, locales};
+  const config: StudioConfig & {$schema: string} = {...readJson<StudioConfig & {$schema: string}>(path.join(TEMPLATES, 'studio.json')), app: name, locales};
   if (pkg) config.package = pkg; else delete config.package;
   const screenshots = options.screenshots || found?.images.join(',');
   if (screenshots) {

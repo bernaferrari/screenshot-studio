@@ -2,6 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://github.com/bernaferrari/screenshot-studio/schemas/studio.schema.json",
   "title": "Screenshot Studio settings (store-listing/studio.json)",
+  "description": "store-listing/studio.json",
   "type": "object",
   "properties": {
     "$schema": {
@@ -9,7 +10,7 @@
     },
     "app": {
       "type": "string",
-      "description": "The app's name, for the editor and README name banners."
+      "description": "The app's name, used by the editor and README name banners."
     },
     "package": {
       "type": "string",
@@ -18,41 +19,43 @@
     "locales": {
       "type": "array",
       "items": {
-        "$ref": "#/$defs/locale"
+        "$ref": "#/$defs/Locale"
       },
-      "minItems": 1,
-      "description": "Every language the listing is made in."
+      "description": "Every language the listing is made in.",
+      "minItems": 1
     },
     "defaultLocale": {
-      "$ref": "#/$defs/locale",
+      "$ref": "#/$defs/Locale",
       "description": "The reference language other languages fall back to."
     },
     "supersample": {
       "type": "number",
+      "description": "Render at this multiple and scale down; 2 keeps rotated or scaled UI crisp.",
       "minimum": 1,
-      "maximum": 4,
-      "description": "Render at this multiple and scale down; 2 keeps scaled UI crisp."
+      "maximum": 4
     },
     "jpegQuality": {
       "type": "number",
+      "description": "JPEG quality for cards (default 94).",
       "minimum": 1,
       "maximum": 100
     },
     "rtl": {
       "type": "array",
       "items": {
-        "$ref": "#/$defs/locale"
+        "$ref": "#/$defs/Locale"
       },
       "description": "Languages written right to left."
     },
     "minFit": {
       "type": "number",
+      "description": "The smallest size headlines may shrink to before the export fails (default 0.72).",
       "minimum": 0.3,
-      "maximum": 1,
-      "description": "The smallest size headlines may shrink to (default 0.72)."
+      "maximum": 1
     },
     "writeAssets": {
-      "type": "boolean"
+      "type": "boolean",
+      "description": "Write <locale>/assets.json, a manifest of every exported card (default true)."
     },
     "contactSheets": {
       "type": "object",
@@ -65,7 +68,8 @@
             "const": false
           }
         ]
-      }
+      },
+      "description": "Contact sheet file name per gallery, or false for none."
     },
     "frames": {
       "anyOf": [
@@ -73,76 +77,167 @@
           "const": false
         },
         {
-          "type": "object",
-          "properties": {
-            "phone": {
-              "$ref": "#/$defs/ratio"
-            },
-            "iphone": {
-              "$ref": "#/$defs/ratio"
-            },
-            "tablet": {
-              "$ref": "#/$defs/ratio"
-            },
-            "browser": {
-              "$ref": "#/$defs/ratio"
-            },
-            "landscape": {
-              "$ref": "#/$defs/ratio"
-            },
-            "fixed": {
-              "type": "array",
-              "items": {
-                "type": "string"
-              },
-              "description": "Layouts whose CSS sizes their own frames."
-            }
-          },
-          "additionalProperties": false
+          "$ref": "#/$defs/FramesConfig"
         }
-      ]
+      ],
+      "description": "Bezel and corner radius as fractions of a frame's width; `fixed` lists layouts whose CSS sizes frames."
     },
     "bounds": {
       "type": "object",
+      "additionalProperties": false,
       "properties": {
-        "margin": {
-          "type": "number"
-        },
-        "visible": {
-          "type": "number"
-        },
-        "sides": {
-          "type": "boolean"
-        },
-        "right": {
-          "type": [
-            "boolean",
-            "number"
-          ]
-        },
-        "top": {
-          "type": "boolean"
-        },
-        "cut": {
-          "type": "boolean"
-        },
         "layouts": {
           "type": "object",
           "additionalProperties": {
             "anyOf": [
               {
-                "$ref": "#/$defs/bounds"
+                "$ref": "#/$defs/BoundsRule"
               },
               {
                 "const": false
               }
             ]
           }
+        },
+        "margin": {
+          "type": "number",
+          "description": "Pixels a frame keeps from the sides and top."
+        },
+        "visible": {
+          "type": "number",
+          "description": "The fraction of a frame that must stay on the canvas.",
+          "minimum": 0,
+          "maximum": 1
+        },
+        "sides": {
+          "type": "boolean",
+          "description": "May leave either side."
+        },
+        "right": {
+          "type": [
+            "boolean",
+            "number"
+          ],
+          "description": "May run off the right: true, or the fraction of its width."
+        },
+        "top": {
+          "type": "boolean",
+          "description": "May hang from the top."
+        },
+        "cut": {
+          "type": "boolean",
+          "description": "A landscape screen may be cut at the top or bottom."
+        }
+      },
+      "description": "How far devices may leave the canvas, globally and per layout word, feature or gallery."
+    },
+    "identity": {
+      "$ref": "#/$defs/Identity",
+      "description": "Defaults for README name banners."
+    },
+    "readmeStrips": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/ReadmeStrip"
+      },
+      "description": "Real store cards joined edge to edge for a README."
+    },
+    "fastlane": {
+      "$ref": "#/$defs/FastlaneConfig",
+      "description": "fastlane / F-Droid metadata written by `export --fastlane`."
+    },
+    "capture": {
+      "$ref": "#/$defs/CaptureConfig",
+      "description": "How `recapture` builds, installs, captures and exports."
+    }
+  },
+  "additionalProperties": false,
+  "$defs": {
+    "Locale": {
+      "type": "string",
+      "description": "A language tag: en-US, pt-BR, zh-Hans.",
+      "pattern": "^[a-z]{2,3}(-[A-Za-z0-9]{2,8})*$"
+    },
+    "FramesConfig": {
+      "type": "object",
+      "properties": {
+        "phone": {
+          "$ref": "#/$defs/FrameRatio"
+        },
+        "iphone": {
+          "$ref": "#/$defs/FrameRatio"
+        },
+        "tablet": {
+          "$ref": "#/$defs/FrameRatio"
+        },
+        "browser": {
+          "$ref": "#/$defs/FrameRatio"
+        },
+        "landscape": {
+          "$ref": "#/$defs/FrameRatio"
+        },
+        "fixed": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "description": "Layouts whose CSS sizes their own frames."
         }
       },
       "additionalProperties": false
     },
-    "identity": {
+    "FrameRatio": {
+      "type": "object",
+      "properties": {
+        "bezel": {
+          "type": "number"
+        },
+        "radius": {
+          "type": "number"
+        }
+      },
+      "required": [
+        "bezel",
+        "radius"
+      ],
+      "additionalProperties": false
+    },
+    "BoundsRule": {
+      "type": "object",
+      "properties": {
+        "margin": {
+          "type": "number",
+          "description": "Pixels a frame keeps from the sides and top."
+        },
+        "visible": {
+          "type": "number",
+          "description": "The fraction of a frame that must stay on the canvas.",
+          "minimum": 0,
+          "maximum": 1
+        },
+        "sides": {
+          "type": "boolean",
+          "description": "May leave either side."
+        },
+        "right": {
+          "type": [
+            "boolean",
+            "number"
+          ],
+          "description": "May run off the right: true, or the fraction of its width."
+        },
+        "top": {
+          "type": "boolean",
+          "description": "May hang from the top."
+        },
+        "cut": {
+          "type": "boolean",
+          "description": "A landscape screen may be cut at the top or bottom."
+        }
+      },
+      "additionalProperties": false
+    },
+    "Identity": {
       "type": "object",
       "properties": {
         "icon": {
@@ -152,39 +247,37 @@
           "type": "string"
         }
       },
-      "additionalProperties": false
+      "additionalProperties": false,
+      "description": "A README name banner: the app's icon and name."
     },
-    "readmeStrips": {
-      "type": "array",
-      "items": {
-        "type": "object",
-        "required": [
-          "file",
-          "kind",
-          "cards"
-        ],
-        "properties": {
-          "file": {
-            "type": "string"
-          },
-          "kind": {
-            "type": "string"
-          },
-          "cards": {
-            "type": "array",
-            "items": {
-              "type": "integer",
-              "minimum": 0
-            }
-          },
-          "height": {
-            "type": "number"
+    "ReadmeStrip": {
+      "type": "object",
+      "properties": {
+        "file": {
+          "type": "string"
+        },
+        "kind": {
+          "type": "string"
+        },
+        "cards": {
+          "type": "array",
+          "items": {
+            "type": "integer",
+            "minimum": 0
           }
         },
-        "additionalProperties": false
-      }
+        "height": {
+          "type": "number"
+        }
+      },
+      "required": [
+        "file",
+        "kind",
+        "cards"
+      ],
+      "additionalProperties": false
     },
-    "fastlane": {
+    "FastlaneConfig": {
       "type": "object",
       "properties": {
         "dir": {
@@ -204,7 +297,7 @@
             {
               "type": "array",
               "items": {
-                "$ref": "#/$defs/locale"
+                "$ref": "#/$defs/Locale"
               }
             }
           ]
@@ -218,179 +311,139 @@
       },
       "additionalProperties": false
     },
-    "capture": {
+    "CaptureConfig": {
       "type": "object",
       "properties": {
-        "platform": {
-          "enum": [
-            "android",
-            "ios"
-          ],
-          "description": "Where captures come from: an Android emulator (default) or an iOS simulator."
-        },
         "build": {
           "type": "string",
           "description": "Shell command that builds the capture app, run from the repository."
         },
+        "platform": {
+          "type": "string",
+          "enum": [
+            "android",
+            "ios"
+          ],
+          "description": "Where captures come from: an Android emulator (the default) or an iOS simulator."
+        },
         "install": {
           "type": "array",
           "items": {
-            "type": "object",
-            "required": [
-              "package"
-            ],
-            "anyOf": [
-              {
-                "required": [
-                  "apk"
-                ]
-              },
-              {
-                "required": [
-                  "app"
-                ]
-              }
-            ],
-            "properties": {
-              "apk": {
-                "type": "string",
-                "description": "Android: the APK to install."
-              },
-              "app": {
-                "type": "string",
-                "description": "iOS: the simulator .app to install."
-              },
-              "package": {
-                "type": "string"
-              }
-            },
-            "additionalProperties": false
-          }
+            "$ref": "#/$defs/CaptureInstall"
+          },
+          "description": "What to install before capturing: an APK (Android) or a simulator .app (iOS), with its package or bundle ID."
         },
         "runs": {
           "type": "array",
           "items": {
-            "type": "object",
-            "properties": {
-              "script": {
-                "type": "string"
-              },
-              "args": {
-                "type": "array",
-                "items": {
-                  "type": "string"
-                }
-              },
-              "profiles": {
-                "anyOf": [
-                  {
-                    "const": false
-                  },
-                  {
-                    "type": "array",
-                    "items": {
-                      "type": "string"
-                    }
-                  }
-                ]
-              },
-              "locales": {
-                "anyOf": [
-                  {
-                    "enum": [
-                      "all",
-                      "default"
-                    ]
-                  },
-                  {
-                    "type": "array",
-                    "items": {
-                      "$ref": "#/$defs/locale"
-                    }
-                  }
-                ]
-              }
-            },
-            "additionalProperties": false
+            "$ref": "#/$defs/CaptureRun"
           }
         },
         "retries": {
           "type": "integer",
+          "description": "Retries per capture run (default 2).",
           "minimum": 0
         },
         "export": {
-          "type": "string"
+          "type": "string",
+          "description": "Per-locale export command with {locale}, instead of the studio's exporter."
         },
         "after": {
           "type": "array",
           "items": {
             "type": "string"
-          }
+          },
+          "description": "Shell commands once everything is exported."
         },
         "serial": {
           "type": "string",
-          "pattern": "^emulator-\\d+$",
-          "description": "The capture emulator."
+          "description": "The capture emulator (default: CAPTURE_SERIAL, then emulator-5578).",
+          "pattern": "^emulator-\\d+$"
         },
         "avd": {
           "type": "string",
-          "description": "The emulator image `recapture --boot` starts."
+          "description": "The emulator image `recapture --boot` starts when none is running."
         },
         "simulator": {
           "type": "string",
-          "description": "The iOS simulator a capture runs on."
+          "description": "iOS: the simulator (name or UDID) for profiles that name none."
         }
       },
       "additionalProperties": true
-    }
-  },
-  "additionalProperties": false,
-  "$defs": {
-    "locale": {
-      "type": "string",
-      "pattern": "^[a-z]{2,3}(-[A-Za-z0-9]{2,8})*$"
     },
-    "ratio": {
+    "CaptureInstall": {
       "type": "object",
-      "required": [
-        "bezel",
-        "radius"
-      ],
       "properties": {
-        "bezel": {
-          "type": "number"
+        "apk": {
+          "type": "string",
+          "description": "Android: the APK to install."
         },
-        "radius": {
-          "type": "number"
+        "app": {
+          "type": "string",
+          "description": "iOS: the simulator .app to install."
+        },
+        "package": {
+          "type": "string"
         }
       },
-      "additionalProperties": false
-    },
-    "bounds": {
-      "type": "object",
-      "properties": {
-        "margin": {
-          "type": "number"
-        },
-        "visible": {
-          "type": "number",
-          "minimum": 0,
-          "maximum": 1
-        },
-        "sides": {
-          "type": "boolean"
-        },
-        "right": {
-          "type": [
-            "boolean",
-            "number"
+      "required": [
+        "package"
+      ],
+      "additionalProperties": false,
+      "description": "An APK (Android) or a simulator .app (iOS) to install, with its package or bundle ID.",
+      "anyOf": [
+        {
+          "required": [
+            "apk"
           ]
         },
-        "top": {
-          "type": "boolean"
+        {
+          "required": [
+            "app"
+          ]
+        }
+      ]
+    },
+    "CaptureRun": {
+      "type": "object",
+      "properties": {
+        "script": {
+          "type": "string"
         },
-        "cut": {
-          "type": "boolean"
+        "args": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "profiles": {
+          "anyOf": [
+            {
+              "const": false
+            },
+            {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            }
+          ]
+        },
+        "locales": {
+          "anyOf": [
+            {
+              "const": "all"
+            },
+            {
+              "const": "default"
+            },
+            {
+              "type": "array",
+              "items": {
+                "$ref": "#/$defs/Locale"
+              }
+            }
+          ]
         }
       },
       "additionalProperties": false

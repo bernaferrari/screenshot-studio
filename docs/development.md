@@ -12,7 +12,7 @@ Working on the studio itself. Agents changing it: read `AGENTS.md` too.
 | `src/cli/main.ts` | The `screenshot-studio` command, and the library's public exports |
 | `ui/src/` | The editor (React, shadcn/ui, Tailwind) |
 | `capture/` | The emulator and simulator side (Python: `capture.py`, `ios.py`, `uitree.py`) |
-| `schemas/` | JSON Schemas for the files an app keeps |
+| `schemas/` | JSON Schemas for the files an app keeps, generated from `src/core/types.d.ts` by `npm run schemas`. Never edit them by hand. |
 | `themes/`, `templates/` | What `init` copies into a new app |
 | `skills/store-screenshots/` | The skill `init` installs in an app ([Agents](agents.md)) |
 | `studio/` | **Built output**: what the package ships and serves to each app. Never edit it by hand. |
@@ -24,6 +24,7 @@ Working on the studio itself. Agents changing it: read `AGENTS.md` too.
 npm ci
 npm run build        # build:studio (tsc + rolldown → studio/) and build:ui (Vite → studio/assets/)
 npm run typecheck    # the studio (tsconfig.json) and the editor (tsconfig.ui.json), both strict
+npm run schemas      # schemas/ from the types in src/core/types.d.ts (build runs it too)
 npm test             # unit tests, against the built studio/studio.cjs
 npx playwright install chromium    # once, if Playwright has no browser
 npm run test:ui      # the editor in a browser, on temporary projects

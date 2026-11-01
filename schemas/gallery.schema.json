@@ -2,62 +2,55 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://github.com/bernaferrari/screenshot-studio/schemas/gallery.schema.json",
   "title": "Screenshot Studio cards (store-listing/gallery.json)",
+  "description": "store-listing/gallery.json: each gallery's cards.",
   "type": "object",
+  "additionalProperties": {
+    "$ref": "#/$defs/Gallery"
+  },
   "properties": {
     "$schema": {
       "type": "string"
     }
   },
-  "additionalProperties": {
-    "anyOf": [
-      {
-        "type": "array",
-        "items": {
-          "$ref": "#/$defs/card"
-        }
-      },
-      {
-        "type": "object",
-        "required": [
-          "inherits",
-          "cards"
-        ],
-        "properties": {
-          "inherits": {
-            "type": "string",
-            "description": "Merge each card over this gallery's card at the same position."
-          },
-          "cards": {
-            "type": "array",
-            "items": {
-              "type": "object"
-            }
+  "$defs": {
+    "Gallery": {
+      "anyOf": [
+        {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/Card"
           }
         },
-        "additionalProperties": false
-      }
-    ]
-  },
-  "$defs": {
-    "frame": {
-      "enum": [
-        "phone",
-        "iphone",
-        "tablet",
-        "browser",
-        "none"
-      ]
-    },
-    "card": {
-      "type": "object",
-      "required": [
-        "feature"
+        {
+          "type": "object",
+          "properties": {
+            "inherits": {
+              "type": "string",
+              "description": "Merge each card over this gallery's card at the same position."
+            },
+            "cards": {
+              "type": "array",
+              "items": {
+                "$ref": "#/$defs/CardOverride"
+              }
+            }
+          },
+          "required": [
+            "inherits",
+            "cards"
+          ],
+          "additionalProperties": false
+        }
       ],
+      "description": "A list of cards, or cards merged over another gallery's cards at the same positions."
+    },
+    "Card": {
+      "type": "object",
       "properties": {
         "feature": {
           "type": "string",
-          "pattern": "^[A-Za-z0-9][A-Za-z0-9._/-]*$",
-          "description": "The card's name; its words are copy.json[feature]."
+          "description": "The card's name; its words are copy.json[feature] (and copy.json[\"<gallery>/<feature>\"]).",
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._/-]*$"
         },
         "layout": {
           "type": "string",
@@ -68,32 +61,36 @@
           "description": "One capture, from <locale>/raw/."
         },
         "frame": {
-          "$ref": "#/$defs/frame"
+          "$ref": "#/$defs/FrameKind"
         },
         "devices": {
           "type": "array",
           "items": {
-            "$ref": "#/$defs/device"
-          }
+            "$ref": "#/$defs/DeviceSpec"
+          },
+          "description": "Several captures."
         },
         "callouts": {
           "type": "array",
           "items": {
-            "$ref": "#/$defs/callout"
+            "$ref": "#/$defs/Callout"
           }
         },
         "file": {
           "type": "string",
+          "description": "Output name; .png writes PNG.",
           "pattern": "\\.(jpe?g|png)$"
         },
         "transparent": {
-          "type": "boolean"
+          "type": "boolean",
+          "description": "With a .png file: a 32-bit PNG."
         },
         "vars": {
           "type": "object",
           "additionalProperties": {
             "type": "string"
-          }
+          },
+          "description": "CSS custom properties for this card."
         },
         "identity": {
           "anyOf": [
@@ -101,72 +98,89 @@
               "type": "boolean"
             },
             {
-              "type": "object",
-              "properties": {
-                "icon": {
-                  "type": "string"
-                },
-                "name": {
-                  "type": "string"
-                }
-              }
+              "$ref": "#/$defs/Identity"
             }
-          ]
+          ],
+          "description": "Replace the headline with a name banner."
         },
         "bounds": {
           "anyOf": [
             {
-              "const": false
+              "$ref": "#/$defs/BoundsRule"
             },
             {
-              "type": "object"
+              "const": false
             }
           ]
         },
         "sharedCopy": {
-          "type": "boolean"
+          "type": "boolean",
+          "description": "false keeps the card to its own \"<gallery>/<feature>\" words."
         },
         "alt": {
           "type": "string"
+        },
+        "title": {
+          "type": "string",
+          "description": "Words merged in from copy.json."
+        },
+        "body": {
+          "type": "string"
+        },
+        "tagline": {
+          "type": "string"
         }
       },
-      "additionalProperties": true
-    },
-    "device": {
-      "type": "object",
       "required": [
-        "raw"
+        "feature"
       ],
+      "additionalProperties": {
+        "description": "Anything else reaches the theme as ctx.slide."
+      }
+    },
+    "FrameKind": {
+      "type": "string",
+      "enum": [
+        "phone",
+        "iphone",
+        "tablet",
+        "browser",
+        "none"
+      ],
+      "description": "How a capture is framed. `none` shows it as the whole image."
+    },
+    "DeviceSpec": {
+      "type": "object",
       "properties": {
         "raw": {
           "type": "string"
         },
         "role": {
-          "type": "string"
+          "type": "string",
+          "description": "Becomes a CSS class; the theme places the device by it."
         },
         "frame": {
-          "$ref": "#/$defs/frame"
+          "$ref": "#/$defs/FrameKind"
         },
         "label": {
-          "type": "string"
+          "type": "string",
+          "description": "A caption over the frame, with *highlight*."
         },
         "alt": {
           "type": "string"
         },
         "profile": {
-          "type": "string"
+          "type": "string",
+          "description": "The profile whose capture ratio this device must have."
         }
       },
+      "required": [
+        "raw"
+      ],
       "additionalProperties": true
     },
-    "callout": {
+    "Callout": {
       "type": "object",
-      "required": [
-        "x",
-        "y",
-        "w",
-        "h"
-      ],
       "properties": {
         "x": {
           "type": "number"
@@ -198,21 +212,15 @@
         },
         "device": {
           "type": "integer",
+          "description": "Which device on the card (default 0).",
           "minimum": 0
         },
         "raw": {
-          "type": "string"
-        },
-        "role": {
-          "type": "string"
+          "type": "string",
+          "description": "Another capture of the same scene."
         },
         "place": {
           "type": "object",
-          "required": [
-            "left",
-            "top",
-            "width"
-          ],
           "properties": {
             "left": {
               "type": "number"
@@ -223,10 +231,21 @@
             "width": {
               "type": "number"
             }
-          }
+          },
+          "required": [
+            "left",
+            "top",
+            "width"
+          ],
+          "additionalProperties": false,
+          "description": "Placement in canvas pixels, instead of over the device."
+        },
+        "role": {
+          "type": "string"
         },
         "target": {
-          "type": "string"
+          "type": "string",
+          "description": "A UI element path from the layout map; the callout follows it into every language."
         },
         "targetId": {
           "type": "string"
@@ -235,13 +254,161 @@
           "type": "string"
         },
         "targetMode": {
+          "type": "string",
           "enum": [
             "element",
             "box"
           ]
         }
       },
+      "required": [
+        "x",
+        "y",
+        "w",
+        "h"
+      ],
+      "additionalProperties": false,
+      "description": "A region of a real capture lifted out and magnified, in capture pixels."
+    },
+    "Identity": {
+      "type": "object",
+      "properties": {
+        "icon": {
+          "type": "string"
+        },
+        "name": {
+          "type": "string"
+        }
+      },
+      "additionalProperties": false,
+      "description": "A README name banner: the app's icon and name."
+    },
+    "BoundsRule": {
+      "type": "object",
+      "properties": {
+        "margin": {
+          "type": "number",
+          "description": "Pixels a frame keeps from the sides and top."
+        },
+        "visible": {
+          "type": "number",
+          "description": "The fraction of a frame that must stay on the canvas.",
+          "minimum": 0,
+          "maximum": 1
+        },
+        "sides": {
+          "type": "boolean",
+          "description": "May leave either side."
+        },
+        "right": {
+          "type": [
+            "boolean",
+            "number"
+          ],
+          "description": "May run off the right: true, or the fraction of its width."
+        },
+        "top": {
+          "type": "boolean",
+          "description": "May hang from the top."
+        },
+        "cut": {
+          "type": "boolean",
+          "description": "A landscape screen may be cut at the top or bottom."
+        }
+      },
       "additionalProperties": false
+    },
+    "CardOverride": {
+      "type": "object",
+      "properties": {
+        "feature": {
+          "type": "string",
+          "description": "The card's name; its words are copy.json[feature] (and copy.json[\"<gallery>/<feature>\"]).",
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._/-]*$"
+        },
+        "layout": {
+          "type": "string",
+          "description": "Words that become CSS classes on the card."
+        },
+        "raw": {
+          "type": "string",
+          "description": "One capture, from <locale>/raw/."
+        },
+        "frame": {
+          "$ref": "#/$defs/FrameKind"
+        },
+        "devices": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/DeviceSpec"
+          },
+          "description": "Several captures."
+        },
+        "callouts": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/Callout"
+          }
+        },
+        "file": {
+          "type": "string",
+          "description": "Output name; .png writes PNG.",
+          "pattern": "\\.(jpe?g|png)$"
+        },
+        "transparent": {
+          "type": "boolean",
+          "description": "With a .png file: a 32-bit PNG."
+        },
+        "vars": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "string"
+          },
+          "description": "CSS custom properties for this card."
+        },
+        "identity": {
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "$ref": "#/$defs/Identity"
+            }
+          ],
+          "description": "Replace the headline with a name banner."
+        },
+        "bounds": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/BoundsRule"
+            },
+            {
+              "const": false
+            }
+          ]
+        },
+        "sharedCopy": {
+          "type": "boolean",
+          "description": "false keeps the card to its own \"<gallery>/<feature>\" words."
+        },
+        "alt": {
+          "type": "string"
+        },
+        "title": {
+          "type": "string",
+          "description": "Words merged in from copy.json."
+        },
+        "body": {
+          "type": "string"
+        },
+        "tagline": {
+          "type": "string"
+        }
+      },
+      "additionalProperties": {
+        "description": "Anything else reaches the theme as ctx.slide."
+      },
+      "description": "The fields a card changes in the inherited card at its position."
     }
   }
 }
