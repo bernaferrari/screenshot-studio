@@ -3127,367 +3127,283 @@ var init_locales = __esmMin((() => {
   npx screenshot-studio locales                 words translated, captures present and layout sidecars per locale
   npx screenshot-studio locales --init de-DE    add a locale with empty copy fields to fill in the editor`;
 }));
-// src/node/icon.ts
-/**
-* The icon factory: one drawing, every icon an app ships.
-*   npx screenshot-studio icons [store-listing/brand/icon.json]
-*   npx screenshot-studio icons --import drawable.xml > store-listing/brand/foreground.svg
-*
-* An app draws its icon once, as SVG layers on Android's 108 x 108 adaptive canvas (launchers show the
-* middle 72, from 18 to 90; keep the mark inside the 66-wide safe circle centred on 54, 54):
-*   store-listing/brand/background.svg   the full-bleed ground
-*   store-listing/brand/foreground.svg   the mark, on transparent
-*   store-listing/brand/monochrome.svg   the mark in one colour, for Android's themed icons (optional)
-* and lists where the icons go in store-listing/brand/icon.json, with paths from the repository root:
-*   {
-*     "android": {"res": "app/src/main/res", "legacy": true},
-*     "files": [
-*       {"path": "store-listing/brand/icon.png", "size": 512, "shape": "square"},
-*       {"path": "web/favicon.svg", "shape": "circle"},
-*       {"path": "web/favicon.ico", "shape": "rounded"},
-*       {"path": "desktop/AppIcon.icns", "shape": "rounded"}
-*     ]
-*   }
-* "opaque": true writes a PNG with no transparency (Apple's 1024px App Store icon must be opaque).
-* A target's "scale" grows or shrinks the mark on its ground (an Apple icon shows the whole square, so
-* its mark is usually larger than Android's safe zone allows). Shapes: "square" (full bleed; Play and app stores mask their own), "rounded" (a 22% corner, like a
-* launcher), "circle", and "mark" (the foreground alone, on transparent); {"layer": "name"} draws one
-* extra layer, brand/name.svg, alone. A path ending in .svg is written as vector, .ico holds 16-256px
-* PNG entries, .icns is built with macOS's iconutil, and any other path is a PNG of the given size.
-* A path ending in .icon is an Apple Icon Composer icon: {"path": "ios/AppIcon.icon", "apple":
-* {"Background": "background", "Mark": "foreground"}} writes each layer as Assets/<Name>.png at 1024px
-* (glass layers stay separate, so iOS can light them), keeps an existing icon.json (its glass, dark and
-* tinted settings are tuned in Icon Composer) or writes a plain one, and checks it with Xcode's ictool.
-*
-* An existing Android vector drawable can become a layer as is: `npx screenshot-studio icons --import
-* drawable.xml > brand/foreground.svg` (paths, groups, clips, alphas and gradients).
-*
-* Layers may embed bitmap art: an <image href="art.png"> beside the SVG is inlined when it is read.
-* An app with several icons (launcher shortcuts, say) lists them as {"icons": [{"layers": "todo",
-* "android": {...}, "files": [...]}, ...]}, each drawn in its own brand/<layers>/ folder; a layer missing
-* there comes from brand/ itself, so a variant (a build flavour's tinted ground) redraws only what changes; "monochrome": false on an
-* icon leaves out the themed layer.
-*
-* Android gets adaptive icons from bitmap layers at every density (foreground, background and, when
-* monochrome.svg exists, a themed-icon layer), plus ic_launcher and ic_launcher_round PNGs for older
-* launchers when "legacy" is true. "name" (default ic_launcher) and "type" ("mipmap", the default, or
-* "drawable") match what the manifest refers to. Every run also writes store-listing/brand/icon-preview.png: the icon
-* in every shape, at launcher sizes on light and dark, and themed, to check it at a glance.
-* buildIcons() does the same from code and returns every file it wrote.
-*/
-var icon_exports = /* @__PURE__ */ __exportAll({
-	buildIcons: () => buildIcons,
-	importVector: () => importVector,
-	run: () => run$3
-});
-/** Android VectorDrawable XML as an SVG on the 108 canvas: `npx screenshot-studio icons --import drawable.xml > layer.svg`. */
-function importVector(file) {
-	const text = node_fs.default.readFileSync(file, "utf8").replace(/<!--[\s\S]*?-->/g, "");
-	const attrs = (tag) => Object.fromEntries([...tag.matchAll(/([\w:]+)="([^"]*)"/g)].map((m) => [m[1].replace(/^android:/, ""), m[2]]));
-	const colour = (value, alpha = 1) => {
-		if (!value || value === "@android:color/transparent") return ["none", 1];
-		let hex = value.replace("#", "");
-		if (hex.length === 3) hex = hex.split("").map((c) => c + c).join("");
-		if (hex.length === 4) hex = hex.split("").map((c) => c + c).join("");
-		let a = 1;
-		if (hex.length === 8) {
-			a = parseInt(hex.slice(0, 2), 16) / 255;
-			hex = hex.slice(2);
-		}
-		return [`#${hex}`, +(a * alpha).toFixed(3)];
-	};
-	const vector = text.match(/<vector\b[^>]*>/);
-	if (!vector) throw new Error(`${node_path.default.basename(file)} is not an Android vector drawable`);
-	const root = attrs(vector[0]);
-	const vw = parseFloat(root.viewportWidth), vh = parseFloat(root.viewportHeight);
-	let out = "", ids = 0;
-	const defs = [];
-	const tokens = text.match(/<\/?(group|path|clip-path|aapt:attr|gradient|item)\b[^>]*>/g) || [];
-	for (let i = 0; i < tokens.length; i++) {
-		const token = tokens[i], a = attrs(token);
-		if (token.startsWith("</group")) {
-			out += "</g>";
-			continue;
-		}
-		if (token.startsWith("<group")) {
-			const px = +(a.pivotX || 0), py = +(a.pivotY || 0);
-			const t = [
-				`translate(${+(a.translateX || 0) + px} ${+(a.translateY || 0) + py})`,
-				`rotate(${a.rotation || 0})`,
-				`scale(${a.scaleX || 1} ${a.scaleY || 1})`,
-				`translate(${-px} ${-py})`
-			];
-			out += `<g transform="${t.join(" ")}">`;
-			if (token.endsWith("/>")) out += "</g>";
-		} else if (token.startsWith("<clip-path")) {
-			const id = `clip${ids++}`;
-			defs.push(`<clipPath id="${id}"><path d="${a.pathData}"/></clipPath>`);
-			out += `<g clip-path="url(#${id})">`;
-			let depth = 0;
-			for (let j = i + 1; j < tokens.length; j++) {
-				if (tokens[j].startsWith("<group") && !tokens[j].endsWith("/>")) depth++;
-				if (tokens[j].startsWith("</group")) {
-					if (depth === 0) {
-						tokens.splice(j, 0, "</groupclip>");
-						break;
-					}
-					depth--;
-				}
-			}
-		} else if (token === "</groupclip>") out += "</g>";
-		else if (token.startsWith("<path")) {
-			let fill = colour(a.fillColor, +(a.fillAlpha ?? 1)), stroke = colour(a.strokeColor, +(a.strokeAlpha ?? 1));
-			if (!token.endsWith("/>")) for (let j = i + 1; j < tokens.length && !tokens[j].startsWith("</path"); j++) {
-				const attr = tokens[j].match(/name="android:(fillColor|strokeColor)"/);
-				if (!attr) continue;
-				const g = attrs(tokens[j + 1]), id = `grad${ids++}`, stops = [];
-				for (let k = j + 2; k < tokens.length && tokens[k].startsWith("<item"); k++) {
-					const item = attrs(tokens[k]), [c, o] = colour(item.color);
-					stops.push(`<stop offset="${item.offset}" stop-color="${c}" stop-opacity="${o}"/>`);
-				}
-				defs.push(g.type === "radial" ? `<radialGradient id="${id}" gradientUnits="userSpaceOnUse" cx="${g.centerX}" cy="${g.centerY}" r="${g.gradientRadius}">${stops.join("")}</radialGradient>` : `<linearGradient id="${id}" gradientUnits="userSpaceOnUse" x1="${g.startX}" y1="${g.startY}" x2="${g.endX}" y2="${g.endY}">${stops.join("")}</linearGradient>`);
-				if (attr[1] === "fillColor") fill = [`url(#${id})`, 1];
-				else stroke = [`url(#${id})`, 1];
-			}
-			const parts = [`d="${a.pathData}"`, `fill="${fill[0]}"`];
-			if (fill[1] !== 1) parts.push(`fill-opacity="${fill[1]}"`);
-			if (a.fillType === "evenOdd") parts.push("fill-rule=\"evenodd\"");
-			if (stroke[0] !== "none" && +(a.strokeWidth ?? 0) > 0) {
-				parts.push(`stroke="${stroke[0]}"`, `stroke-width="${a.strokeWidth}"`);
-				if (stroke[1] !== 1) parts.push(`stroke-opacity="${stroke[1]}"`);
-				if (a.strokeLineCap) parts.push(`stroke-linecap="${a.strokeLineCap}"`);
-				if (a.strokeLineJoin) parts.push(`stroke-linejoin="${a.strokeLineJoin}"`);
-				if (a.strokeMiterLimit) parts.push(`stroke-miterlimit="${a.strokeMiterLimit}"`);
-			}
-			out += `<path ${parts.join(" ")}/>`;
-		}
-	}
-	const scale = `scale(${108 / vw} ${108 / vh})`;
-	return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 108 108">\n  <!-- Imported from ${node_path.default.basename(file)}. -->\n  <defs>${defs.join("")}</defs>\n  <g transform="${scale}">${out}</g>\n</svg>\n`;
+// src/node/icon/compose.ts
+/** The icon as one SVG document on the visible 72 x 72: the foreground, scaled about the centre, on the background in `shape`. */
+function composeIcon(background, foreground, shape, scale = 1) {
+	const mark = scale === 1 ? foreground : `<g transform="translate(54 54) scale(${scale}) translate(-54 -54)">${foreground}</g>`;
+	if (shape === "mark") return visible(mark);
+	if (!CLIP[shape]) throw new Error(`Unknown shape "${shape}"; use square, rounded, circle or mark`);
+	return visible(`<defs><clipPath id="icon-shape">${CLIP[shape]}</clipPath></defs><g clip-path="url(#icon-shape)">${background}${mark}</g>`);
 }
-/** Draw every icon brand/icon.json lists, plus brand/icon-preview.png (one per icon). */
-async function buildIcons(options = {}) {
-	const log = options.log || ((line) => console.log(line));
-	const listing = requireListing(options.listing);
-	const specFile = options.spec ? node_path.default.resolve(options.spec) : node_path.default.join(listing, "brand", "icon.json");
-	if (!node_fs.default.existsSync(specFile)) throw new Error(`No ${specFile}. Draw brand/background.svg and brand/foreground.svg, then list the targets in brand/icon.json.`);
-	const brand = node_path.default.dirname(specFile);
-	const root = node_path.default.resolve(brand, "..", "..");
-	const spec = readJson(specFile);
-	const rel = (file) => node_path.default.relative(root, file);
-	const written = [];
-	function write(file, data) {
-		node_fs.default.mkdirSync(node_path.default.dirname(file), { recursive: true });
-		node_fs.default.writeFileSync(file, data);
-		written.push(rel(file));
-		log(rel(file));
-	}
-	function readLayer(dir, name, required = true) {
-		let file = node_path.default.join(dir, `${name}.svg`);
-		if (!node_fs.default.existsSync(file) && dir !== brand) file = node_path.default.join(brand, `${name}.svg`);
-		if (!node_fs.default.existsSync(file)) {
-			if (required) throw new Error(`Missing ${rel(file)}`);
-			return null;
-		}
-		const folder = node_path.default.dirname(file);
-		const text = node_fs.default.readFileSync(file, "utf8");
-		const open = text.match(/<svg\b[^>]*>/);
-		if (!open || !/viewBox="0 0 108 108"/.test(open[0])) throw new Error(`${rel(file)} must be an <svg viewBox="0 0 108 108">`);
-		const prefix = name.replace(/[^a-z0-9]/gi, "");
-		return text.slice(open.index + open[0].length, text.lastIndexOf("</svg>")).replace(/\bid="([^"]+)"/g, `id="${prefix}-$1"`).replace(/url\(#([^)]+)\)/g, `url(#${prefix}-$1)`).replace(/(xlink:)?href="#([^"]+)"/g, `href="#${prefix}-$2"`).replace(/(xlink:)?href="(?!#|data:|https?:)([^"]+)"/g, (_, __, art) => {
-			const source = node_path.default.join(folder, art);
-			if (!node_fs.default.existsSync(source)) throw new Error(`${rel(file)} embeds ${art}, which is not in ${rel(folder) || "."}`);
-			return `href="data:${MIME[node_path.default.extname(art).toLowerCase()] || "application/octet-stream"};base64,${node_fs.default.readFileSync(source).toString("base64")}"`;
-		});
-	}
-	let page;
-	const raster = async (svg, size, opaque = false) => {
-		await page.setViewportSize({
-			width: size,
-			height: size
-		});
-		await page.setContent(`<style>html,body{margin:0;background:transparent}</style><img src="${dataUri(svg)}" width="${size}" height="${size}" style="display:block">`);
-		await page.waitForFunction(() => document.images[0].complete && document.images[0].naturalWidth > 0);
-		return page.screenshot({
-			omitBackground: !opaque,
-			clip: {
-				x: 0,
-				y: 0,
-				width: size,
-				height: size
-			}
-		});
+/** The monochrome layer as a launcher shows a themed icon: tinted, on a tinted circle. */
+function themedIcon(monochrome) {
+	return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="18 18 72 72"><circle cx="54" cy="54" r="36" fill="#3b4a3a"/><g style="filter:brightness(0) invert(.9) sepia(.3) hue-rotate(60deg)">${monochrome}</g></svg>`;
+}
+/** res/<type>-anydpi-v26/<name>.xml: an adaptive icon of the <name>_<part> bitmaps. */
+function adaptiveIconXml(parts, type, name) {
+	return [
+		"<?xml version=\"1.0\" encoding=\"utf-8\"?>",
+		"<!-- Generated by `npx screenshot-studio icons` from store-listing/brand. -->",
+		"<adaptive-icon xmlns:android=\"http://schemas.android.com/apk/res/android\">",
+		...parts.map((part) => `    <${part} android:drawable="@${type}/${name}_${part}" />`),
+		"</adaptive-icon>",
+		""
+	].join("\n");
+}
+var CLIP, canvas, visible, dataUri;
+var init_compose = __esmMin((() => {
+	CLIP = {
+		square: "<rect x=\"18\" y=\"18\" width=\"72\" height=\"72\"/>",
+		rounded: "<rect x=\"18\" y=\"18\" width=\"72\" height=\"72\" rx=\"16\"/>",
+		circle: "<circle cx=\"54\" cy=\"54\" r=\"36\"/>"
 	};
-	const browser = await launchBrowser();
-	try {
-		page = await browser.newPage();
-		for (const job of spec.icons || [spec]) {
-			const dir = node_path.default.join(brand, job.layers || ".");
-			const background = readLayer(dir, "background");
-			const foreground = readLayer(dir, "foreground");
-			const monochrome = job.monochrome === false ? null : readLayer(dir, "monochrome", false);
-			/** The icon as one SVG document, showing the launcher's visible 72 x 72. */
-			const icon = (shape, scale = 1) => {
-				const mark = scale === 1 ? foreground : `<g transform="translate(54 54) scale(${scale}) translate(-54 -54)">${foreground}</g>`;
-				if (shape === "mark") return visible(mark);
-				if (!CLIP[shape]) throw new Error(`Unknown shape "${shape}"; use square, rounded, circle or mark`);
-				return visible(`<defs><clipPath id="icon-shape">${CLIP[shape]}</clipPath></defs><g clip-path="url(#icon-shape)">${background}${mark}</g>`);
+	canvas = (inner) => `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 108 108">${inner}</svg>`;
+	visible = (inner) => `<svg xmlns="http://www.w3.org/2000/svg" viewBox="18 18 72 72">${inner}</svg>\n`;
+	dataUri = (svg) => `data:image/svg+xml;base64,${Buffer.from(svg).toString("base64")}`;
+}));
+// src/node/icon/xml.ts
+/** The attributes of one tag's markup, e.g. `<svg viewBox="0 0 108 108">`. */
+function attributes(markup) {
+	const found = {};
+	for (const [, name, double, single] of markup.matchAll(ATTRIBUTE)) found[name] = decode(double ?? single);
+	return found;
+}
+/** The document's root element. Throws on markup that doesn't nest. */
+function parseXml(text) {
+	const top = {
+		name: "",
+		attributes: {},
+		children: []
+	};
+	const open = [top];
+	const line = (at) => text.slice(0, at).split("\n").length;
+	for (let at = text.indexOf("<"); at >= 0; at = text.indexOf("<", MARKUP.lastIndex)) {
+		MARKUP.lastIndex = at;
+		const match = MARKUP.exec(text);
+		if (!match) throw new Error(`unreadable markup on line ${line(at)}`);
+		const [, closing, name, attrs, empty] = match;
+		const parent = open[open.length - 1];
+		if (closing) {
+			if (closing !== parent.name) throw new Error(`</${closing}> on line ${line(at)} closes <${parent.name || "nothing"}>`);
+			open.pop();
+		} else if (name) {
+			const element = {
+				name,
+				attributes: attributes(attrs),
+				children: []
 			};
-			if (job.android) await writeAndroid(job.android, {
-				background,
-				foreground,
-				monochrome
-			}, icon);
-			for (const target of job.files || []) await writeFile(target, dir, icon);
-			await writePreview(dir, icon, monochrome);
-		}
-	} finally {
-		await browser.close();
-	}
-	return { written };
-	async function writeAndroid(android, layers, icon) {
-		const res = node_path.default.join(root, android.res);
-		const name = android.name || "ic_launcher";
-		const type = android.type || "mipmap";
-		const round = android.round !== false;
-		const parts = [
-			"background",
-			"foreground",
-			"monochrome"
-		].filter((part) => layers[part] !== null);
-		for (const [density, factor] of Object.entries(DENSITIES)) {
-			const folder = node_path.default.join(res, `${type}-${density}`);
-			for (const part of parts) write(node_path.default.join(folder, `${name}_${part}.png`), await raster(canvas(layers[part]), 108 * factor));
-			if (android.legacy) {
-				write(node_path.default.join(folder, `${name}.png`), await raster(icon("rounded"), 48 * factor));
-				if (round) write(node_path.default.join(folder, `${name}_round.png`), await raster(icon("circle"), 48 * factor));
-			}
-		}
-		const adaptive = [
-			"<?xml version=\"1.0\" encoding=\"utf-8\"?>",
-			"<!-- Generated by `npx screenshot-studio icons` from store-listing/brand. -->",
-			"<adaptive-icon xmlns:android=\"http://schemas.android.com/apk/res/android\">",
-			...parts.map((part) => `    <${part} android:drawable="@${type}/${name}_${part}" />`),
-			"</adaptive-icon>",
-			""
-		].join("\n");
-		write(node_path.default.join(res, `${type}-anydpi-v26/${name}.xml`), adaptive);
-		if (round) write(node_path.default.join(res, `${type}-anydpi-v26/${name}_round.xml`), adaptive);
-	}
-	async function writeFile(target, dir, icon) {
-		const file = node_path.default.join(root, target.path);
-		const draw = () => icon(target.shape || "rounded", target.scale || 1);
-		const size = () => {
-			if (!target.size) throw new Error(`${target.path} in ${rel(specFile)} needs a "size"`);
-			return target.size;
-		};
-		if (file.endsWith(".icon")) await writeAppleIcon(file, target.apple || {
-			Background: "background",
-			Mark: "foreground"
-		}, dir);
-		else if (target.layer) write(file, await raster(visible(readLayer(dir, target.layer)), size()));
-		else if (file.endsWith(".svg")) write(file, draw());
-		else if (file.endsWith(".ico")) {
-			const images = [];
-			for (const s of ICO_SIZES) images.push(await raster(draw(), s));
-			write(file, ico(images));
-		} else if (file.endsWith(".icns")) {
-			if (process.platform !== "darwin") {
-				log(`Skipped ${target.path}: iconutil needs macOS`);
-				return;
-			}
-			const set = node_path.default.join(node_fs.default.mkdtempSync(node_path.default.join(node_os.default.tmpdir(), "icon-")), "AppIcon.iconset");
-			node_fs.default.mkdirSync(set);
-			for (const s of [
-				16,
-				32,
-				128,
-				256,
-				512
-			]) {
-				node_fs.default.writeFileSync(node_path.default.join(set, `icon_${s}x${s}.png`), await raster(draw(), s));
-				node_fs.default.writeFileSync(node_path.default.join(set, `icon_${s}x${s}@2x.png`), await raster(draw(), s * 2));
-			}
-			node_fs.default.mkdirSync(node_path.default.dirname(file), { recursive: true });
-			(0, node_child_process.execFileSync)("/usr/bin/iconutil", [
-				"-c",
-				"icns",
-				"-o",
-				file,
-				set
-			]);
-			written.push(rel(file));
-			log(rel(file));
-		} else write(file, await raster(draw(), size(), target.opaque));
-	}
-	async function writeAppleIcon(bundle, layers, dir) {
-		for (const [name, layerName] of Object.entries(layers)) write(node_path.default.join(bundle, "Assets", `${name}.png`), await raster(visible(readLayer(dir, layerName)), 1024));
-		const json = node_path.default.join(bundle, "icon.json");
-		if (!node_fs.default.existsSync(json)) {
-			const names = Object.keys(layers).filter((name) => layers[name] !== "background");
-			write(json, JSON.stringify({
-				groups: [{
-					layers: [...names.map((name) => ({
-						"image-name": `${name}.png`,
-						name
-					})), ...Object.values(layers).includes("background") ? [{
-						"image-name": "Background.png",
-						name: "Background",
-						glass: false
-					}] : []],
-					shadow: {
-						kind: "neutral",
-						opacity: .3
-					},
-					translucency: {
-						enabled: true,
-						value: .15
-					}
-				}],
-				"supported-platforms": { squares: "shared" }
-			}, null, 2) + "\n");
-		}
-		if (process.platform === "darwin" && node_fs.default.existsSync("/usr/bin/xcrun")) {
-			const out = node_fs.default.mkdtempSync(node_path.default.join(node_os.default.tmpdir(), "apple-icon-"));
-			try {
-				(0, node_child_process.execFileSync)("/usr/bin/xcrun", [
-					"ictool",
-					bundle,
-					"--compile",
-					out,
-					"--platform",
-					"iphoneos",
-					"--minimum-deployment-target",
-					"26.0"
-				], { stdio: "pipe" });
-			} catch (error) {
-				const failure = error;
-				throw new Error(`Xcode rejected ${rel(bundle)}: ${failure.stderr || failure.message}`);
-			}
+			parent.children.push(element);
+			if (!empty) open.push(element);
 		}
 	}
-	async function writePreview(dir, icon, monochrome) {
-		const img = (svg, size) => `<img width="${size}" height="${size}" src="${dataUri(svg)}">`;
-		const themed = monochrome ? `<svg xmlns="http://www.w3.org/2000/svg" viewBox="18 18 72 72"><circle cx="54" cy="54" r="36" fill="#3b4a3a"/><g style="filter:brightness(0) invert(.9) sepia(.3) hue-rotate(60deg)">${monochrome}</g></svg>` : null;
-		const sizes = [
-			[72, "rounded"],
-			[48, "circle"],
-			[32, "rounded"],
-			[16, "rounded"]
-		];
-		const row = (bg) => `<div style="background:${bg};border-radius:18px;padding:18px;display:flex;gap:18px;align-items:end">${sizes.map(([s, shape]) => img(icon(shape), s)).join("")}${themed ? img(themed, sizes[0][0]) : ""}</div>`;
-		await page.setViewportSize({
-			width: 1200,
-			height: 600
-		});
-		await page.setContent(`<body style="margin:0;padding:24px;background:#fff;font:14px sans-serif;display:flex;flex-direction:column;gap:18px">
-      <div style="display:flex;gap:24px;align-items:end">${img(icon("square"), 220)}${img(icon("rounded"), 180)}${img(icon("circle"), 180)}${img(icon("mark"), 180)}</div>
+	if (open.length > 1) throw new Error(`<${open[open.length - 1].name}> is never closed`);
+	if (!top.children.length) throw new Error("no elements");
+	return top.children[0];
+}
+/** The first element named `name`, depth first, from `element` itself down. */
+function findElement(element, name) {
+	if (element.name === name) return element;
+	for (const child of element.children) {
+		const found = findElement(child, name);
+		if (found) return found;
+	}
+}
+var ENTITIES, MARKUP, ATTRIBUTE, decode, escapeAttribute;
+var init_xml = __esmMin((() => {
+	ENTITIES = {
+		amp: "&",
+		lt: "<",
+		gt: ">",
+		quot: "\"",
+		apos: "'"
+	};
+	MARKUP = /<!--[\s\S]*?-->|<!\[CDATA\[[\s\S]*?\]\]>|<[?!][^>]*>|<\/([\w:.-]+)\s*>|<([\w:.-]+)((?:\s+[\w:.-]+\s*=\s*(?:"[^"]*"|'[^']*'))*)\s*(\/?)>/y;
+	ATTRIBUTE = /([\w:.-]+)\s*=\s*(?:"([^"]*)"|'([^']*)')/g;
+	decode = (value) => value.replace(/&(#x[0-9a-f]+|#\d+|\w+);/gi, (entity, code) => {
+		if (code[0] !== "#") return ENTITIES[code] ?? entity;
+		return String.fromCodePoint(code[1] === "x" || code[1] === "X" ? parseInt(code.slice(2), 16) : parseInt(code.slice(1), 10));
+	});
+	escapeAttribute = (value) => value.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/"/g, "&quot;");
+}));
+// src/node/icon/layers.ts
+/** The SVG layers an icon is drawn from, in store-listing/brand/ or a variant folder inside it. */
+/** <dir>/<name>.svg, or brand/<name>.svg when a variant folder (an alpha build's icon, say) doesn't redraw it. */
+function layerFile(brand, dir, name) {
+	const file = node_path.default.join(dir, `${name}.svg`);
+	return node_fs.default.existsSync(file) || dir === brand ? file : node_path.default.join(brand, `${name}.svg`);
+}
+/** A layer's inner markup, ids prefixed with its name so layers can share one document, bitmap art inlined.
+*  rel shows a path in errors. */
+function readLayer(file, name, rel) {
+	const text = node_fs.default.readFileSync(file, "utf8");
+	const open = text.match(/<svg\b[^>]*>/);
+	if (!open || attributes(open[0]).viewBox !== "0 0 108 108") throw new Error(`${rel(file)} must be an <svg viewBox="0 0 108 108">`);
+	return inlineArt(scopeIds(text.slice(open.index + open[0].length, text.lastIndexOf("</svg>")), name.replace(/[^a-z0-9]/gi, "")), file, rel);
+}
+/** Prefix every id and every reference to one. */
+function scopeIds(markup, prefix) {
+	return markup.replace(/\bid="([^"]+)"/g, `id="${prefix}-$1"`).replace(/url\(#([^)]+)\)/g, `url(#${prefix}-$1)`).replace(/(xlink:)?href="#([^"]+)"/g, `href="#${prefix}-$2"`);
+}
+/** Replace each <image href="art.png"> beside the layer with a data URI. */
+function inlineArt(markup, file, rel) {
+	const folder = node_path.default.dirname(file);
+	return markup.replace(/(xlink:)?href="(?!#|data:|https?:)([^"]+)"/g, (_, __, art) => {
+		const source = node_path.default.join(folder, art);
+		if (!node_fs.default.existsSync(source)) throw new Error(`${rel(file)} embeds ${art}, which is not in ${rel(folder) || "."}`);
+		return `href="data:${MIME[node_path.default.extname(art).toLowerCase()] || "application/octet-stream"};base64,${node_fs.default.readFileSync(source).toString("base64")}"`;
+	});
+}
+var MIME;
+var init_layers = __esmMin((() => {
+	init_xml();
+	MIME = {
+		".png": "image/png",
+		".jpg": "image/jpeg",
+		".jpeg": "image/jpeg",
+		".webp": "image/webp",
+		".svg": "image/svg+xml"
+	};
+}));
+// src/node/icon/targets.ts
+/** Writers for each kind of target icon.json lists: Android resources, image files, Apple icons, and the preview. */
+/** Adaptive icon layers at every density, the adaptive icon XML, and legacy PNGs when asked. */
+async function writeAndroid(out, android, icon) {
+	const res = node_path.default.join(out.root, android.res);
+	const name = android.name || "ic_launcher";
+	const type = android.type || "mipmap";
+	const round = android.round !== false;
+	const parts = [
+		"background",
+		"foreground",
+		"monochrome"
+	].filter((part) => icon[part] !== null);
+	for (const [density, factor] of Object.entries(DENSITIES)) {
+		const folder = node_path.default.join(res, `${type}-${density}`);
+		for (const part of parts) out.write(node_path.default.join(folder, `${name}_${part}.png`), await out.raster(canvas(icon[part]), 108 * factor));
+		if (android.legacy) {
+			out.write(node_path.default.join(folder, `${name}.png`), await out.raster(icon.draw("rounded"), 48 * factor));
+			if (round) out.write(node_path.default.join(folder, `${name}_round.png`), await out.raster(icon.draw("circle"), 48 * factor));
+		}
+	}
+	const adaptive = adaptiveIconXml(parts, type, name);
+	out.write(node_path.default.join(res, `${type}-anydpi-v26/${name}.xml`), adaptive);
+	if (round) out.write(node_path.default.join(res, `${type}-anydpi-v26/${name}_round.xml`), adaptive);
+}
+/** One file, by its extension: .icon, .svg, .ico, .icns, or a PNG of its size. */
+async function writeFile(out, target, icon) {
+	const file = node_path.default.join(out.root, target.path);
+	const draw = () => icon.draw(target.shape || "rounded", target.scale || 1);
+	const size = () => {
+		if (!target.size) throw new Error(`${target.path} in ${out.rel(out.spec)} needs a "size"`);
+		return target.size;
+	};
+	if (file.endsWith(".icon")) await writeAppleIcon(out, file, target.apple || {
+		Background: "background",
+		Mark: "foreground"
+	}, icon);
+	else if (target.layer) out.write(file, await out.raster(visible(icon.layer(target.layer)), size()));
+	else if (file.endsWith(".svg")) out.write(file, draw());
+	else if (file.endsWith(".ico")) {
+		const images = [];
+		for (const s of ICO_SIZES) images.push(await out.raster(draw(), s));
+		out.write(file, ico(images));
+	} else if (file.endsWith(".icns")) {
+		if (process.platform !== "darwin") {
+			out.log(`Skipped ${target.path}: iconutil needs macOS`);
+			return;
+		}
+		const set = node_path.default.join(node_fs.default.mkdtempSync(node_path.default.join(node_os.default.tmpdir(), "icon-")), "AppIcon.iconset");
+		node_fs.default.mkdirSync(set);
+		for (const s of [
+			16,
+			32,
+			128,
+			256,
+			512
+		]) {
+			node_fs.default.writeFileSync(node_path.default.join(set, `icon_${s}x${s}.png`), await out.raster(draw(), s));
+			node_fs.default.writeFileSync(node_path.default.join(set, `icon_${s}x${s}@2x.png`), await out.raster(draw(), s * 2));
+		}
+		node_fs.default.mkdirSync(node_path.default.dirname(file), { recursive: true });
+		(0, node_child_process.execFileSync)("/usr/bin/iconutil", [
+			"-c",
+			"icns",
+			"-o",
+			file,
+			set
+		]);
+		out.wrote(file);
+	} else out.write(file, await out.raster(draw(), size(), target.opaque));
+}
+/** An Icon Composer bundle: each layer as Assets/<Name>.png, an icon.json unless one is kept, checked with ictool. */
+async function writeAppleIcon(out, bundle, layers, icon) {
+	for (const [name, layerName] of Object.entries(layers)) out.write(node_path.default.join(bundle, "Assets", `${name}.png`), await out.raster(visible(icon.layer(layerName)), 1024));
+	const json = node_path.default.join(bundle, "icon.json");
+	if (!node_fs.default.existsSync(json)) {
+		const names = Object.keys(layers).filter((name) => layers[name] !== "background");
+		out.write(json, JSON.stringify({
+			groups: [{
+				layers: [...names.map((name) => ({
+					"image-name": `${name}.png`,
+					name
+				})), ...Object.values(layers).includes("background") ? [{
+					"image-name": "Background.png",
+					name: "Background",
+					glass: false
+				}] : []],
+				shadow: {
+					kind: "neutral",
+					opacity: .3
+				},
+				translucency: {
+					enabled: true,
+					value: .15
+				}
+			}],
+			"supported-platforms": { squares: "shared" }
+		}, null, 2) + "\n");
+	}
+	if (process.platform === "darwin" && node_fs.default.existsSync("/usr/bin/xcrun")) {
+		const compiled = node_fs.default.mkdtempSync(node_path.default.join(node_os.default.tmpdir(), "apple-icon-"));
+		try {
+			(0, node_child_process.execFileSync)("/usr/bin/xcrun", [
+				"ictool",
+				bundle,
+				"--compile",
+				compiled,
+				"--platform",
+				"iphoneos",
+				"--minimum-deployment-target",
+				"26.0"
+			], { stdio: "pipe" });
+		} catch (error) {
+			const failure = error;
+			throw new Error(`Xcode rejected ${out.rel(bundle)}: ${failure.stderr || failure.message}`);
+		}
+	}
+}
+/** icon-preview.png: every shape large, launcher sizes on light and dark, and the themed icon. */
+async function writePreview(out, icon) {
+	const img = (svg, size) => `<img width="${size}" height="${size}" src="${dataUri(svg)}">`;
+	const themed = icon.monochrome ? themedIcon(icon.monochrome) : null;
+	const sizes = [
+		[72, "rounded"],
+		[48, "circle"],
+		[32, "rounded"],
+		[16, "rounded"]
+	];
+	const row = (bg) => `<div style="background:${bg};border-radius:18px;padding:18px;display:flex;gap:18px;align-items:end">${sizes.map(([s, shape]) => img(icon.draw(shape), s)).join("")}${themed ? img(themed, sizes[0][0]) : ""}</div>`;
+	await out.page.setViewportSize({
+		width: 1200,
+		height: 600
+	});
+	await out.page.setContent(`<body style="margin:0;padding:24px;background:#fff;font:14px sans-serif;display:flex;flex-direction:column;gap:18px">
+      <div style="display:flex;gap:24px;align-items:end">${img(icon.draw("square"), 220)}${img(icon.draw("rounded"), 180)}${img(icon.draw("circle"), 180)}${img(icon.draw("mark"), 180)}</div>
       ${row("#ece6e2")}
       ${row("#1d1b20")}
     </body>`);
-		await page.waitForTimeout(200);
-		write(node_path.default.join(dir, "icon-preview.png"), await page.screenshot({ fullPage: true }));
-	}
+	await out.page.waitForTimeout(200);
+	out.write(node_path.default.join(icon.dir, "icon-preview.png"), await out.page.screenshot({ fullPage: true }));
 }
 /** A Windows .ico of PNG-compressed entries (they keep every size crisp), in ICO_SIZES order. */
 function ico(images) {
@@ -3508,6 +3424,242 @@ function ico(images) {
 	});
 	return Buffer.concat([header, ...images]);
 }
+var DENSITIES, ICO_SIZES;
+var init_targets = __esmMin((() => {
+	init_compose();
+	DENSITIES = {
+		mdpi: 1,
+		hdpi: 1.5,
+		xhdpi: 2,
+		xxhdpi: 3,
+		xxxhdpi: 4
+	};
+	ICO_SIZES = [
+		16,
+		24,
+		32,
+		48,
+		64,
+		128,
+		256
+	];
+}));
+// src/node/icon/build.ts
+/** buildIcons(): every icon brand/icon.json lists, drawn in a headless browser. */
+/** Draw every icon brand/icon.json lists, plus brand/icon-preview.png (one per icon). */
+async function buildIcons(options = {}) {
+	const log = options.log || ((line) => console.log(line));
+	const listing = requireListing(options.listing);
+	const specFile = options.spec ? node_path.default.resolve(options.spec) : node_path.default.join(listing, "brand", "icon.json");
+	if (!node_fs.default.existsSync(specFile)) throw new Error(`No ${specFile}. Draw brand/background.svg and brand/foreground.svg, then list the targets in brand/icon.json.`);
+	const brand = node_path.default.dirname(specFile);
+	const root = node_path.default.resolve(brand, "..", "..");
+	const spec = readJson(specFile);
+	const rel = (file) => node_path.default.relative(root, file);
+	const written = [];
+	const browser = await launchBrowser();
+	try {
+		const page = await browser.newPage();
+		const out = {
+			root,
+			spec: specFile,
+			page,
+			rel,
+			log,
+			write(file, data) {
+				node_fs.default.mkdirSync(node_path.default.dirname(file), { recursive: true });
+				node_fs.default.writeFileSync(file, data);
+				this.wrote(file);
+			},
+			wrote(file) {
+				written.push(rel(file));
+				log(rel(file));
+			},
+			raster: (svg, size, opaque) => raster(page, svg, size, opaque)
+		};
+		for (const job of spec.icons || [spec]) {
+			const icon = loadIcon(brand, job, rel);
+			if (job.android) await writeAndroid(out, job.android, icon);
+			for (const target of job.files || []) await writeFile(out, target, icon);
+			await writePreview(out, icon);
+		}
+	} finally {
+		await browser.close();
+	}
+	return { written };
+}
+/** One icon's layers, from its folder under brand/ or brand/ itself. */
+function loadIcon(brand, job, rel) {
+	const dir = node_path.default.join(brand, job.layers || ".");
+	const optional = (name) => {
+		const file = layerFile(brand, dir, name);
+		return node_fs.default.existsSync(file) ? readLayer(file, name, rel) : null;
+	};
+	const layer = (name) => {
+		const markup = optional(name);
+		if (markup === null) throw new Error(`Missing ${rel(layerFile(brand, dir, name))}`);
+		return markup;
+	};
+	const background = layer("background");
+	const foreground = layer("foreground");
+	return {
+		background,
+		foreground,
+		monochrome: job.monochrome === false ? null : optional("monochrome"),
+		dir,
+		layer,
+		draw: (shape, scale) => composeIcon(background, foreground, shape, scale)
+	};
+}
+/** An SVG as a size x size PNG, transparent unless opaque. */
+async function raster(page, svg, size, opaque = false) {
+	await page.setViewportSize({
+		width: size,
+		height: size
+	});
+	await page.setContent(`<style>html,body{margin:0;background:transparent}</style><img src="${dataUri(svg)}" width="${size}" height="${size}" style="display:block">`);
+	await page.waitForFunction(() => document.images[0].complete && document.images[0].naturalWidth > 0);
+	return page.screenshot({
+		omitBackground: !opaque,
+		clip: {
+			x: 0,
+			y: 0,
+			width: size,
+			height: size
+		}
+	});
+}
+var init_build = __esmMin((() => {
+	init_project();
+	init_playwright();
+	init_compose();
+	init_layers();
+	init_targets();
+}));
+// src/node/icon/vector.ts
+/** Android VectorDrawable XML as an SVG layer on the 108 canvas (paths, groups, clips, alphas and gradients). */
+/** `npx screenshot-studio icons --import drawable.xml > layer.svg` */
+function importVector(file) {
+	return vectorToSvg(node_fs.default.readFileSync(file, "utf8"), node_path.default.basename(file));
+}
+/** A vector drawable's markup as an SVG document; `name` is the file it came from. */
+function vectorToSvg(xml, name) {
+	let document;
+	try {
+		document = parseXml(xml);
+	} catch (error) {
+		throw new Error(`${name} is not valid XML: ${error instanceof Error ? error.message : error}`);
+	}
+	const vector = findElement(document, "vector");
+	if (!vector) throw new Error(`${name} is not an Android vector drawable`);
+	const root = android(vector);
+	const defs = [];
+	let ids = 0;
+	/** A group's children. A clip applies to the rest of its group, so it stays open until the group ends. */
+	const children = (elements) => {
+		let out = "", clips = 0;
+		for (const element of elements) {
+			const a = android(element);
+			if (element.name === "group") out += `<g transform="${groupTransform(a)}">${children(element.children)}</g>`;
+			else if (element.name === "clip-path") {
+				const id = `clip${ids++}`;
+				defs.push(`<clipPath id="${id}"><path d="${esc(a.pathData)}"/></clipPath>`);
+				out += `<g clip-path="url(#${id})">`;
+				clips++;
+			} else if (element.name === "path") out += pathElement(element, a);
+			else out += children(element.children);
+		}
+		return out + "</g>".repeat(clips);
+	};
+	const pathElement = (element, a) => {
+		let fill = colour(a.fillColor, +(a.fillAlpha ?? 1)), stroke = colour(a.strokeColor, +(a.strokeAlpha ?? 1));
+		for (const attr of element.children) {
+			const target = attr.name === "aapt:attr" && attr.attributes.name?.match(/^android:(fillColor|strokeColor)$/)?.[1];
+			const gradient = attr.children[0];
+			if (!target || !gradient) continue;
+			const paint = [`url(#${gradientDef(gradient)})`, 1];
+			if (target === "fillColor") fill = paint;
+			else stroke = paint;
+		}
+		const parts = [`d="${esc(a.pathData)}"`, `fill="${esc(fill[0])}"`];
+		if (fill[1] !== 1) parts.push(`fill-opacity="${fill[1]}"`);
+		if (a.fillType === "evenOdd") parts.push("fill-rule=\"evenodd\"");
+		if (stroke[0] !== "none" && +(a.strokeWidth ?? 0) > 0) {
+			parts.push(`stroke="${esc(stroke[0])}"`, `stroke-width="${esc(a.strokeWidth)}"`);
+			if (stroke[1] !== 1) parts.push(`stroke-opacity="${stroke[1]}"`);
+			if (a.strokeLineCap) parts.push(`stroke-linecap="${esc(a.strokeLineCap)}"`);
+			if (a.strokeLineJoin) parts.push(`stroke-linejoin="${esc(a.strokeLineJoin)}"`);
+			if (a.strokeMiterLimit) parts.push(`stroke-miterlimit="${esc(a.strokeMiterLimit)}"`);
+		}
+		return `<path ${parts.join(" ")}/>`;
+	};
+	/** Adds a <gradient> to defs and returns its id. */
+	const gradientDef = (gradient) => {
+		const g = android(gradient), id = `grad${ids++}`;
+		const stops = gradient.children.filter((item) => item.name === "item").map((item) => {
+			const a = android(item), [c, o] = colour(a.color);
+			return `<stop offset="${esc(a.offset)}" stop-color="${esc(c)}" stop-opacity="${o}"/>`;
+		}).join("");
+		defs.push(g.type === "radial" ? `<radialGradient id="${id}" gradientUnits="userSpaceOnUse" cx="${esc(g.centerX)}" cy="${esc(g.centerY)}" r="${esc(g.gradientRadius)}">${stops}</radialGradient>` : `<linearGradient id="${id}" gradientUnits="userSpaceOnUse" x1="${esc(g.startX)}" y1="${esc(g.startY)}" x2="${esc(g.endX)}" y2="${esc(g.endY)}">${stops}</linearGradient>`);
+		return id;
+	};
+	const out = children(vector.children);
+	const scale = `scale(${108 / parseFloat(root.viewportWidth)} ${108 / parseFloat(root.viewportHeight)})`;
+	return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 108 108">\n  <!-- Imported from ${name}. -->\n  <defs>${defs.join("")}</defs>\n  <g transform="${scale}">${out}</g>\n</svg>\n`;
+}
+/** An element's attributes without the android: prefix. */
+function android(element) {
+	return Object.fromEntries(Object.entries(element.attributes).map(([name, value]) => [name.replace(/^android:/, ""), value]));
+}
+/** A group's pivot, translation, rotation and scale as an SVG transform. */
+function groupTransform(a) {
+	const px = +(a.pivotX || 0), py = +(a.pivotY || 0);
+	return [
+		`translate(${+(a.translateX || 0) + px} ${+(a.translateY || 0) + py})`,
+		`rotate(${a.rotation || 0})`,
+		`scale(${a.scaleX || 1} ${a.scaleY || 1})`,
+		`translate(${-px} ${-py})`
+	].map(esc).join(" ");
+}
+/** An Android colour (#rgb, #argb, #rrggbb or #aarrggbb) as an SVG colour and opacity, times `alpha`. */
+function colour(value, alpha = 1) {
+	if (!value || value === "@android:color/transparent") return ["none", 1];
+	let hex = value.replace("#", "");
+	if (hex.length === 3 || hex.length === 4) hex = hex.split("").map((c) => c + c).join("");
+	let a = 1;
+	if (hex.length === 8) {
+		a = parseInt(hex.slice(0, 2), 16) / 255;
+		hex = hex.slice(2);
+	}
+	return [`#${hex}`, +(a * alpha).toFixed(3)];
+}
+var esc;
+var init_vector = __esmMin((() => {
+	init_xml();
+	esc = (value) => escapeAttribute(String(value));
+}));
+// src/node/icon/index.ts
+/**
+* The icon factory: one drawing, every icon an app ships (docs/icons.md).
+*   npx screenshot-studio icons [store-listing/brand/icon.json]
+*   npx screenshot-studio icons --import drawable.xml > store-listing/brand/foreground.svg
+*
+* An app draws its icon once, as SVG layers on Android's 108 x 108 adaptive canvas in store-listing/brand/
+* (background.svg, foreground.svg and, for themed icons, monochrome.svg), and lists where the icons go in
+* brand/icon.json. The pieces:
+*   build.ts     buildIcons(): reads icon.json, draws each icon in a headless browser
+*   layers.ts    finds and reads an icon's layers (a variant folder falls back to brand/)
+*   compose.ts   layers composed into shapes, the themed icon, the adaptive icon XML
+*   targets.ts   Android resources, PNG/SVG/ICO/ICNS files, Apple Icon Composer bundles, the preview
+*   vector.ts    an Android vector drawable as an SVG layer (--import)
+*   xml.ts       the XML reader vector.ts uses
+*/
+var icon_exports = /* @__PURE__ */ __exportAll({
+	buildIcons: () => buildIcons,
+	importVector: () => importVector,
+	run: () => run$3,
+	vectorToSvg: () => vectorToSvg
+});
 async function run$3(argv) {
 	if (argv.includes("--help") || argv.includes("-h")) {
 		console.log(USAGE$2);
@@ -3533,41 +3685,10 @@ async function run$3(argv) {
 		return 1;
 	}
 }
-var MIME, CLIP, DENSITIES, ICO_SIZES, canvas, visible, dataUri, USAGE$2;
+var USAGE$2;
 var init_icon = __esmMin((() => {
-	init_project();
-	init_playwright();
-	MIME = {
-		".png": "image/png",
-		".jpg": "image/jpeg",
-		".jpeg": "image/jpeg",
-		".webp": "image/webp",
-		".svg": "image/svg+xml"
-	};
-	CLIP = {
-		square: "<rect x=\"18\" y=\"18\" width=\"72\" height=\"72\"/>",
-		rounded: "<rect x=\"18\" y=\"18\" width=\"72\" height=\"72\" rx=\"16\"/>",
-		circle: "<circle cx=\"54\" cy=\"54\" r=\"36\"/>"
-	};
-	DENSITIES = {
-		mdpi: 1,
-		hdpi: 1.5,
-		xhdpi: 2,
-		xxhdpi: 3,
-		xxxhdpi: 4
-	};
-	ICO_SIZES = [
-		16,
-		24,
-		32,
-		48,
-		64,
-		128,
-		256
-	];
-	canvas = (inner) => `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 108 108">${inner}</svg>`;
-	visible = (inner) => `<svg xmlns="http://www.w3.org/2000/svg" viewBox="18 18 72 72">${inner}</svg>\n`;
-	dataUri = (svg) => `data:image/svg+xml;base64,${Buffer.from(svg).toString("base64")}`;
+	init_build();
+	init_vector();
 	USAGE$2 = `Usage:
   npx screenshot-studio icons [store-listing/brand/icon.json]   draw every icon icon.json lists
   npx screenshot-studio icons --import drawable.xml             print an Android vector drawable as a 108 x 108 SVG layer`;

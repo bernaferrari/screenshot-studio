@@ -3,7 +3,7 @@
 //   render.js    the card renderer (src/renderer/render.ts), loaded by preview.html
 //   shapes.js    helpers themes import (src/renderer/shapes.ts)
 //   types.d.ts   types for themes and tools; schemas/ (generated from them) for checks and editor autocomplete
-//   capture.py, uitree.py   the emulator side (capture/)
+//   capture.py, ios.py and their siblings   the emulator and simulator side (capture/*.py, flat, for PYTHONPATH)
 // The editor (studio/index.html, studio/assets/) is built separately by `npm run build:ui`.
 import fs from 'node:fs';
 import path from 'node:path';
