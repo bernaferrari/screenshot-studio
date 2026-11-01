@@ -15,7 +15,7 @@ npx screenshot-studio init --name "My App" --screenshots ./screenshots --theme a
 npx screenshot-studio export
 ```
 
-Your Play set is in `store-listing/en-US/`, phone and tablet screenshots sorted by shape. Then write your headlines in `store-listing/en-US/copy.json`, pick a look, and run `export` again. Or open the editor with `npx screenshot-studio studio --open`.
+Your Play set is in `store-listing/en-US/`, phone and tablet screenshots sorted by shape, plus the 1024 × 500 feature graphic Play asks for. Already use fastlane? Plain `npx screenshot-studio init` finds your screenshots and your app's name on its own. Then write your headlines in `store-listing/en-US/copy.json`, pick a look, and run `export` again. Or open the editor with `npx screenshot-studio studio --open`.
 
 ## Or ask Claude
 
