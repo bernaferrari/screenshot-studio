@@ -2,21 +2,83 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://github.com/bernaferrari/screenshot-studio/schemas/profiles.schema.json",
   "title": "Screenshot Studio galleries' sizes (store-listing/profiles.json)",
+  "description": "store-listing/profiles.json: one entry per gallery.",
   "type": "object",
-  "properties": {"$schema": {"type": "string"}},
-  "additionalProperties": {"$ref": "#/$defs/profile"},
+  "additionalProperties": {
+    "$ref": "#/$defs/Profile"
+  },
+  "properties": {
+    "$schema": {
+      "type": "string"
+    }
+  },
   "$defs": {
-    "profile": {"type": "object", "required": ["width", "height"], "properties": {
-      "width": {"type": "integer", "minimum": 1, "description": "The exported image's width."},
-      "height": {"type": "integer", "minimum": 1},
-      "captureWidth": {"type": "integer", "minimum": 1, "description": "The device display this gallery's captures are taken at."},
-      "captureHeight": {"type": "integer", "minimum": 1},
-      "captureDensity": {"type": "integer", "minimum": 1},
-      "frame": {"enum": ["phone", "iphone", "tablet", "browser", "none"]},
-      "label": {"type": "string", "description": "The gallery's name in the editor."},
-      "defaultLocaleOnly": {"type": "boolean", "description": "Render once, in the default language (README art)."},
-      "platform": {"enum": ["android", "ios", "web"], "description": "Which capture backend takes this gallery's captures."},
-      "simulator": {"type": "string", "description": "iOS: the simulator (name or UDID) this gallery is captured on."}
-    }, "additionalProperties": false}
+    "Profile": {
+      "type": "object",
+      "properties": {
+        "width": {
+          "type": "integer",
+          "description": "The exported image's width.",
+          "minimum": 1
+        },
+        "height": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "captureWidth": {
+          "type": "integer",
+          "description": "The device display this gallery's captures are taken at.",
+          "minimum": 1
+        },
+        "captureHeight": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "captureDensity": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "frame": {
+          "$ref": "#/$defs/FrameKind"
+        },
+        "label": {
+          "type": "string",
+          "description": "The gallery's name in the editor."
+        },
+        "defaultLocaleOnly": {
+          "type": "boolean",
+          "description": "Render once, in the default language (README art, a share image)."
+        },
+        "platform": {
+          "type": "string",
+          "enum": [
+            "android",
+            "ios",
+            "web"
+          ],
+          "description": "Which capture backend takes this gallery's captures (default android)."
+        },
+        "simulator": {
+          "type": "string",
+          "description": "iOS: the simulator (name or UDID) this gallery is captured on."
+        }
+      },
+      "required": [
+        "width",
+        "height"
+      ],
+      "additionalProperties": false
+    },
+    "FrameKind": {
+      "type": "string",
+      "enum": [
+        "phone",
+        "iphone",
+        "tablet",
+        "browser",
+        "none"
+      ],
+      "description": "How a capture is framed. `none` shows it as the whole image."
+    }
   }
 }

@@ -2,7 +2,7 @@
 //   studio.cjs   every command and the Node library (src/cli, src/node, src/core), one file
 //   render.js    the card renderer (src/renderer/render.ts), loaded by preview.html
 //   shapes.js    helpers themes import (src/renderer/shapes.ts)
-//   types.d.ts   types for themes and tools; schemas/ for checks and editor autocomplete
+//   types.d.ts   types for themes and tools; schemas/ (generated from them) for checks and editor autocomplete
 //   capture.py, uitree.py   the emulator side (capture/)
 // The editor (studio/index.html, studio/assets/) is built separately by `npm run build:ui`.
 import fs from 'node:fs';

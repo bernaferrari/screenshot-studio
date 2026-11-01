@@ -12,7 +12,7 @@ Instructions for agents changing the studio itself. To *use* the studio in an ap
 | `src/cli/main.ts` | The `screenshot-studio` command, and the library's public exports |
 | `ui/src/` | The editor (React, shadcn/ui, Tailwind) |
 | `capture/` | The emulator and simulator side (Python) |
-| `schemas/` | JSON Schemas for the files an app keeps |
+| `schemas/` | JSON Schemas for the files an app keeps, generated from `src/core/types.d.ts` by `npm run schemas`. Never edit them by hand. |
 | `themes/`, `templates/` | What `init` copies into a new app |
 | `studio/` | **Built output**: what the package ships and serves to each app. Never edit it by hand. |
 
@@ -21,6 +21,7 @@ Instructions for agents changing the studio itself. To *use* the studio in an ap
 ```sh
 npm run build        # build:studio (tsc + rolldown → studio/) and build:ui (Vite → studio/assets/)
 npm run typecheck
+npm run schemas      # schemas/ from the types in src/core/types.d.ts (build runs it too)
 npm test             # unit tests, against the built studio/studio.cjs
 npm run test:ui      # the editor in a browser
 ```
