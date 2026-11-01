@@ -40,6 +40,7 @@ It writes `<locale>/<gallery>/NN-feature.jpg` (or each card's `file`), a contact
 | `--strict` | Warnings fail the export |
 | `--prune` | Deletes images no card writes any more, instead of warning about them |
 | `--fastlane` | Writes fastlane metadata (below) |
+| `--jobs` | How many cards render at once, each in a browser of its own (default: up to 4, one per CPU). The images and the order of the output are the same at any number |
 | `--json` | Prints every file written, each card's notes, the warnings and the per-language tally as JSON |
 
 Every export also writes `export-report.json` beside `gallery.json`: the same result, with when it finished and which options it ran with. The editor's Review reads it.

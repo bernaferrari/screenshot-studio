@@ -622,6 +622,7 @@ const context = {
 if (theme.art) art.innerHTML = theme.art(context) || "";
 if (theme.compose) await theme.compose(context);
 const locales = await settleDevices(devices, profiles);
+report.fallbackCaptures = devices.filter((d) => report.fallbackCaptures.includes(d.spec.raw)).map((d) => d.spec.raw);
 sizeFrames(devices, config, layoutWords);
 if (theme.layout) await theme.layout(context);
 const measured = context.devices = measure(main, devices, locales);
