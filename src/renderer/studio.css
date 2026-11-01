@@ -32,7 +32,7 @@ h1 ins{text-decoration:none}
 .identity img{grid-row:span 2;display:block;width:168px;height:168px;border-radius:24%}
 .identity span{font-size:136px;font-weight:700;line-height:1}
 .identity small{font-size:44px;margin-top:12px}
-.identity em{font-style:normal}
+.identity em{font-style:normal;color:var(--accent,inherit)}
 /* Hero (or fan): three phones, the middle one raised and in front; lower under a name banner (.named). */
 .readme :is(.hero,.fan) .left{left:250px;top:330px;width:540px}
 .readme :is(.hero,.fan) :is(.center,.middle){left:890px;top:150px;width:620px;z-index:3}
@@ -50,6 +50,14 @@ h1 ins{text-decoration:none}
 .readme .spread header{left:150px;right:auto;top:0;bottom:0;width:720px;display:flex;flex-direction:column;justify-content:center}
 .readme .spread .device-landscape{left:1020px;top:150px;width:1600px}
 .readme .spread .device-portrait{left:900px;top:520px;width:420px;z-index:4}
+
+/* Google Play's feature graphic (the "feature" gallery, 1024 x 500): the name banner on the left, the app's first
+   screen on the right, running off the bottom. */
+.feature .identity{left:64px;right:auto;top:0;bottom:0;grid-template-columns:auto;justify-content:start;justify-items:start;align-content:center;row-gap:10px}
+.feature .identity img{grid-row:auto;width:96px;height:96px;margin-bottom:14px}
+.feature .identity span{font-size:72px;letter-spacing:-.02em}
+.feature .identity small{font-size:28px;margin-top:0;max-width:440px}
+.feature .device{--bezel:8px;--radius:44px;left:610px;top:56px;width:330px}
 
 .fit-scene,.fit-scene body{width:100%;height:100%;overflow:hidden}.fit-scene .campaign{position:absolute}
 

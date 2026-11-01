@@ -78,7 +78,9 @@ export function serve(root: string, port = 0, {editable = false, workspace = nul
         response.end(request.method === 'HEAD' ? undefined : data);
       } catch (error) {
         const failure = error as {code?: string; message?: string};
-        response.writeHead(failure.code === 'ENOENT' ? 404 : request.method === 'PUT' ? 400 : 500).end(failure.code === 'ENOENT' ? 'Not found' : failure.message);
+        // A HEAD response never has a body.
+        response.writeHead(failure.code === 'ENOENT' ? 404 : request.method === 'PUT' ? 400 : 500)
+          .end(request.method === 'HEAD' ? undefined : failure.code === 'ENOENT' ? 'Not found' : failure.message);
       }
     }
     try {

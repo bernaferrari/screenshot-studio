@@ -125,7 +125,7 @@ export function checkListing(listingDir?: string): CheckResult {
     });
   }
   // Starter placeholders: init writes these so the first export renders; they must never ship.
-  const PLACEHOLDER = /^Your headline|One short (supporting )?line|Why it matters, briefly|^One clear\n|^The core\n|Up to (80|4,?000) characters/;
+  const PLACEHOLDER = /^Your headline|One short (supporting )?line|Why it matters, briefly|One line about what \*your app\*|^One clear\n|^The core\n|Up to (80|4,?000) characters/;
   for (const [key, entry] of Object.entries(defaultCopy)) for (const [field, value] of Object.entries(entry || {}))
     if (typeof value === 'string' && PLACEHOLDER.test(value)) warn(`${defaultLocale}/copy.json`, `is still the starter placeholder`, {path: `${key}.${field}`, fix: 'Write a benefit headline for this screen.'});
   for (const locale of locales) {

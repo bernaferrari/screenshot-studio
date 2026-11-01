@@ -190,10 +190,11 @@ export async function exportListing(options: ExportOptions = {}): Promise<Export
           const page = await browser.newPage({viewport: {width, height}, deviceScaleFactor: config.supersample || 1, locale});
           const errors: string[] = [];
           page.on('pageerror', e => errors.push(e.message));
-          page.on('requestfailed', r => errors.push(`Failed to load ${r.url()}`));
+          page.on('requestfailed', r => { if (r.method() !== 'HEAD') errors.push(`Failed to load ${r.url()}`); });
           page.on('response', r => {
             // Optional files (locale copy, a locale's capture, layout sidecars) may be missing; everything else must load.
-            if (r.status() >= 400 && !/\/(copy|[^/]+\.nodes)\.json$|\/raw\//.test(new URL(r.url()).pathname)) errors.push(`${r.status()} ${r.url()}`);
+            // (A HEAD request is the renderer asking whether an optional file exists.)
+            if (r.status() >= 400 && r.request().method() !== 'HEAD' && !/\/(copy|[^/]+\.nodes)\.json$|\/raw\//.test(new URL(r.url()).pathname)) errors.push(`${r.status()} ${r.url()}`);
           });
           const label = `${locale}/${file}`;
           await page.goto(`${base}/studio/preview.html?locale=${locale}&kind=${kind}&slide=${i}`);

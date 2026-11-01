@@ -1,5 +1,15 @@
 {
   "$schema": "https://unpkg.com/screenshot-studio/studio/schemas/copy.schema.json",
-  "hero": {"title": "One clear\n*promise*", "body": "One short supporting line."},
-  "second": {"title": "The core\n*feature*", "body": "Why it matters, briefly."}
+  "hero": {
+    "title": "One clear\n*promise*",
+    "body": "One short supporting line."
+  },
+  "second": {
+    "title": "The core\n*feature*",
+    "body": "Why it matters, briefly."
+  },
+  "feature-graphic": {
+    "title": "",
+    "tagline": "One line about what *your app* does."
+  }
 }

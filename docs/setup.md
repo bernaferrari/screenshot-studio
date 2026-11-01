@@ -23,6 +23,8 @@ npx screenshot-studio init --name "My App" --platform ios               # App St
 
 `init` never overwrites a file: run it again and it keeps what's there. It also installs a skill for Claude Code at `.claude/skills/store-screenshots/SKILL.md` ([Agents](agents.md)).
 
+For Android, `init` also adds the 1024 × 500 **feature graphic** Google Play asks every listing for (`en-US/graphics/feature-graphic.png`): the app's name and a tagline beside its first screen, with `brand/icon.png` when there is one. Write the tagline in `copy.json` under `feature-graphic`.
+
 From screenshots, the first cards render right away: run `npx screenshot-studio export`. Otherwise the next steps are a capture build and the tour ([Capturing](capture.md)).
 
 ## The files

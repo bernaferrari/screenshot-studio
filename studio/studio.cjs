@@ -1033,7 +1033,7 @@ function checkListing(listingDir) {
 			if (devices.length && !card.identity && !(words && "title" in words) && profiles[kind].frame !== "none") warn(`${defaultLocale}/copy.json`, `card "${card.feature}" (${kind}) has no headline`, { fix: `Add {"${card.feature}": {"title": "…", "body": "…"}}.` });
 		});
 	}
-	const PLACEHOLDER = /^Your headline|One short (supporting )?line|Why it matters, briefly|^One clear\n|^The core\n|Up to (80|4,?000) characters/;
+	const PLACEHOLDER = /^Your headline|One short (supporting )?line|Why it matters, briefly|One line about what \*your app\*|^One clear\n|^The core\n|Up to (80|4,?000) characters/;
 	for (const [key, entry] of Object.entries(defaultCopy)) for (const [field, value] of Object.entries(entry || {})) if (typeof value === "string" && PLACEHOLDER.test(value)) warn(`${defaultLocale}/copy.json`, `is still the starter placeholder`, {
 		path: `${key}.${field}`,
 		fix: "Write a benefit headline for this screen."
@@ -1538,7 +1538,7 @@ function serve(root, port = 0, { editable = false, workspace = null, activeProje
 				response.end(request.method === "HEAD" ? void 0 : data);
 			} catch (error) {
 				const failure = error;
-				response.writeHead(failure.code === "ENOENT" ? 404 : request.method === "PUT" ? 400 : 500).end(failure.code === "ENOENT" ? "Not found" : failure.message);
+				response.writeHead(failure.code === "ENOENT" ? 404 : request.method === "PUT" ? 400 : 500).end(request.method === "HEAD" ? void 0 : failure.code === "ENOENT" ? "Not found" : failure.message);
 			}
 		}
 		try {
@@ -1821,9 +1821,11 @@ async function exportListing(options = {}) {
 					});
 					const errors = [];
 					page.on("pageerror", (e) => errors.push(e.message));
-					page.on("requestfailed", (r) => errors.push(`Failed to load ${r.url()}`));
+					page.on("requestfailed", (r) => {
+						if (r.method() !== "HEAD") errors.push(`Failed to load ${r.url()}`);
+					});
 					page.on("response", (r) => {
-						if (r.status() >= 400 && !/\/(copy|[^/]+\.nodes)\.json$|\/raw\//.test(new URL(r.url()).pathname)) errors.push(`${r.status()} ${r.url()}`);
+						if (r.status() >= 400 && r.request().method() !== "HEAD" && !/\/(copy|[^/]+\.nodes)\.json$|\/raw\//.test(new URL(r.url()).pathname)) errors.push(`${r.status()} ${r.url()}`);
 					});
 					const label = `${locale}/${file}`;
 					await page.goto(`${base}/studio/preview.html?locale=${locale}&kind=${kind}&slide=${i}`);
@@ -2572,6 +2574,7 @@ function importScreenshots(source, listing, locale, log, ios = false) {
 		log(`imported  ${file} → ${locale}/raw/${raw}`);
 	}
 	if (!Object.keys(galleries).length) throw new Error(`None of the images in ${folder || "the list"} has a phone or tablet shape`);
+	if (!ios && galleries.phone) Object.assign(profiles, featureGraphic.profiles), Object.assign(galleries, featureGraphic.gallery(galleries.phone[0].raw)), Object.assign(copy, featureGraphic.copy);
 	if (ios && galleries.iphone) {
 		const after = (map, value) => Object.fromEntries(Object.entries(map).flatMap(([key, v]) => key === "iphone" ? [[key, v], ["iphone63", value]] : [[key, v]]));
 		return {
@@ -2739,7 +2742,7 @@ async function run$5(argv) {
 		return 1;
 	}
 }
-var PACKAGE, TEMPLATES, IOS_TEMPLATES, THEMES, requirePackage, slug, words;
+var PACKAGE, TEMPLATES, IOS_TEMPLATES, THEMES, requirePackage, featureGraphic, slug, words;
 var init_init = __esmMin((() => {
 	init_check();
 	init_project();
@@ -2750,6 +2753,26 @@ var init_init = __esmMin((() => {
 	THEMES = node_path.default.join(PACKAGE, "themes");
 	requirePackage = () => {
 		if (!node_fs.default.existsSync(TEMPLATES)) throw new Error("Run this from the Screenshot Studio package: `npx screenshot-studio init`.");
+	};
+	featureGraphic = {
+		profiles: { feature: {
+			width: 1024,
+			height: 500,
+			frame: "phone",
+			label: "Feature graphic",
+			defaultLocaleOnly: true
+		} },
+		gallery: (raw) => ({ feature: [{
+			feature: "feature-graphic",
+			layout: "banner",
+			identity: true,
+			raw,
+			file: "graphics/feature-graphic.png"
+		}] }),
+		copy: { "feature-graphic": {
+			title: "",
+			tagline: "One line about what *your app* does."
+		} }
 	};
 	slug = (text) => text.toLowerCase().replace(/\.[a-z]+$/, "").replace(/^\d+[-_ ]*/, "").replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "") || "screen";
 	words = (text) => slug(text).replace(/-/g, " ");

@@ -51,6 +51,13 @@ export function themes(): {name: string; description: string}[] {
   });
 }
 
+/** The feature graphic Google Play asks every listing for. */
+const featureGraphic = {
+  profiles: {feature: {width: 1024, height: 500, frame: 'phone', label: 'Feature graphic', defaultLocaleOnly: true}} as Profiles,
+  gallery: (raw: string): Galleries => ({feature: [{feature: 'feature-graphic', layout: 'banner', identity: true, raw, file: 'graphics/feature-graphic.png'}]}),
+  copy: {'feature-graphic': {title: '', tagline: 'One line about what *your app* does.'}} as Copy,
+};
+
 const slug = (text: string) => text.toLowerCase().replace(/\.[a-z]+$/, '').replace(/^\d+[-_ ]*/, '').replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '') || 'screen';
 const words = (text: string) => slug(text).replace(/-/g, ' ');
 
@@ -105,6 +112,8 @@ function importScreenshots(source: string, listing: string, locale: string, log:
     log(`imported  ${file} → ${locale}/raw/${raw}`);
   }
   if (!Object.keys(galleries).length) throw new Error(`None of the images in ${folder || 'the list'} has a phone or tablet shape`);
+  // Google Play: the 1024 × 500 feature graphic every listing needs, from the app's name and first phone screen.
+  if (!ios && galleries.phone) Object.assign(profiles, featureGraphic.profiles), Object.assign(galleries, featureGraphic.gallery((galleries.phone as Card[])[0].raw!)), Object.assign(copy, featureGraphic.copy);
   // App Store: the 6.3″ iPhone gallery (required) shows the same captures as 6.9″, at its own size.
   if (ios && galleries.iphone) {
     const after = <T>(map: Record<string, T>, value: T): Record<string, T> =>

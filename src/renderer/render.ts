@@ -111,7 +111,9 @@ if (slide.identity) {
   id.className = 'identity';
   id.dataset.checkBounds = '';
   const name = Object.assign(document.createElement('span'), {textContent: spec.name ?? ''});
-  id.append(Object.assign(document.createElement('img'), {src: `../${spec.icon}`, alt: ''}), name);
+  // No icon yet (a project made from screenshots): the banner is the name alone.
+  if ((await fetch(`../${spec.icon}`, {method: 'HEAD'})).ok) id.append(Object.assign(document.createElement('img'), {src: `../${spec.icon}`, alt: ''}));
+  id.append(name);
   if (slide.tagline) {
     const small = document.createElement('small');
     highlighted(small, slide.tagline);
@@ -249,7 +251,8 @@ if (theme.decorate) await theme.decorate(context);
   const {layouts: own, ...base} = {margin: 0, visible: .6, ...config.bounds};
   // Layouts whose device leaves the canvas by design: the README spread's tablet runs off the right, and a `hang`
   // card's device hangs from the top with the copy underneath.
-  const layouts: Record<string, BoundsRule | false> = {spread: {right: true}, hang: {top: true}, ...own};
+  // The feature graphic is short, so its phone shows only its top.
+  const layouts: Record<string, BoundsRule | false> = {spread: {right: true}, hang: {top: true}, feature: {visible: .3}, ...own};
   const rules = [base, ...layoutWords.map(w => layouts[w]).filter(r => r !== undefined), slide.bounds].filter(r => r !== undefined);
   if (!rules.includes(false)) {
     const rule = Object.assign({}, ...rules) as {margin: number; visible: number; sides?: boolean; right?: boolean | number; top?: boolean; cut?: boolean};

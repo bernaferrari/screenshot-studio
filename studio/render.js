@@ -220,10 +220,11 @@ if (slide.identity) {
 	id.className = "identity";
 	id.dataset.checkBounds = "";
 	const name = Object.assign(document.createElement("span"), { textContent: spec.name ?? "" });
-	id.append(Object.assign(document.createElement("img"), {
+	if ((await fetch(`../${spec.icon}`, { method: "HEAD" })).ok) id.append(Object.assign(document.createElement("img"), {
 		src: `../${spec.icon}`,
 		alt: ""
-	}), name);
+	}));
+	id.append(name);
 	if (slide.tagline) {
 		const small = document.createElement("small");
 		highlighted(small, slide.tagline);
@@ -419,6 +420,7 @@ if (theme.decorate) await theme.decorate(context);
 	const layouts = {
 		spread: { right: true },
 		hang: { top: true },
+		feature: { visible: .3 },
 		...own
 	};
 	const rules = [
