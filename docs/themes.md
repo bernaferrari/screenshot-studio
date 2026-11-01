@@ -1,6 +1,6 @@
 # Themes
 
-`init --theme <name>` copies a theme into `store-listing/` (`theme.css`, `theme.js`, and its fonts into `assets/`).
+`npx screenshot-studio init --theme <name>` copies a theme into `store-listing/` (`theme.css`, `theme.js`, and its fonts into `assets/`).
 From then on it is the app's own: edit it freely. `npx screenshot-studio themes` lists what ships.
 
 | Theme | Look |
@@ -13,7 +13,7 @@ From then on it is the app's own: edit it freely. `npx screenshot-studio themes`
 | `signal` | A bold field over a deeper block, huge type, key words on a highlighter (Archivo). |
 | `mono` | Near-black and white with one accent, graphite frames, nothing else; works light too (Geist). |
 
-Each theme's `preview.jpg` shows its phone strip.
+Each theme but `starter` has a `preview.jpg` of its phone strip.
 
 ## Re-branding
 

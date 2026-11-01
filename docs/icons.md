@@ -1,9 +1,10 @@
 # App icons
 
-Draw an app's icon once and `icon.cjs` writes every icon it ships: Android adaptive and themed icons at every density, store icons, favicons, desktop icons and Apple icons.
+Draw an app's icon once and `npx screenshot-studio icons` writes every icon it ships: Android adaptive and themed icons at every density, store icons, favicons, desktop icons and Apple icons.
 
 ```sh
-node store-listing/studio/icon.cjs            # reads store-listing/brand/icon.json
+npx screenshot-studio icons                     # reads store-listing/brand/icon.json
+npx screenshot-studio icons path/to/icon.json   # another icon list
 ```
 
 ## The layers
@@ -19,7 +20,7 @@ Draw SVG layers on Android's 108 × 108 adaptive canvas, in `store-listing/brand
 A layer can embed painted art: an `<image href="foreground.png">` beside it is inlined. An existing Android vector drawable becomes a layer as is:
 
 ```sh
-node store-listing/studio/icon.cjs --import drawable.xml > store-listing/brand/foreground.svg
+npx screenshot-studio icons --import drawable.xml > store-listing/brand/foreground.svg
 ```
 
 ## Where icons go

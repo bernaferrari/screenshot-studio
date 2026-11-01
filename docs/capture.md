@@ -34,7 +34,7 @@ While the tour runs, the emulator gets:
 - animations on, or off with `animations=False` (useful when an endless animation blocks the UI tree);
 - the app's language (Android 13+ per-app language, checked by reading it back).
 
-Everything is restored on exit, even after a failure. `Device` only runs on an emulator, and refuses to start over a display override left by an interrupted run; clear one with `python3 store-listing/studio/capture.py reset`.
+Everything is restored on exit, even after a failure. `Device` only runs on an emulator, and refuses to start over a display override left by an interrupted run; clear one with `python3 store-listing/studio/capture.py reset` (add `--serial` for another emulator).
 
 It also recovers from a busy emulator: a stuck UiAutomation client, an "isn't responding" dialog, a slow first draw, and a full disk during install. Helper packages that would show up in an app list are hidden.
 
@@ -59,13 +59,13 @@ The reference language runs first and records each tap's position in the UI tree
 
 Each capture's layout map (`<name>.nodes.json`) lists the UI elements and their bounds. A callout anchored to an element follows it into every language; when it can't, the exporter keeps the reference position and flags it for review.
 
-## One command: `recapture.cjs`
+## One command: recapture
 
 ```sh
-node store-listing/studio/recapture.cjs [locale…] [--profile phone] [--no-build] [--no-capture] [--no-export] [--dry-run]
+npx screenshot-studio recapture [locale…] [--boot] [--profile phone] [--no-build] [--no-capture] [--no-export] [--dry-run]
 ```
 
-It reads the `capture` block in `studio.json`:
+It reads the `capture` block in `studio.json` (`init --package` writes a starting one):
 
 ```json
 "capture": {
@@ -73,11 +73,24 @@ It reads the `capture` block in `studio.json`:
   "install": [{"apk": "app/build/outputs/apk/storeCapture/app-storeCapture.apk", "package": "com.example.storecapture"}],
   "runs": [{"args": ["--theme", "light"]}, {"args": ["--theme", "dark"], "profiles": ["phone"], "locales": "default"}],
   "retries": 2,
+  "serial": "emulator-5554",
+  "avd": "Pixel_9_API_36",
   "after": ["python3 scripts/refresh_readme_assets.py"]
 }
 ```
 
 It builds, installs, then for each language (the reference first) runs each run's tour once per profile, retrying a failed run after resetting the emulator. Then it exports each language (one failing language doesn't stop the rest) and runs `after`.
+
+| Capture key | Meaning |
+|---|---|
+| `build` | Shell command that builds the capture app, run from the repository |
+| `install` | What to install before capturing: `apk` and its `package` |
+| `runs` | The tours to run (below) |
+| `retries` | Tries per run after a failure |
+| `serial` | The capture emulator (default `emulator-5578`, or `CAPTURE_SERIAL`); it must be an emulator, never a phone |
+| `avd` | The emulator image `--boot` starts (default: the first in `emulator -list-avds`) |
+| `export` | A command to run per language instead of the studio's export (`{locale}` is replaced) |
+| `after` | Shell commands once everything is exported |
 
 | Run key | Default |
 |---|---|
@@ -86,17 +99,29 @@ It builds, installs, then for each language (the reference first) runs each run'
 | `profiles` | every capture profile; `false` passes none |
 | `args` | extra arguments; `${NAME}` reads the environment |
 
-Tours run through `uv run --with pillow`. Use one capture emulator at a time (`CAPTURE_SERIAL`, default `emulator-5578`).
+| Option | Does |
+|---|---|
+| `--boot` | Starts the capture emulator headless when it isn't running, waits until Android has booted, then captures. It needs the Android SDK (`ANDROID_HOME`, or the default SDK folder). |
+| `--profile phone` | One gallery's captures only |
+| `--no-build`, `--no-capture`, `--no-export` | Skip a step |
+| `--dry-run` | Print the commands without running them |
+
+Tours run through `uv run --with pillow` when `uv` is installed, plain `python3` otherwise (it then needs Pillow). Use one capture emulator at a time: several at once can run the computer out of memory, and the system then kills one mid-capture.
 
 ## Fictional apps
 
 When the app lists other apps (a firewall, a launcher, an SDK tracker), install real code-free stub apps instead of faking the list:
 
 ```sh
-node store-listing/studio/fixture-apps.cjs store-listing/fixture-apps.json --install emulator-5578
+npx screenshot-studio fixtures store-listing/fixture-apps.json --install emulator-5578
 ```
 
-Each entry gets a label, an adaptive icon (a Lucide glyph or text on a gradient), a category and, if needed, `targetSdk`, `versionCode` and `versionName`. Builds are cached in `.fixture-apps/` beside the spec.
+```json
+{"apps": [{"package": "app.fernway.maps", "label": "Fernway Maps", "colors": ["#3fb27f", "#1e8a5c"],
+  "glyph": "map", "internet": true, "category": "maps"}]}
+```
+
+Each entry gets a label, an adaptive icon (a Lucide glyph, `{"text": "Aa"}` or `{"svg": …}` on a gradient), a category and, if needed, `targetSdk`, `versionCode` and `versionName`. Builds are cached in `.fixture-apps/` beside the spec. `--uninstall` removes them; both only talk to an emulator.
 
 ## iOS
 

@@ -1,57 +1,59 @@
 # Development
 
-Working on the studio itself.
+Working on the studio itself. Agents changing it: read `AGENTS.md` too.
 
 ## Layout
 
 | Path | What |
 |---|---|
-| `studio/` | Everything an app gets: renderer (`preview.html`, `core.js`, `gallery.js`, `studio.css`, `shapes.js`), exporter, capture, icons, server, and the built editor in `assets/` |
-| `ui/src/` | The editor's source: React and TypeScript with shadcn/ui and Tailwind |
-| `init.cjs` | Scaffolds `store-listing/` in a new app |
-| `sync.sh` | Copies `studio/` into an app |
+| `src/core/` | Shared by everything: types (`types.d.ts`), gallery rules, the schema validator |
+| `src/renderer/` | The card renderer that runs in the browser (`render.ts`, `preview.html`, `studio.css`) and `shapes.ts` for themes |
+| `src/node/` | The Node library: export, check, recapture, init, server and workspace, MCP, icons, fixtures |
+| `src/cli/main.ts` | The `screenshot-studio` command, and the library's public exports |
+| `ui/src/` | The editor (React, shadcn/ui, Tailwind) |
+| `capture/` | The emulator and simulator side (Python: `capture.py`, `ios.py`, `uitree.py`) |
+| `schemas/` | JSON Schemas for the files an app keeps |
+| `themes/`, `templates/` | What `init` copies into a new app |
+| `skills/store-screenshots/` | The skill `init` installs in an app ([Agents](agents.md)) |
+| `studio/` | **Built output**, the folder each app gets a copy of. Never edit it by hand. |
 | `docs/` | These guides; `docs/images/make.cjs` rebuilds the README images |
 
-## The editor UI
+## Build and test
 
 ```sh
 npm ci
-npm run dev       # Vite, for working on ui/src
-npm run build     # writes the bundle to studio/assets/ and generates studio/index.html
-npm run typecheck # the studio (tsconfig.json) and the editor (tsconfig.ui.json), both strict
+npm run build        # build:studio (tsc + rolldown → studio/) and build:ui (Vite → studio/assets/)
+npm run typecheck    # the studio (tsconfig.json) and the editor (tsconfig.ui.json), both strict
+npm test             # unit tests, against the built studio/studio.cjs
+npx playwright install chromium    # once, if Playwright has no browser
+npm run test:ui      # the editor in a browser, on temporary projects
+npm run dev          # Vite, for working on ui/src
 ```
+
+Build before testing: the tests load `studio/studio.cjs`, which is what apps run. The browser suite uses temporary fixtures and its own project registry, so it never touches yours.
+
+To try a change the way users run it, call the built command directly: `node /path/to/screenshot-studio/studio/studio.cjs <command>` is what `npx screenshot-studio <command>` runs.
+
+## Rules
+
+- **Modules have no side effects.** Everything Node-side is bundled into one file; nothing may parse `process.argv`, exit, or start work at import time. A command is a `run(argv): Promise<number>` next to a library function that returns a typed result.
+- **Errors say what to do.** Throw `Error` with a message a user can act on ("No studio.json in …. Run `npx screenshot-studio init` first."). Library functions report problems in their result; only `run` prints.
+- **Read studio files with `readJson`** (`src/node/project.ts`) or the renderer's `json`: they drop the `$schema` key.
+- **Apps run their own copy.** Changes reach an app through `npx screenshot-studio sync`. Bump `studio/VERSION` for changes apps should notice.
+- **Check against a real app** before calling a change done: copy one (never edit it in place), sync, `check`, `export`, and look at the images.
+
+Commit the built `studio/` with the source change: apps sync it as is.
+
+## The editor
 
 The editor shares its types with the studio: the files an app keeps come from `src/core/types.d.ts`, the server's answers from `src/node/workspace/` (imported as types only). `ui/src/lib/` holds everything that isn't a component: the project model and live reload (`project.ts`, `live.ts`), drafts, the review, routes and the API.
 
-The editor is built from the official shadcn/ui components (`ui/src/components/ui/`, set up in `components.json`), owned here and tailored where needed. The build bundles React and every dependency, so an app needs only Node to run the editor: no npm install, no CDN. It uses the neutral shadcn palette in light and dark; app artwork keeps its own theme. The renderer files stay separate from the bundle, so each app keeps its own artwork. The shadcn MIT notice is in `ui/SHADCN-LICENSE.md` and ships with the bundle.
-
-Commit the built bundle with the source change: apps sync `studio/` as is.
-
-## Syncing into apps
-
-Never edit an app's `store-listing/studio/`; change it here, then:
-
-```sh
-./sync.sh /path/to/app            # copy studio/ into the app
-./sync.sh /path/to/app --check    # report differences
-```
-
-Bump `studio/VERSION` when apps should notice a change.
-
-## Tests
-
-```sh
-npm test                           # gallery and workspace
-npx playwright install chromium    # once, if Playwright has no browser
-npm run test:ui                    # the editor, in a browser, on temporary projects
-```
-
-The browser suite uses temporary fixtures and its own project registry, so it never touches yours. Build before running it after changing `ui/src`.
+It is built from the official shadcn/ui components (`ui/src/components/ui/`, set up in `components.json`), owned here and tailored where needed. The build bundles React and every dependency, so an app needs only Node to run the editor: no npm install, no CDN. It uses the neutral shadcn palette in light and dark; app artwork keeps its own theme. The renderer files stay separate from the bundle, so each app keeps its own artwork. The shadcn MIT notice is in `ui/SHADCN-LICENSE.md` and ships with the bundle.
 
 ## README images
 
 ```sh
-PLAYWRIGHT_MODULE=$PWD/node_modules/playwright node docs/images/make.cjs --editor
+node docs/images/make.cjs --editor
 ```
 
-Composes the README's images from the apps' own exports (`--apps`, default `~/Documents/android`). `--editor` also screenshots the editor, on a server with a temporary project list.
+Composes the README's images from the apps' own exports (`--apps`, the folder holding the apps). `--editor` also screenshots the editor, on a server with a temporary project list.

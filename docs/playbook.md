@@ -1,21 +1,23 @@
 # Screenshot Studio playbook
 
-How to take an app from nothing to a 9/10 Play listing and README, learned on Calcula, ChangeDetection and
-WiFi Weakspot. Written for agents: follow it in order, and update it when a new app teaches something.
+How to take an app from nothing to a strong store listing and README, learned on a run of real apps. Written for
+people and agents alike: follow it in order, and update it when a new app teaches something.
 
-## 0. Scaffold
+## 0. Set up
 
 ```sh
-node ~/Documents/screenshot-studio/init.cjs /path/to/app --name "App" --package com.example.app
+npx screenshot-studio init --name "App" --package com.example.app    # capture on an emulator
+npx screenshot-studio init --name "App" --screenshots ./shots        # or start from screenshots you have
 ```
 
 This creates `store-listing/` (studio.json, profiles.json, gallery.json, theme.css/js, en-US copy and listing,
-.gitignore, README) and syncs `studio/`. Everything an agent tweaks lives in those files.
+.gitignore, README), copies the studio in, and installs the agent skill ([Agents](agents.md)). Everything you
+tweak lives in those files ([Setting up an app](setup.md)). Pick a starting look with `--theme` ([Themes](themes.md)).
 
 ## 1. Capture real screens
 
-- **Real app only.** Captures come from the running Android app on the one capture emulator, with Android's own
-  status bar and gesture pill. Never paint UI, never fake numbers.
+- **Real app only.** Captures come from the running app on an emulator (or an iOS simulator), with the system's
+  own status bar and navigation. Never paint UI, never fake numbers.
 - **A capture build.** Add a build type or flavor with its own application ID suffix (`.screenshots`,
   `.storecapture`) that seeds fictional, believable sample data and never touches real user data or the network.
   Production builds must not contain the fixtures.
@@ -23,30 +25,33 @@ This creates `store-listing/` (studio.json, profiles.json, gallery.json, theme.c
   numbers, and at least one story with a visible change (a price drop, a signal dip and recovery). `.example`
   domains look fake; avoid them.
 - **Light mode by default.** Light screens read better on most canvases. Use dark only where it is the point.
-- **Script it.** Write only the scene tour: `store-listing/capture-emulator.py` on the studio's `capture.py`
-  (`Device`, see [Capturing](capture.md)), which sets display size and density for phone (1080×2340 @400–420),
-  7-inch (1200×1920 @320) and 10-inch (1920×1200 @240), System UI demo mode (9:41, full battery and Wi-Fi),
-  gesture navigation and the app language, saves `<locale>/raw/<profile>/<name>.png` plus a `.nodes.json`
-  layout sidecar, and resets everything afterwards. Describe the build and the runs in studio.json's
-  `capture` block; `node store-listing/studio/recapture.cjs` then rebuilds, captures and exports in one command.
-- **One emulator at a time.** A 32 GB Mac runs out of memory with several emulators, and the system kills one mid-capture. Check `adb devices` first and queue apps instead of capturing in parallel.
-- **Emulator hygiene.** Every app uses the same `Resizable_Experimental` AVD on port 5578 (`emulator-5578`); never create per-app AVDs, never a physical phone. `capture.py` snoozes other apps' notifications,
-  turns the network off, hides helper packages and recovers from a stuck UiAutomation or a full disk; uninstall
-  other apps' capture builds if they steal focus, and run `python3 store-listing/studio/capture.py reset` if a run
-  is killed (a capture refuses to start over a leftover display override).
+- **Script it.** Write only the scene tour: `store-listing/capture-emulator.py` on the studio's `Device`
+  ([Capturing](capture.md)). It sets display size and density for phone (1080×2340 @400–420), 7-inch
+  (1200×1920 @320) and 10-inch (1920×1200 @240), System UI demo mode (9:41, full battery and Wi-Fi), gesture
+  navigation and the app language, saves `<locale>/raw/<profile>/<name>.png` with a `.nodes.json` layout map, and
+  resets everything afterwards. Describe the build and the runs in studio.json's `capture` block; then
+  `npx screenshot-studio recapture --boot` starts the emulator, rebuilds, captures and exports in one command.
+- **One dedicated emulator, one at a time.** Capture on an emulator kept for captures (`capture.serial` and
+  `capture.avd` in studio.json), never a physical phone, and reuse it for every app rather than making one per
+  app. Several emulators at once can run the computer out of memory, and the system then kills one mid-capture:
+  check `adb devices` first and capture apps one after another.
+- **Emulator hygiene.** `Device` snoozes other apps' notifications, turns the network off, hides helper packages
+  and recovers from a stuck UiAutomation or a full disk. Uninstall other apps' capture builds if they steal focus,
+  and run `python3 store-listing/studio/capture.py reset` if a run is killed (a capture refuses to start over a
+  leftover display override).
 - **Drive by visible text.** Tap tabs and buttons by their on-screen label from the node tree, not by fixed
   coordinates; layouts shift between phone and tablet. Clear app data before each device size.
 - **Check the status bar in light mode.** Light screens need dark status bar icons; if the app gets this wrong,
   fix the app, not the screenshot.
 - **Fictional third-party apps** (a firewall, a launcher) need drawn icons and names, never real brands. When
   the app lists apps through `PackageManager`, install real code-free stub APKs instead of patching the app:
-  `node store-listing/studio/fixture-apps.cjs store-listing/fixture-apps.json --install emulator-5578` builds
-  one per entry (label, gradient adaptive icon with a Lucide glyph, INTERNET permission, app category). The
-  capture build then only seeds rules and traffic for those packages, looked up by package name.
-- **Pin the clock, not just the status bar.** If screens show timestamps or "last hour" windows, set the
-  emulator clock to 9:41 (`settings put global auto_time 0`, `cmd alarm set-time <ms>`) before the app seeds
-  its data, so log times end at the status-bar time; restore the host time afterwards. Insert seeded logs
-  oldest first: lists that order by row id otherwise show last week at the top.
+  `npx screenshot-studio fixtures store-listing/fixture-apps.json --install <emulator>` builds one per entry
+  (label, gradient adaptive icon with a Lucide glyph, INTERNET permission, app category). The capture build then
+  only seeds data for those packages, looked up by package name.
+- **Pin the clock, not just the status bar.** If screens show timestamps or "last hour" windows, pin the device
+  clock to 9:41 (`d.set_clock('09:41')`) before the app seeds its data, so log times end at the status-bar time;
+  the host time comes back afterwards. Insert seeded logs oldest first: lists that order by row id otherwise show
+  last week at the top.
 - **Seed, then relaunch.** View models that read once at start (totals, counts) miss data seeded after launch.
   Let the first start seed (write a marker file, poll it with `run-as`), force-stop, and start again.
 - **Endless animations block uiautomator.** A pulsing hero keeps the UI from going idle, so dumps hang. Open the
@@ -54,13 +59,13 @@ This creates `store-listing/` (studio.json, profiles.json, gallery.json, theme.c
   lets the real motion run for one frame.
 - **Match filter chips above the list.** A label like "Blocked" also appears in rows; restrict taps to the top
   of the screen (`d.tap('Blocked', within=lambda b: b[1] < d.height * .25)`).
-- **Apps that show another computer** (remote desktops, companions) capture against a real host when
-  one is available: open fictional content on it over SSH from a script kept in the repo
-  (`store-listing/host/` in Lumina), close every window and delete the folder afterwards, and remove
-  the emulator's pairing from the host. Dismiss the host's desktop notifications first and check
-  every frame for names, paths and other people's devices (discovery lists show them; turn
-  discovery off in the capture build). Native libraries must match the app's source revision.
-- **Pillow comes from uv.** `recapture.cjs` runs tours with `uv run --with pillow`; the system Python may lack it.
+- **Apps that show another computer** (remote desktops, companions) capture against a real host when one is
+  available: open fictional content on it from a script kept in the repository, close every window and delete
+  the content afterwards, and remove the emulator's pairing from the host. Dismiss the host's desktop
+  notifications first and check every frame for names, paths and other people's devices (discovery lists show
+  them; turn discovery off in the capture build). Native libraries must match the app's source revision.
+- **Pillow comes from uv.** `recapture` runs tours with `uv run --with pillow` when uv is installed; without it,
+  the system Python needs Pillow.
 - **Look at the 10-inch captures for layout bugs.** Width-limited columns can leave the window background
   bare (black side bars); fix the app, then recapture.
 
@@ -82,41 +87,45 @@ What users rejected, and what they kept:
 Type: a two-line headline fits at about 108px on a 1080px phone card; letter-spacing tighter than −0.02em
 starts merging words in bold display faces.
 
-Checklist for each card: readable at Play thumbnail size, one idea, the app visible, no clipped glyphs or
-cut tablets (except intentional bleeds), copy never overlaps the app.
+Checklist for each card: readable at store thumbnail size, one idea, the app visible, no clipped glyphs or
+cut tablets (except intentional bleeds), copy never overlaps the app, no word left alone on a last line.
 
 Structure that works: the first two cards show the core screens large; middle cards one feature each; a
-composed card (two phones stacked with copy between them, or light/dark pair); tablets last. Up to 8 phone
+composed card (two phones stacked with copy between them, or a light/dark pair); tablets last. Up to 8 phone
 cards. The 7-inch and 10-inch follow the same system (10-inch: copy left, product right).
 
 ## 3. Export and check
 
 ```sh
-node store-listing/studio/server.cjs 8790          # editor
-node store-listing/studio/export.cjs --locale en-US
+npx screenshot-studio check                  # after every edit
+npx screenshot-studio studio --open          # the editor
+npx screenshot-studio export --locale en-US
 ```
 
-Review every card at full size, plus the joined contact sheet (does it read as one set?). Set
-`"supersample": 2` in studio.json for crisp scaled UI.
+Review every card at full size, the contact sheet (does it read as one set?), and the editor's store preview at
+thumbnail size. Fix every export warning, short last lines included. Set `"supersample": 2` in studio.json for
+crisp scaled UI.
 
 ## 4. README
 
 The README is art too, rendered by the same studio from the `readme` gallery (2400 × 1260, default language only).
 
 - **Open with the app.** A header (the name beside one large device) or a hero (icon, name and tagline over three phones). Then one bold line and two or three sentences.
-- **Install badges right after**, the same height: Google Play, F-Droid, Obtainium. Link the web demo if there is one.
-- **Two or three feature images, not a gallery.** What works: tinted panels, each with its own short headline and one device (Calcula's tools, SDK Monitor's "Where apps stand"); one headline over three captioned phones (QuietGuard's rules). Each image gets a short section and two to four bullets.
+- **Install badges right after**, the same height: Google Play, F-Droid, Obtainium, the App Store. Link the web demo if there is one.
+- **Two or three feature images, not a gallery.** What works: tinted panels, each with its own short headline and one device; one headline over three captioned phones. Each image gets a short section and two to four bullets.
 - **Tablets and dark mode once,** in one image.
 - **A before and after** when the app grew from another: the old app beside the new, one or two pairs.
-- **Privacy once,** a few lines. Build instructions live in `docs/DEVELOPMENT.md`; end with one small pointer to it.
-- No captions under images that already carry a headline. Check it rendered with GitHub's styles before committing (`node store-listing/studio/readme-preview.cjs`).
+- **Privacy once,** a few lines. Build instructions live in their own document; end with one small pointer to it.
+- No captions under images that already carry a headline. Check it renders with GitHub's styles before committing (`npx screenshot-studio readme`).
 
 ## 5. Git
 
 Commit `en-US` captures and exports (the README uses them) and every locale's `copy.json`/`listing.json`.
 Other locales' `raw/` captures and exports regenerate from the scripts and are git-ignored (see the scaffolded
-`.gitignore`), so the repository stays small. `play-staging/` is never committed.
+`.gitignore`), so the repository stays small.
 
 ## 6. Ship
 
-`export.cjs --fastlane` writes the store text and phone screenshots into `fastlane/metadata/android/` for F-Droid and fastlane `supply` (see [Languages and export](languages-and-export.md)). Apps that upload to Play keep their lanes in `fastlane/Fastfile`, with the steps in `fastlane/PLAY_STORE.md`.
+`npx screenshot-studio export --fastlane` writes the store text and phone screenshots into
+`fastlane/metadata/android/` for F-Droid and fastlane `supply` (see [Languages and export](languages-and-export.md)).
+Apps that upload to Play from fastlane keep their lanes in `fastlane/Fastfile`.

@@ -3,11 +3,11 @@
 A local web app for every project you connect.
 
 ```sh
-node studio/server.cjs 8790                      # from this repository: the whole workspace
-node store-listing/studio/server.cjs 8790        # from an app: that app, connected automatically
+npx screenshot-studio studio --open              # in an app: that app, connected automatically
+npx screenshot-studio studio 8791                # another port (default 8790)
 ```
 
-Open `http://127.0.0.1:8790/studio/` (or `/store-listing/studio/` inside an app). Nothing leaves your computer.
+Inside an app it opens `http://127.0.0.1:8790/store-listing/studio/`; anywhere else, the workspace of every connected project at `http://127.0.0.1:8790/studio/`. `--open` opens the browser. Nothing leaves your computer.
 
 <p align="center">
   <img src="images/editor-projects.jpg" width="100%" alt="The workspace: seven connected projects with their cards, language progress and capture counts">

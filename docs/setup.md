@@ -1,20 +1,86 @@
 # Setting up an app
 
-Everything an app needs lives in its `store-listing/` folder. `init.cjs` creates a working starter; this page explains each file.
+Everything an app needs lives in its `store-listing/` folder. `npx screenshot-studio init` creates a working starter; this page explains each file.
+
+## init
+
+Run it in the app's repository (or pass the folder as the first argument):
+
+```sh
+npx screenshot-studio init --name "My App" --package com.example.app   # Android, captured on an emulator
+npx screenshot-studio init --name "My App" --screenshots ./shots        # from screenshots you already have
+npx screenshot-studio init --name "My App" --platform ios               # App Store galleries (see Capturing)
+```
+
+| Option | Does |
+|---|---|
+| `--name` | The app's name (default: the folder's name) |
+| `--package` | The application ID; the capture build and tour use it |
+| `--screenshots` | Builds the galleries from existing images, with no emulator: a folder, sorted naturally (`2-x` before `10-x`; number the files to set the order), or a comma-separated list of files in card order. Each image goes to the phone, 7-inch or 10-inch gallery by its shape. |
+| `--theme` | The starting look (default `starter`); `npx screenshot-studio themes` lists them, [Themes](themes.md) shows them |
+| `--locales` | The languages, e.g. `en-US,de-DE` (the first is the default) |
+| `--platform ios` | App Store galleries and an iOS simulator tour ([Capturing](capture.md#ios)) |
+
+`init` never overwrites a file: run it again and it keeps what's there. It also installs a skill for Claude Code at `.claude/skills/store-screenshots/SKILL.md` ([Agents](agents.md)).
+
+From screenshots, the first cards render right away: run `npx screenshot-studio export`. Otherwise the next steps are a capture build and the tour ([Capturing](capture.md)).
+
+## The files
 
 ```
 store-listing/
-  studio/              the studio itself, copied in by sync.sh (never edit it here)
+  studio/              the studio itself, copied in by init and sync (never edit it here)
   studio.json          the app's settings: name, languages, capture, frames, bounds
   profiles.json        one entry per gallery: canvas size, capture size, device frame
   gallery.json         the cards: which capture, which layout, in which order
   theme.css            the look: type, colors, where devices sit
   theme.js             optional code: background art and extra elements
-  capture-emulator.py  the scene tour (see Capturing)
+  assets/              the theme's fonts, if it ships any
+  capture-emulator.py  the scene tour (capture-simulator.py on iOS; see Capturing)
   <locale>/copy.json   the words for each card
+  <locale>/listing.json  the store text
   <locale>/raw/        captures, each with a .nodes.json layout map
   brand/               the app icon's layers (see App icons)
 ```
+
+`npx screenshot-studio` finds `store-listing/` in the current folder or above it; `--listing path/to/app` points it elsewhere.
+
+## Keeping the studio current
+
+The app runs its own copy in `store-listing/studio/`. After updating the package:
+
+```sh
+npx screenshot-studio sync            # copy this version into the app
+npx screenshot-studio sync --check    # only report whether it differs
+```
+
+Every command says when the app's copy is older than the package.
+
+## check
+
+```sh
+npx screenshot-studio check           # every file, in about a second
+npx screenshot-studio check --json    # the same, for tools
+```
+
+It reads every file without rendering: each JSON file against its schema, captures that are missing or match no capture size in `profiles.json`, cards without words and words no card uses, store text over Play's limits, and copy or store text still holding the starter's placeholder. Each problem comes with its file, where in the file, and what to do:
+
+```
+✗ gallery.json phone[1].raw: capture en-US/raw/phone/09-missing.png doesn't exist
+    → Capture it (`npx screenshot-studio recapture`), add the file, or fix the path.
+! en-US/copy.json home.title: is still the starter placeholder
+    → Write a benefit headline for this screen.
+```
+
+`✗` is an error (the command fails), `!` a warning. Run it after every edit; `export` catches what only shows in a render.
+
+**Schemas.** `schemas/` has a JSON Schema for `studio.json`, `profiles.json`, `gallery.json` and `copy.json`; the app's copy is in `store-listing/studio/schemas/`. A file that names its schema gets autocomplete and inline errors in most editors:
+
+```json
+{"$schema": "./studio/schemas/gallery.schema.json", "phone": [ … ]}
+```
+
+`init` adds the line to `profiles.json`, `gallery.json` and `copy.json` (`"../studio/schemas/copy.schema.json"`, one folder down). The studio ignores the key.
 
 ## studio.json
 
