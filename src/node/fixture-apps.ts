@@ -22,7 +22,7 @@ import os from 'node:os';
 import path from 'node:path';
 import {execFileSync} from 'node:child_process';
 import {readJson} from './project';
-import {loadPlaywright} from './playwright';
+import {launchBrowser} from './playwright';
 
 /** A Lucide icon name, SVG markup on a 24-unit stroke grid, or text. */
 type Glyph = string | {svg: string} | {text: string};
@@ -92,8 +92,7 @@ function layers(app: FixtureApp): {background: string; foreground: string} {
 }
 
 async function renderIcons(apps: FixtureApp[], out: string): Promise<void> {
-  const {chromium} = loadPlaywright();
-  const browser = await chromium.launch();
+  const browser = await launchBrowser();
   try {
     const page = await browser.newPage({viewport: {width: 432, height: 432}});
     for (const app of apps) {

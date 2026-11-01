@@ -51,7 +51,7 @@ import os from 'node:os';
 import {execFileSync} from 'node:child_process';
 import type {Page} from 'playwright';
 import {readJson, requireListing} from './project';
-import {loadPlaywright} from './playwright';
+import {launchBrowser} from './playwright';
 
 type Shape = 'square' | 'rounded' | 'circle' | 'mark';
 /** Where Android's launcher icons go. */
@@ -247,8 +247,7 @@ export async function buildIcons(options: IconOptions = {}): Promise<IconResult>
     return page.screenshot({omitBackground: !opaque, clip: {x: 0, y: 0, width: size, height: size}});
   };
 
-  const {chromium} = loadPlaywright();
-  const browser = await chromium.launch();
+  const browser = await launchBrowser();
   try {
     page = await browser.newPage();
     for (const job of spec.icons || [spec]) {

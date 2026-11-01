@@ -1673,6 +1673,32 @@ function loadPlaywright() {
 	if (!dir) throw new Error("Playwright renders the cards and isn't installed. Run the studio with `npx screenshot-studio …`, or install it: `npm install -D playwright && npx playwright install chromium`.");
 	return require(dir);
 }
+/**
+* Chromium, the browser every card renders in. The first time, when Playwright has no Chromium yet, it downloads
+* the one this Playwright needs (once, about 100 MB) and carries on, instead of stopping with an install hint.
+*/
+async function launchBrowser(log = (line) => console.error(line)) {
+	const { chromium } = loadPlaywright();
+	try {
+		return await chromium.launch();
+	} catch (error) {
+		if (!/Executable doesn't exist|browserType\.launch.*install/i.test(error.message)) throw error;
+		const cli = node_path.default.join(findPlaywright(), "cli.js");
+		log("Downloading Chromium to render the cards (once, about 100 MB)…");
+		const { spawnSync } = require("node:child_process");
+		if (spawnSync(process.execPath, [
+			cli,
+			"install",
+			"--only-shell",
+			"chromium"
+		], { stdio: [
+			"ignore",
+			"inherit",
+			"inherit"
+		] }).status !== 0) throw new Error("Chromium could not be downloaded. Check the connection and try again, or run `npx playwright install chromium`.");
+		return chromium.launch();
+	}
+}
 var init_playwright = __esmMin((() => {}));
 // src/node/export.ts
 /**
@@ -1805,14 +1831,13 @@ async function exportListing(options = {}) {
 		};
 	};
 	const { cardsFor, devicesFor, outputFile } = await Promise.resolve().then(() => (init_gallery(), gallery_exports));
-	const { chromium } = loadPlaywright();
 	let server = null, browser = null;
 	let failures = 0;
 	try {
 		server = await serve(repo);
 		const address = server.address();
 		const base = `http://127.0.0.1:${typeof address === "object" && address ? address.port : 0}/${node_path.default.relative(repo, listing).split(node_path.default.sep).join("/")}`;
-		browser = await chromium.launch();
+		browser = await launchBrowser();
 		for (const locale of options.locales?.length ? options.locales : config.locales || [defaultLocale]) {
 			const dir = node_path.default.join(listing, locale);
 			const manifest = { galleries: {} };
@@ -3159,8 +3184,7 @@ async function buildIcons(options = {}) {
 			}
 		});
 	};
-	const { chromium } = loadPlaywright();
-	const browser = await chromium.launch();
+	const browser = await launchBrowser();
 	try {
 		page = await browser.newPage();
 		for (const job of spec.icons || [spec]) {
@@ -3475,8 +3499,7 @@ function layers(app) {
 	};
 }
 async function renderIcons(apps, out) {
-	const { chromium } = loadPlaywright();
-	const browser = await chromium.launch();
+	const browser = await launchBrowser();
 	try {
 		const page = await browser.newPage({ viewport: {
 			width: 432,
@@ -4034,8 +4057,7 @@ async function previewReadme(options = {}) {
 <article class="markdown-body">${body}</article>`;
 	const page = node_path.default.join(node_fs.default.mkdtempSync(node_path.default.join(node_os.default.tmpdir(), "readme-preview-")), "readme.html");
 	node_fs.default.writeFileSync(page, html);
-	const { chromium } = loadPlaywright();
-	const browser = await chromium.launch();
+	const browser = await launchBrowser();
 	try {
 		const tab = await browser.newPage({
 			viewport: {

@@ -16,7 +16,7 @@ import type {Browser, Page} from 'playwright';
 import type {CardReport, Listing} from '../core/types';
 import {loadListing, readJson, requireListing} from './project';
 import {serve} from './server';
-import {loadPlaywright} from './playwright';
+import {launchBrowser} from './playwright';
 import {listingProblems, storeFor} from '../core/stores';
 
 export interface ExportOptions {
@@ -157,7 +157,6 @@ export async function exportListing(options: ExportOptions = {}): Promise<Export
   };
 
   const {cardsFor, devicesFor, outputFile} = await import('../core/gallery');
-  const {chromium} = loadPlaywright();
   let server: Server | null = null, browser: Browser | null = null;
   let failures = 0;
   try {
@@ -165,7 +164,7 @@ export async function exportListing(options: ExportOptions = {}): Promise<Export
     const address = server.address();
     const port = typeof address === 'object' && address ? address.port : 0;
     const base = `http://127.0.0.1:${port}/${path.relative(repo, listing).split(path.sep).join('/')}`;
-    browser = await chromium.launch();
+    browser = await launchBrowser();
     for (const locale of options.locales?.length ? options.locales : config.locales || [defaultLocale]) {
       const dir = path.join(listing, locale);
       const manifest: {galleries: Record<string, (ExportedCard & {slide: number; sources: string[]})[]>} = {galleries: {}};

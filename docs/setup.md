@@ -203,3 +203,12 @@ Override them in `studio.json`: `"frames": {"phone": {"bezel": 0.02, "radius": 0
 - Devices are large and may run off an edge; copy and callouts never leave the canvas or cover the app.
 - The set reads as one strip in the store carousel.
 - One short headline with one highlighted phrase, one supporting line.
+
+## Troubleshooting
+
+| Problem | Fix |
+|---|---|
+| `EBADDEVENGINES … "yarn" does not match "npm"` | Your repository's `package.json` asks for another package manager, and npx honors it. Run `npx --force screenshot-studio …`, or `pnpm dlx` / `bunx screenshot-studio …`. |
+| The first export pauses to download Chromium | Expected, once: the studio renders cards in Chromium and fetches the one its Playwright needs (about 100 MB). |
+| `No store-listing/studio.json here or in any folder above` | Run the command in your app, or pass `--listing path/to/app`. Set one up with `npx screenshot-studio init`. |
+| A capture is interrupted and the emulator keeps a strange size | `npx screenshot-studio reset`. |

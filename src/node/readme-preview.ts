@@ -12,7 +12,7 @@ import path from 'node:path';
 import {pathToFileURL} from 'node:url';
 import {execFileSync} from 'node:child_process';
 import {findListing} from './project';
-import {loadPlaywright} from './playwright';
+import {launchBrowser} from './playwright';
 
 export interface ReadmePreviewOptions {
   /** The repository whose README.md to render (default: the git root around the store listing). */
@@ -69,8 +69,7 @@ export async function previewReadme(options: ReadmePreviewOptions = {}): Promise
   const page = path.join(fs.mkdtempSync(path.join(os.tmpdir(), 'readme-preview-')), 'readme.html');
   fs.writeFileSync(page, html);
 
-  const {chromium} = loadPlaywright();
-  const browser = await chromium.launch();
+  const browser = await launchBrowser();
   try {
     const tab = await browser.newPage({viewport: {width: width + 64, height: 900}, deviceScaleFactor: 1});
     await tab.goto(pathToFileURL(page).href);

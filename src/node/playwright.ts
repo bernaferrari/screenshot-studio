@@ -33,3 +33,21 @@ export function loadPlaywright(): Playwright {
   if (!dir) throw new Error('Playwright renders the cards and isn\'t installed. Run the studio with `npx screenshot-studio …`, or install it: `npm install -D playwright && npx playwright install chromium`.');
   return require(dir) as Playwright;
 }
+
+/**
+ * Chromium, the browser every card renders in. The first time, when Playwright has no Chromium yet, it downloads
+ * the one this Playwright needs (once, about 100 MB) and carries on, instead of stopping with an install hint.
+ */
+export async function launchBrowser(log: (line: string) => void = line => console.error(line)): Promise<import('playwright').Browser> {
+  const {chromium} = loadPlaywright();
+  try { return await chromium.launch(); }
+  catch (error) {
+    if (!/Executable doesn't exist|browserType\.launch.*install/i.test((error as Error).message)) throw error;
+    const cli = path.join(findPlaywright()!, 'cli.js');
+    log('Downloading Chromium to render the cards (once, about 100 MB)…');
+    const {spawnSync} = require('node:child_process') as typeof import('node:child_process');
+    const done = spawnSync(process.execPath, [cli, 'install', '--only-shell', 'chromium'], {stdio: ['ignore', 'inherit', 'inherit']});
+    if (done.status !== 0) throw new Error('Chromium could not be downloaded. Check the connection and try again, or run `npx playwright install chromium`.');
+    return chromium.launch();
+  }
+}
