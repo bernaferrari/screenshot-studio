@@ -4,7 +4,8 @@
  *                              [--screenshots ./folder] [--locales en-US,de-DE] [--platform android|ios]
  *   npx screenshot-studio sync [app-folder] [--check]
  * `init` creates store-listing/ (never overwriting a file), copies the studio into store-listing/studio/, and with
- * --screenshots builds the galleries from images you already have, so the first cards render with no emulator.
+ * --screenshots builds the galleries from images you already have, so the first cards render with no emulator: a folder
+ * (number the files to set the order) or a comma-separated list of files in card order.
  * --platform ios makes App Store galleries (iPhone 6.9″ and 6.3″, iPad 13″) and an iOS simulator tour instead.
  */
 import fs from 'node:fs';
@@ -35,7 +36,7 @@ export interface InitOptions {
   /** The Android package or iOS bundle ID; with it, init also writes a capture tour. */
   package?: string;
   theme?: string;
-  /** A folder of existing screenshots to build the galleries from. */
+  /** Existing screenshots to build the galleries from: a folder (sorted naturally) or a comma-separated list in card order. */
   screenshots?: string;
   locales?: string[];
   /** android (default): Play galleries and an emulator tour; ios: App Store galleries and a simulator tour. */
@@ -86,12 +87,29 @@ function galleryFor(width: number, height: number): {kind: string; profile: Prof
 }
 
 /** Galleries, profiles and words from a folder of images, copied into <locale>/raw/<gallery>/. */
-function importScreenshots(folder: string, listing: string, locale: string, log: (line: string) => void, ios = false) {
-  const images = fs.readdirSync(folder).filter(file => /\.(png|jpe?g|webp)$/i.test(file)).sort();
+/**
+ * The images to import, in card order: a folder's images sorted naturally (so 2-x comes before 10-x; number the files
+ * to set the order), or a comma-separated list of files in the order given.
+ */
+function screenshotFiles(source: string): {folder: string; images: string[]} {
+  const isImage = (file: string) => /\.(png|jpe?g|webp)$/i.test(file);
+  if (source.includes(',')) {
+    const files = source.split(',').map(file => path.resolve(file.trim()));
+    for (const file of files) if (!fs.existsSync(file) || !isImage(file)) throw new Error(`${file} isn't a PNG, JPEG or WebP image`);
+    return {folder: '', images: files};
+  }
+  const folder = path.resolve(source);
+  const images = fs.readdirSync(folder).filter(isImage).sort((a, b) => a.localeCompare(b, undefined, {numeric: true, sensitivity: 'base'}));
   if (!images.length) throw new Error(`No PNG, JPEG or WebP images in ${folder}`);
+  return {folder, images};
+}
+
+function importScreenshots(source: string, listing: string, locale: string, log: (line: string) => void, ios = false) {
+  const {folder, images} = screenshotFiles(source);
   const profiles: Profiles = {}, galleries: Galleries = {}, copy: Copy = {};
-  for (const file of images) {
-    const size = imageSize(path.join(folder, file));
+  for (const image of images) {
+    const source = path.join(folder, image), file = path.basename(image);
+    const size = imageSize(source);
     const target = size && (ios ? iosGalleryFor : galleryFor)(size.width, size.height);
     if (!size || !target) { log(`skipped   ${file} (not a phone or tablet shape)`); continue; }
     const {kind, profile} = target;
@@ -104,12 +122,12 @@ function importScreenshots(folder: string, listing: string, locale: string, log:
     const feature = cards.some(card => card.feature === slug(file)) ? `${slug(file)}-${cards.length + 1}` : slug(file);
     const raw = `${kind}/${String(cards.length + 1).padStart(2, '0')}-${feature}${path.extname(file).toLowerCase()}`;
     fs.mkdirSync(path.join(listing, locale, 'raw', kind), {recursive: true});
-    fs.copyFileSync(path.join(folder, file), path.join(listing, locale, 'raw', raw));
+    fs.copyFileSync(source, path.join(listing, locale, 'raw', raw));
     cards.push({feature, raw, layout: 'big'});
     copy[feature] ||= {title: `Your headline\nabout *${words(file)}*`, body: 'One short line on why it matters.'};
     log(`imported  ${file} → ${locale}/raw/${raw}`);
   }
-  if (!Object.keys(galleries).length) throw new Error(`None of the images in ${folder} has a phone or tablet shape`);
+  if (!Object.keys(galleries).length) throw new Error(`None of the images in ${folder || 'the list'} has a phone or tablet shape`);
   // App Store: the 6.3″ iPhone gallery (required) shows the same captures as 6.9″, at its own size.
   if (ios && galleries.iphone) {
     const after = <T>(map: Record<string, T>, value: T): Record<string, T> =>
@@ -153,7 +171,7 @@ export function init(options: InitOptions = {}): InitResult {
   const config: StudioConfig & {$schema: string; package?: string} = {...readJson<StudioConfig & {$schema: string}>(path.join(TEMPLATES, 'studio.json')), app: name, locales};
   if (pkg) config.package = pkg; else delete config.package;
   if (options.screenshots) {
-    const imported = importScreenshots(path.resolve(options.screenshots), listing, 'en-US', log, ios);
+    const imported = importScreenshots(options.screenshots, listing, 'en-US', log, ios);
     // Captured galleries keep the simulator a recapture would use.
     if (sims) for (const [kind, profile] of Object.entries(imported.profiles)) if (profile.captureWidth) profile.simulator = kind === 'iphone' ? sims.iphone : sims.ipad;
     write('studio.json', config);
