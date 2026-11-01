@@ -3,8 +3,9 @@ import { ArrowLeft, ArrowRight, Crop, Maximize2 } from "lucide-react";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import { ScrollArea, ScrollBar } from "@/components/ui/scroll-area";
 import { IconButton, Status } from "@/components/common";
-import { artworkMedia, useMediaViewer } from "@/components/media-viewer";
+import { useMediaViewer } from "@/components/viewer/media-viewer";
 import { language, position, pretty } from "@/lib/format";
+import { artworkMedia } from "@/lib/media";
 import { devicesFor, type ProjectModel } from "@/lib/project";
 import type { Source } from "@/lib/route";
 import type { Card as GalleryCard } from "@/lib/types";
@@ -28,7 +29,7 @@ interface StripProps {
   exportRevision: number;
   selected: number | null;
   onSelect(index: number): void;
-  onPicker(index: number): void;
+  onPicker(kind: string, index: number): void;
   onState(key: string, state: FrameState): void;
   states: FrameStates;
 }
@@ -267,7 +268,10 @@ const PreviewCard = memo(function PreviewCard({
           <span className="truncate font-medium">{name}</span>
           <div className="ml-auto flex">
             {devicesFor(card).length > 0 && (
-              <IconButton label="Pick callout" onClick={() => onPicker(index)}>
+              <IconButton
+                label="Pick callout"
+                onClick={() => onPicker(kind, index)}
+              >
                 <Crop />
               </IconButton>
             )}

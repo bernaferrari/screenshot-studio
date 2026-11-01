@@ -7,7 +7,8 @@ import {
   TooltipTrigger,
 } from "@/components/ui/tooltip";
 import { ProjectAvatar } from "./common";
-import { ProjectMenu, type ProjectActions } from "./project-dialogs";
+import type { ProjectActions } from "./projects/project-dialogs";
+import { ProjectMenu } from "./projects/project-menu";
 import { ago, copyText, plural } from "@/lib/format";
 import { useNow } from "@/lib/hooks";
 import type { LiveState } from "@/lib/live";

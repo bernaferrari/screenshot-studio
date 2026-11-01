@@ -1,4 +1,10 @@
-import { useCallback, useEffect, useState, useSyncExternalStore } from "react";
+import {
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useState,
+  useSyncExternalStore,
+} from "react";
 
 /** Whether a media query matches, updated as it changes. */
 export function useMediaQuery(query: string): boolean {
@@ -77,4 +83,22 @@ export function useNow(interval = 30_000): number {
     return () => window.clearInterval(timer);
   }, [interval]);
   return now;
+}
+
+/** An element's client size, updated as it resizes; zero until it mounts. */
+export function useClientSize(element: HTMLElement | null): {
+  width: number;
+  height: number;
+} {
+  const [size, setSize] = useState({ width: 0, height: 0 });
+  useLayoutEffect(() => {
+    if (!element) return;
+    const update = () =>
+      setSize({ width: element.clientWidth, height: element.clientHeight });
+    update();
+    const observer = new ResizeObserver(update);
+    observer.observe(element);
+    return () => observer.disconnect();
+  }, [element]);
+  return size;
 }

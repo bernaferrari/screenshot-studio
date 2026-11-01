@@ -17,6 +17,8 @@ import type {
   StudioConfig,
 } from "./types";
 
+import { cardsFor } from "../../../src/core/gallery";
+
 export {
   cardsFor,
   copyKeys,
@@ -352,3 +354,21 @@ export const cardCopyKeys = (card: Card, kind: string): string[] =>
   card.sharedCopy === false
     ? [`${kind}/${card.feature}`]
     : [card.feature, `${kind}/${card.feature}`];
+
+/** Where a copy key's words show: its gallery and the card's position there. */
+export function copyCard(
+  model: ProjectModel,
+  key: string,
+  fallbackKind: string,
+): { kind: string; index: number; cards: Card[] } | null {
+  const [scope, name] = key.includes("/")
+    ? key.split("/")
+    : [fallbackKind, key];
+  for (const kind of [scope, ...Object.keys(model.galleries)]) {
+    if (!model.galleries[kind]) continue;
+    const cards = cardsFor(model.galleries, kind),
+      index = cards.findIndex((card) => card.feature === name);
+    if (index >= 0) return { kind, index, cards };
+  }
+  return null;
+}

@@ -37,7 +37,7 @@ import {
   ProjectDialogs,
   type Editing,
   type ProjectActions,
-} from "@/components/project-dialogs";
+} from "@/components/projects/project-dialogs";
 import { ProjectPage } from "@/components/project-page";
 import { StudioSidebar } from "@/components/studio-sidebar";
 import { Workbench } from "@/components/workbench";

@@ -14,7 +14,7 @@ import {
 } from "@/components/ui/card";
 import { Toaster } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
-import { MediaViewerProvider } from "@/components/media-viewer";
+import { MediaViewerProvider } from "@/components/viewer/media-viewer";
 import { copyText } from "@/lib/format";
 import { App } from "./app";
 import "./styles.css";
