@@ -284,6 +284,10 @@ const frames = config.frames === false ? null : {
 		bezel: .02,
 		radius: .09
 	},
+	iphone: {
+		bezel: .016,
+		radius: .15
+	},
 	tablet: {
 		bezel: .018,
 		radius: .05
@@ -299,7 +303,11 @@ for (const d of devices) {
 	const frame = d.spec.frame || profile.frame || "phone";
 	const landscape = d.img.naturalWidth > d.img.naturalHeight;
 	d.node.classList.add(landscape ? "device-landscape" : "device-portrait");
-	const ratio = frames && !layoutWords.some((w) => frames.fixed.includes(w)) && frames[["phone", "tablet"].includes(frame) && landscape ? "landscape" : frame];
+	const ratio = frames && !layoutWords.some((w) => frames.fixed.includes(w)) && frames[[
+		"phone",
+		"iphone",
+		"tablet"
+	].includes(frame) && landscape ? "landscape" : frame];
 	if (!ratio || frame === "none") continue;
 	const width = d.node.clientWidth;
 	d.node.style.setProperty("--bezel", `${Math.round(width * ratio.bezel)}px`);
@@ -410,6 +418,7 @@ if (theme.decorate) await theme.decorate(context);
 	};
 	const layouts = {
 		spread: { right: true },
+		hang: { top: true },
 		...own
 	};
 	const rules = [
@@ -427,7 +436,11 @@ if (theme.decorate) await theme.decorate(context);
 			if (!rule.sides && (box.left < m - .5 || overRight > .5 && !(rule.right === true || overRight / box.width <= (Number(rule.right) || 0)))) throw new Error(`Screen leaves the side of the card: ${spec.raw}`);
 			if (!rule.top && box.top < m - .5) throw new Error(`Screen leaves the top of the card: ${spec.raw}`);
 			if ((Math.min(box.top + box.height, H) - Math.max(box.top, 0)) / box.height < rule.visible) throw new Error(`Too little of ${spec.raw} is visible`);
-			if (!rule.cut && ["phone", "tablet"].includes(frame) && box.width > box.height && (box.top < -.5 || box.top + box.height > H + 1)) throw new Error(`Landscape tablet is cut: ${spec.raw}`);
+			if (!rule.cut && [
+				"phone",
+				"iphone",
+				"tablet"
+			].includes(frame) && box.width > box.height && (box.top < -.5 || box.top + box.height > H + 1)) throw new Error(`Landscape tablet is cut: ${spec.raw}`);
 		}
 	}
 }
@@ -469,6 +482,27 @@ if (header) {
 		if (theme.refit) await theme.refit(context);
 	}
 	if (!fits()) report.fit = 0;
+	for (const el of header.querySelectorAll("h1 .line, p")) {
+		const range = document.createRange();
+		range.selectNodeContents(el);
+		const lines = /* @__PURE__ */ new Map();
+		for (const rect of range.getClientRects()) {
+			if (!rect.width) continue;
+			const top = Math.round(rect.top / 4), line = lines.get(top);
+			lines.set(top, line ? {
+				left: Math.min(line.left, rect.left),
+				right: Math.max(line.right, rect.right)
+			} : {
+				left: rect.left,
+				right: rect.right
+			});
+		}
+		const widths = [...lines.entries()].sort(([a], [b]) => a - b).map(([, l]) => l.right - l.left);
+		if (widths.length > 1 && widths[widths.length - 1] < Math.max(...widths) * .3) {
+			const words = el.textContent.trim().split(/\s+/);
+			(report.widows ||= []).push(words.slice(-2).join(" "));
+		}
+	}
 }
 if (q.has("fit")) {
 	root.classList.add("fit-scene");
