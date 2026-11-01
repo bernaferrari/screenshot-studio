@@ -1,0 +1,4 @@
+{
+  "phone": {"width": 1080, "height": 1920, "captureWidth": 1080, "captureHeight": 2340, "captureDensity": 420, "frame": "phone", "label": "Phone"},
+  "feature": {"width": 1024, "height": 500, "frame": "phone", "label": "Feature graphic", "defaultLocaleOnly": true}
+}

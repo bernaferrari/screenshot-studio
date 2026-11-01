@@ -1,0 +1,9 @@
+{
+  "phone": [
+    {"feature": "home", "raw": "phone/01-home.png", "layout": "big"},
+    {"feature": "log", "raw": "phone/02-logs.png", "layout": "big", "callouts": [{"x": 20, "y": 470, "w": 500, "h": 110, "mag": 1.2, "radius": 18}]},
+    {"feature": "apps", "raw": "phone/03-apps.png", "layout": "hang"},
+    {"feature": "pair", "layout": "duo", "devices": [{"raw": "phone/01-home.png", "role": "primary"}, {"raw": "phone/03-apps.png", "role": "secondary"}]}
+  ],
+  "feature": [{"feature": "feature-graphic", "layout": "banner", "identity": true, "raw": "phone/01-home.png", "file": "graphics/feature-graphic.png"}]
+}

@@ -46,7 +46,8 @@
     "test:ui": "node --test test/navigation.browser.cjs",
     "build:studio": "tsc -p tsconfig.json && node scripts/build-studio.mjs",
     "build:ui": "vite build && node scripts/install-ui.mjs",
-    "typecheck": "tsc -p tsconfig.json && tsc -p tsconfig.ui.json"
+    "typecheck": "tsc -p tsconfig.json && tsc -p tsconfig.ui.json",
+    "test:golden": "node --test test/golden.test.cjs"
   },
   "dependencies": {
     "playwright": "^1.62.1"
