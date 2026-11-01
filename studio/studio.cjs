@@ -1568,7 +1568,8 @@ function serve(root, port = 0, { editable = false, workspace = null, activeProje
 				response.end(request.method === "HEAD" ? void 0 : data);
 			} catch (error) {
 				const failure = error;
-				response.writeHead(failure.code === "ENOENT" ? 404 : request.method === "PUT" ? 400 : 500).end(request.method === "HEAD" ? void 0 : failure.code === "ENOENT" ? "Not found" : failure.message);
+				const body = request.method === "HEAD" ? "" : failure.code === "ENOENT" ? "Not found" : failure.message || "";
+				response.writeHead(failure.code === "ENOENT" ? 404 : request.method === "PUT" ? 400 : 500, { "Content-Length": Buffer.byteLength(body) }).end(body);
 			}
 		}
 		try {
