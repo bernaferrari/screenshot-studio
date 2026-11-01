@@ -2,7 +2,7 @@
   "name": "screenshot-studio",
   "version": "1.0.0",
   "description": "Real app screens in, Google Play and README art out: captures, themes, every language, checked.",
-  "license": "UNLICENSED",
+  "license": "MIT",
   "repository": {
     "type": "git",
     "url": "git+https://github.com/bernaferrari/screenshot-studio.git"
@@ -27,6 +27,7 @@
   "main": "studio/studio.cjs",
   "types": "studio/types.d.ts",
   "files": [
+    "LICENSE",
     "README.md",
     "docs/*.md",
     "skills",

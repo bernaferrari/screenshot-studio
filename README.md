@@ -100,3 +100,7 @@ The same studio makes the store listings and READMEs of [SDK Monitor](https://gi
 - **Everything regenerates.** Words, layout and look are files in your repository; images are output.
 - **Each app keeps its look.** The studio is shared; the theme is yours.
 - **Each app builds on its own.** The studio is copied into the app, so an export never depends on a version you no longer have.
+
+## License
+
+[MIT](LICENSE)
