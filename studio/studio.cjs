@@ -2485,6 +2485,7 @@ var init_recapture = __esmMin((() => {
 * --platform ios makes App Store galleries (iPhone 6.9″ and 6.3″, iPad 13″) and an iOS simulator tour instead.
 */
 var init_exports = /* @__PURE__ */ __exportAll({
+	existingScreenshots: () => existingScreenshots,
 	init: () => init,
 	run: () => run$5,
 	themes: () => themes
@@ -2499,6 +2500,34 @@ function themes() {
 			description: first ? first[1].replace(/^\{\{name\}\}:\s*/, "").split("\n")[0] : ""
 		};
 	});
+}
+/**
+* Screenshots the app already has, where store tools keep them: fastlane's (supply for Play, snapshot/deliver for the
+* App Store), then a screenshots/ folder. Also the app's name, when fastlane has it.
+*/
+function existingScreenshots(app, ios = false) {
+	const isImage = (file) => /\.(png|jpe?g|webp)$/i.test(file);
+	const android = [
+		"fastlane/metadata/android/en-US/images/phoneScreenshots",
+		"fastlane/metadata/android/en-US/images/sevenInchScreenshots",
+		"fastlane/metadata/android/en-US/images/tenInchScreenshots"
+	];
+	const apple = ["fastlane/screenshots/en-US", "fastlane/metadata/en-US/screenshots"];
+	const generic = [
+		"screenshots",
+		"docs/screenshots",
+		"store/screenshots"
+	];
+	const folders = (ios ? [...apple, ...generic] : [...android, ...generic]).map((folder) => node_path.default.join(app, folder)).filter((folder) => node_fs.default.existsSync(folder));
+	const images = folders.flatMap((folder) => node_fs.default.readdirSync(folder).filter(isImage).sort((a, b) => a.localeCompare(b, void 0, { numeric: true })).map((file) => node_path.default.join(folder, file)));
+	if (!images.length) return null;
+	const titleFile = node_path.default.join(app, ios ? "fastlane/metadata/en-US/name.txt" : "fastlane/metadata/android/en-US/title.txt");
+	const title = node_fs.default.existsSync(titleFile) ? node_fs.default.readFileSync(titleFile, "utf8").trim().split("\n")[0] : void 0;
+	return {
+		folder: folders[0],
+		images,
+		title: title || void 0
+	};
 }
 /** Which gallery an image belongs to, by its shape. */
 function galleryFor(width, height) {
@@ -2619,7 +2648,9 @@ function init(options = {}) {
 	const log = options.log || ((line) => console.log(line));
 	const app = node_path.default.resolve(options.app || ".");
 	const listing = node_path.default.join(app, "store-listing");
-	const name = options.name || node_path.default.basename(app);
+	const found = !options.screenshots && !options.package ? existingScreenshots(app, options.platform === "ios") : null;
+	if (found) log(`found     ${found.images.length} screenshot(s) in ${node_path.default.relative(app, found.folder) || "."}`);
+	const name = options.name || found?.title || node_path.default.basename(app);
 	const pkg = options.package || "";
 	const theme = options.theme || "starter";
 	const ios = options.platform === "ios";
@@ -2658,8 +2689,9 @@ function init(options = {}) {
 	};
 	if (pkg) config.package = pkg;
 	else delete config.package;
-	if (options.screenshots) {
-		const imported = importScreenshots(options.screenshots, listing, "en-US", log, ios);
+	const screenshots = options.screenshots || found?.images.join(",");
+	if (screenshots) {
+		const imported = importScreenshots(screenshots, listing, "en-US", log, ios);
 		if (sims) {
 			for (const [kind, profile] of Object.entries(imported.profiles)) if (profile.captureWidth) profile.simulator = kind === "iphone" ? sims.iphone : sims.ipad;
 		}
@@ -2796,7 +2828,7 @@ var init_init = __esmMin((() => {
 			tagline: "One line about what *your app* does."
 		} }
 	};
-	slug = (text) => text.toLowerCase().replace(/\.[a-z]+$/, "").replace(/^\d+[-_ ]*/, "").replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "") || "screen";
+	slug = (text) => text.toLowerCase().replace(/\.[a-z]+$/, "").replace(/_/g, " ").replace(/^\d+[- ]*/, "").replace(/\d{5,}/g, " ").replace(/\b(screenshot|screen ?shot|img|image|copy)\b/g, " ").replace(/[^a-z0-9]+/g, "-").replace(/-\d{1,3}$/, "").replace(/^-+|-+$/g, "").replace(/^\d+$/, "") || "screen";
 	words = (text) => slug(text).replace(/-/g, " ");
 }));
 // src/node/locales.ts

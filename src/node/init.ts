@@ -58,7 +58,28 @@ const featureGraphic = {
   copy: {'feature-graphic': {title: '', tagline: 'One line about what *your app* does.'}} as Copy,
 };
 
-const slug = (text: string) => text.toLowerCase().replace(/\.[a-z]+$/, '').replace(/^\d+[-_ ]*/, '').replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '') || 'screen';
+/**
+ * Screenshots the app already has, where store tools keep them: fastlane's (supply for Play, snapshot/deliver for the
+ * App Store), then a screenshots/ folder. Also the app's name, when fastlane has it.
+ */
+export function existingScreenshots(app: string, ios = false): {folder: string; images: string[]; title?: string} | null {
+  const isImage = (file: string) => /\.(png|jpe?g|webp)$/i.test(file);
+  const android = ['fastlane/metadata/android/en-US/images/phoneScreenshots', 'fastlane/metadata/android/en-US/images/sevenInchScreenshots',
+    'fastlane/metadata/android/en-US/images/tenInchScreenshots'];
+  const apple = ['fastlane/screenshots/en-US', 'fastlane/metadata/en-US/screenshots'];
+  const generic = ['screenshots', 'docs/screenshots', 'store/screenshots'];
+  const folders = (ios ? [...apple, ...generic] : [...android, ...generic]).map(folder => path.join(app, folder)).filter(folder => fs.existsSync(folder));
+  const images = folders.flatMap(folder => fs.readdirSync(folder).filter(isImage).sort((a, b) => a.localeCompare(b, undefined, {numeric: true})).map(file => path.join(folder, file)));
+  if (!images.length) return null;
+  const titleFile = path.join(app, ios ? 'fastlane/metadata/en-US/name.txt' : 'fastlane/metadata/android/en-US/title.txt');
+  const title = fs.existsSync(titleFile) ? fs.readFileSync(titleFile, 'utf8').trim().split('\n')[0] : undefined;
+  return {folder: folders[0], images, title: title || undefined};
+}
+
+/** A card name from a file name: no extension, order prefix, timestamps or device suffixes ("Screenshot_20240101-101010"). */
+const slug = (text: string) => text.toLowerCase().replace(/\.[a-z]+$/, '').replace(/_/g, ' ').replace(/^\d+[- ]*/, '')
+  .replace(/\d{5,}/g, ' ').replace(/\b(screenshot|screen ?shot|img|image|copy)\b/g, ' ')
+  .replace(/[^a-z0-9]+/g, '-').replace(/-\d{1,3}$/, '').replace(/^-+|-+$/g, '').replace(/^\d+$/, '') || 'screen';
 const words = (text: string) => slug(text).replace(/-/g, ' ');
 
 /** Which gallery an image belongs to, by its shape. */
@@ -129,7 +150,9 @@ export function init(options: InitOptions = {}): InitResult {
   const log = options.log || ((line: string) => console.log(line));
   const app = path.resolve(options.app || '.');
   const listing = path.join(app, 'store-listing');
-  const name = options.name || path.basename(app);
+  const found = !options.screenshots && !options.package ? existingScreenshots(app, options.platform === 'ios') : null;
+  if (found) log(`found     ${found.images.length} screenshot(s) in ${path.relative(app, found.folder) || '.'}`);
+  const name = options.name || found?.title || path.basename(app);
   const pkg = options.package || '';
   const theme = options.theme || 'starter';
   const ios = options.platform === 'ios';
@@ -156,8 +179,9 @@ export function init(options: InitOptions = {}): InitResult {
   fs.mkdirSync(listing, {recursive: true});
   const config: StudioConfig & {$schema: string; package?: string} = {...readJson<StudioConfig & {$schema: string}>(path.join(TEMPLATES, 'studio.json')), app: name, locales};
   if (pkg) config.package = pkg; else delete config.package;
-  if (options.screenshots) {
-    const imported = importScreenshots(options.screenshots, listing, 'en-US', log, ios);
+  const screenshots = options.screenshots || found?.images.join(',');
+  if (screenshots) {
+    const imported = importScreenshots(screenshots, listing, 'en-US', log, ios);
     // Captured galleries keep the simulator a recapture would use.
     if (sims) for (const [kind, profile] of Object.entries(imported.profiles)) if (profile.captureWidth) profile.simulator = kind === 'iphone' ? sims.iphone : sims.ipad;
     write('studio.json', config);
