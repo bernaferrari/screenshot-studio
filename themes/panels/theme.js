@@ -19,9 +19,6 @@ export default {
   },
 
   compose({main, slide, index, W, H}) {
-    const header = main.querySelector('header');
-    if (header && !header.querySelector('h1')?.textContent.trim()) header.remove();
-    if (/\bhang\b/.test(slide.layout || '')) slide.bounds = {top: true, ...slide.bounds};
     // A card may pick its own turn with "turn" in gallery.json.
     main.style.setProperty('--turn', String(slide.turn ?? TURNS[index % TURNS.length]));
     const panel = document.createElement('section');

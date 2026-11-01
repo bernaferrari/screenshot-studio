@@ -19,9 +19,6 @@ export default {
   },
 
   compose({main, slide}) {
-    const header = main.querySelector('header');
-    if (header && !header.querySelector('h1')?.textContent.trim()) header.remove();
-    if (/\bhang\b/.test(slide.layout || '')) slide.bounds = {top: true, ...slide.bounds};
     const accent = getComputedStyle(main).getPropertyValue('--accent').trim() || '#ffe58f';
     main.style.setProperty('--marker', marker(slide.marker || accent));
   },

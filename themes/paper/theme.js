@@ -20,9 +20,6 @@ export default {
   },
 
   compose({main, slide, slides, index, config}) {
-    const header = main.querySelector('header');
-    if (header && !header.querySelector('h1')?.textContent.trim()) header.remove();
-    if (/\bhang\b/.test(slide.layout || '')) slide.bounds = {top: true, ...slide.bounds};
     // The running head (Play strips only; README art stands alone).
     if (!slide.title || slides.length < 2) return;
     const folio = document.createElement('div');

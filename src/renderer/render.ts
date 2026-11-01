@@ -148,16 +148,16 @@ const relative = (element: Element): Box => {
 // classes (the classes its CSS selects on).
 const layoutWords = [kind, slide.feature, ...(slide.layout || '').split(/\s+/).filter(Boolean)];
 // Frames scale with their width: bezel and corner radius as fractions of the frame width, per frame (phone,
-// tablet, browser) and for landscape captures in a phone or tablet frame. studio.json "frames" overrides any of
+// iphone, tablet, browser) and for landscape captures in a phone or tablet frame. studio.json "frames" overrides any of
 // them; "fixed" lists layouts whose CSS sizes its own frames; "frames": false turns scaling off.
 type Ratio = {bezel: number; radius: number};
-const FRAMES: Record<string, Ratio> & {fixed: string[]} = {phone: {bezel: .02, radius: .09}, tablet: {bezel: .018, radius: .05}, landscape: {bezel: .012, radius: .035}, fixed: [] as string[]} as never;
+const FRAMES: Record<string, Ratio> & {fixed: string[]} = {phone: {bezel: .02, radius: .09}, iphone: {bezel: .016, radius: .15}, tablet: {bezel: .018, radius: .05}, landscape: {bezel: .012, radius: .035}, fixed: [] as string[]} as never;
 const frames = config.frames === false ? null : {...FRAMES, ...config.frames} as typeof FRAMES;
 for (const d of devices) {
   const frame = d.spec.frame || profile.frame || 'phone';
   const landscape = d.img.naturalWidth > d.img.naturalHeight;
   d.node.classList.add(landscape ? 'device-landscape' : 'device-portrait');
-  const ratio = frames && !layoutWords.some(w => frames.fixed.includes(w)) && frames[['phone', 'tablet'].includes(frame) && landscape ? 'landscape' : frame];
+  const ratio = frames && !layoutWords.some(w => frames.fixed.includes(w)) && frames[['phone', 'iphone', 'tablet'].includes(frame) && landscape ? 'landscape' : frame];
   if (!ratio || frame === 'none') continue;
   const width = d.node.clientWidth;
   d.node.style.setProperty('--bezel', `${Math.round(width * ratio.bezel)}px`);
@@ -247,8 +247,9 @@ if (theme.decorate) await theme.decorate(context);
 // (landscape may be cut), {"visible": 0.45}, or false to skip the checks. A card's own "bounds" goes last.
 {
   const {layouts: own, ...base} = {margin: 0, visible: .6, ...config.bounds};
-  // The README spread's tablet runs off the right edge by design.
-  const layouts: Record<string, BoundsRule | false> = {spread: {right: true}, ...own};
+  // Layouts whose device leaves the canvas by design: the README spread's tablet runs off the right, and a `hang`
+  // card's device hangs from the top with the copy underneath.
+  const layouts: Record<string, BoundsRule | false> = {spread: {right: true}, hang: {top: true}, ...own};
   const rules = [base, ...layoutWords.map(w => layouts[w]).filter(r => r !== undefined), slide.bounds].filter(r => r !== undefined);
   if (!rules.includes(false)) {
     const rule = Object.assign({}, ...rules) as {margin: number; visible: number; sides?: boolean; right?: boolean | number; top?: boolean; cut?: boolean};
@@ -261,7 +262,7 @@ if (theme.decorate) await theme.decorate(context);
         throw new Error(`Screen leaves the side of the card: ${spec.raw}`);
       if (!rule.top && box.top < m - .5) throw new Error(`Screen leaves the top of the card: ${spec.raw}`);
       if ((Math.min(box.top + box.height, H) - Math.max(box.top, 0)) / box.height < rule.visible) throw new Error(`Too little of ${spec.raw} is visible`);
-      if (!rule.cut && ['phone', 'tablet'].includes(frame) && box.width > box.height && (box.top < -.5 || box.top + box.height > H + 1)) throw new Error(`Landscape tablet is cut: ${spec.raw}`);
+      if (!rule.cut && ['phone', 'iphone', 'tablet'].includes(frame) && box.width > box.height && (box.top < -.5 || box.top + box.height > H + 1)) throw new Error(`Landscape tablet is cut: ${spec.raw}`);
     }
   }
 }

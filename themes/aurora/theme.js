@@ -26,12 +26,4 @@ export default {
     return styled(`<defs>${field}</defs><rect width="${W}" height="${H}" fill="url(#field)"/>`) +
       styled(panoramaLights(ctx, LIGHTS, {id: 'aurora', alone: ctx.kind === 'readme'}));
   },
-
-  compose({main, slide}) {
-    // A headline-less card (README art under its own heading) has no copy.
-    const header = main.querySelector('header');
-    if (header && !header.querySelector('h1')?.textContent.trim()) header.remove();
-    // hang: the device hangs from the top edge by design.
-    if (/\bhang\b/.test(slide.layout || '')) slide.bounds = {top: true, ...slide.bounds};
-  },
 };

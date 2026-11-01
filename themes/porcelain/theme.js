@@ -30,11 +30,4 @@ export default {
     }
     return `<defs>${styled(wash)}</defs>${body}`;
   },
-
-  compose({main, slide}) {
-    const header = main.querySelector('header');
-    if (header && !header.querySelector('h1')?.textContent.trim()) header.remove();
-    // hang: the device hangs from the top edge by design.
-    if (/\bhang\b/.test(slide.layout || '')) slide.bounds = {top: true, ...slide.bounds};
-  },
 };

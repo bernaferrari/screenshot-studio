@@ -16,10 +16,4 @@ export default {
     return `<rect width="${W}" height="${H}" style="fill:var(--paper)"/>` + styled(panoramaLights(ctx, [light], {id: 'glow'})) +
       `<rect y="${y}" width="${W}" height="2" style="fill:var(--line)"/>`;
   },
-
-  compose({main, slide}) {
-    const header = main.querySelector('header');
-    if (header && !header.querySelector('h1')?.textContent.trim()) header.remove();
-    if (/\bhang\b/.test(slide.layout || '')) slide.bounds = {top: true, ...slide.bounds};
-  },
 };
