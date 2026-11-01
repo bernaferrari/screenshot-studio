@@ -208,7 +208,7 @@ Override them in `studio.json`: `"frames": {"phone": {"bezel": 0.02, "radius": 0
 
 | Problem | Fix |
 |---|---|
-| `EBADDEVENGINES … "yarn" does not match "npm"` | Your repository's `package.json` asks for another package manager, and npx honors it. Run `npx --force screenshot-studio …`, or `pnpm dlx` / `bunx screenshot-studio …`. |
+| npx refuses to run in your repository (`EBADDEVENGINES`, e.g. a Kotlin Multiplatform project whose `package.json` asks for Yarn) | Install it once with `npm i -g screenshot-studio`, then run `screenshot-studio …` without npx. |
 | The first export pauses to download Chromium | Expected, once: the studio renders cards in Chromium and fetches the one its Playwright needs (about 100 MB). |
 | `No store-listing/studio.json here or in any folder above` | Run the command in your app, or pass `--listing path/to/app`. Set one up with `npx screenshot-studio init`. |
 | A capture is interrupted and the emulator keeps a strange size | `npx screenshot-studio reset`. |

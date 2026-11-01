@@ -326,9 +326,11 @@ test("the editor hears about listing changes over Server-Sent Events, without st
   f.write(path.join(listing, "de-DE/phone/01-home.jpg"), "jpg");
   f.write(path.join(listing, "theme.css"), "body{}");
   f.write(path.join(listing, "de-DE/raw/phone/home.png"), "png");
+  // Changes are batched over a short window, so the writes may arrive in more than one event.
+  const changed = () => new Set(text.split("event: change\ndata: ").slice(1).flatMap((part) => JSON.parse(part.split("\n")[0]).files));
   await until(/event: change/);
-  const change = JSON.parse(text.split("event: change\ndata: ")[1].split("\n")[0]);
-  assert.deepEqual(change.files, ["de-DE/raw/phone/home.png", "theme.css"]);
+  while (!(changed().has("theme.css") && changed().has("de-DE/raw/phone/home.png"))) await until(new RegExp(`(event: change[\\s\\S]*){${[...text.matchAll(/event: change/g)].length + 1}}`));
+  assert.deepEqual([...changed()].sort(), ["de-DE/raw/phone/home.png", "theme.css"]);
 });
 
 test("the review route joins the file check with the last export's notes and warnings", async (t) => {
