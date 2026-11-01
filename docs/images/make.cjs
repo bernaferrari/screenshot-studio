@@ -4,7 +4,7 @@
 // project registry (your own registry is left alone).
 const fs = require('fs');
 const path = require('path');
-const {chromium} = require(process.env.PLAYWRIGHT_MODULE || 'playwright');
+const {chromium} = require('playwright');
 
 const arg = (name, fallback) => { const i = process.argv.indexOf(`--${name}`); return i > 0 ? process.argv[i + 1] : fallback; };
 const APPS = path.resolve(arg('apps', path.join(process.env.HOME, 'Documents/android')));
@@ -59,13 +59,21 @@ const steps = () => {
   </div>`);
 };
 
+// Every starter theme, from its own preview (themes/<name>/preview.jpg).
+const THEMES = path.join(__dirname, '../../themes');
+const themes = () => page(`<div style="width:2400px;padding:56px;box-sizing:border-box;background:#eceef3;display:grid;grid-template-columns:1fr 1fr;gap:44px 40px">
+  ${fs.readdirSync(THEMES).filter(t => fs.existsSync(path.join(THEMES, t, 'preview.jpg'))).sort().map(t => `<figure style="margin:0">
+    <img src="data:image/jpeg;base64,${fs.readFileSync(path.join(THEMES, t, 'preview.jpg')).toString('base64')}" style="width:100%;border-radius:18px;box-shadow:0 20px 40px -24px #1b1f2e55;display:block">
+    <figcaption style="margin-top:16px;font-size:34px;font-weight:650;color:#15161a">${t}</figcaption></figure>`).join('')}
+</div>`);
+
 const readmeArt = () => page(`<div style="width:2400px;padding:60px;box-sizing:border-box;background:#eceef3;display:grid;grid-template-columns:1fr 1fr;gap:40px">
   ${README_ART.map(a => `<img src="${file(a)}" style="width:100%;border-radius:22px;box-shadow:0 20px 40px -24px #1b1f2e55">`).join('')}
 </div>`);
 
 (async () => {
   const b = await chromium.launch();
-  for (const [name, html, w] of [['hero', hero(), 2400], ['how-it-works', steps(), 2400], ['readme-art', readmeArt(), 2400]]) {
+  for (const [name, html, w] of [['hero', hero(), 2400], ['how-it-works', steps(), 2400], ['readme-art', readmeArt(), 2400], ['themes', themes(), 2400]]) {
     const p = await b.newPage({viewport: {width: w, height: 800}});
     await p.setContent(html);
     await p.waitForLoadState('networkidle');
