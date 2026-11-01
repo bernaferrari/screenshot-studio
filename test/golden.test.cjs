@@ -38,7 +38,10 @@ let browser;
 test.before(async () => { browser = await chromium.launch(); });
 test.after(async () => { await browser?.close(); });
 
-/** Scale an image to WIDTH and return its RGBA pixels (and a JPEG of them, for writing a golden). */
+/**
+ * Scale an image to WIDTH, encode it as the goldens are stored (JPEG), and return that JPEG and its RGBA pixels, so a
+ * new render and its golden go through the same encoding before they are compared.
+ */
 async function pixels(file) {
   const page = await browser.newPage();
   try {
@@ -50,7 +53,12 @@ async function pixels(file) {
       const canvas = Object.assign(document.createElement('canvas'), {width, height});
       const context = canvas.getContext('2d');
       context.drawImage(image, 0, 0, width, height);
-      return {width, height, rgba: Array.from(context.getImageData(0, 0, width, height).data), png: canvas.toDataURL('image/jpeg', 0.9).split(',')[1]};
+      const jpeg = canvas.toDataURL('image/jpeg', 0.9);
+      const encoded = new Image();
+      encoded.src = jpeg;
+      await encoded.decode();
+      context.drawImage(encoded, 0, 0);
+      return {width, height, rgba: Array.from(context.getImageData(0, 0, width, height).data), jpeg: jpeg.split(',')[1]};
     }, {data: `data:image/${file.endsWith('.png') ? 'png' : 'jpeg'};base64,${fs.readFileSync(file).toString('base64')}`, width: WIDTH});
   } finally { await page.close(); }
 }
@@ -80,14 +88,14 @@ for (const theme of themes) {
         const actual = await pixels(path.join(listing, card.file));
         if (UPDATE || !fs.existsSync(golden)) {
           fs.mkdirSync(path.dirname(golden), {recursive: true});
-          fs.writeFileSync(golden, Buffer.from(actual.png, 'base64'));
+          fs.writeFileSync(golden, Buffer.from(actual.jpeg, 'base64'));
           continue;
         }
         const share = difference(actual, await pixels(golden));
         if (share > TOLERANCE) {
           const out = path.join(os.tmpdir(), 'golden-failures', theme, name);
           fs.mkdirSync(path.dirname(out), {recursive: true});
-          fs.writeFileSync(out, Buffer.from(actual.png, 'base64'));
+          fs.writeFileSync(out, Buffer.from(actual.jpeg, 'base64'));
           failures.push(`${name}: ${(share * 100).toFixed(1)}% of pixels differ (new render: ${out})`);
         }
       }

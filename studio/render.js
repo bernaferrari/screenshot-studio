@@ -1,4 +1,138 @@
 // Built from https://github.com/bernaferrari/screenshot-studio (src/). Edit the source, not this file.
+// src/core/layout.ts
+const TAGS = {
+	"*": "em",
+	"~": "del",
+	"[": "ins"
+};
+/** Headline markup shared by every app: *highlight*, ~struck out~, [inserted], and \n for a new line. */
+function parseHeadline(title) {
+	return title.split("\n").map((line) => line.split(/(\*[^*]+\*|~[^~]+~|\[[^\]]+\])/).filter(Boolean).map((part) => {
+		const tag = TAGS[part[0]];
+		return tag && part.length > 2 ? {
+			text: part.slice(1, -1),
+			tag
+		} : { text: part };
+	}));
+}
+/** Text with only *highlight* markup: device labels and README taglines. */
+function parseHighlight(text) {
+	return text.split(/(\*[^*]+\*)/).filter(Boolean).map((part) => part.startsWith("*") && part.length > 2 ? {
+		text: part.slice(1, -1),
+		tag: "em"
+	} : { text: part });
+}
+/** The headline as plain words, for alt text. */
+const plainHeadline = (title) => title.replace(/[*~[\]]/g, "").replaceAll("\n", " ");
+/**
+* Frames scale with their width: bezel and corner radius as fractions of the frame width, per frame and for
+* landscape captures in a phone or tablet frame. studio.json "frames" overrides any of them; "fixed" lists layouts
+* whose CSS sizes its own frames; "frames": false turns scaling off.
+*/
+const FRAMES = {
+	phone: {
+		bezel: .02,
+		radius: .09
+	},
+	iphone: {
+		bezel: .016,
+		radius: .15
+	},
+	tablet: {
+		bezel: .018,
+		radius: .05
+	},
+	landscape: {
+		bezel: .012,
+		radius: .035
+	},
+	fixed: []
+};
+const HANDHELD = [
+	"phone",
+	"iphone",
+	"tablet"
+];
+/** The bezel and radius in pixels for a frame this wide, or null when its CSS sizes it. */
+function frameSize(config, frame, landscape, width, layoutWords) {
+	if (config.frames === false || frame === "none") return null;
+	const frames = {
+		...FRAMES,
+		...config.frames
+	};
+	if (layoutWords.some((word) => (frames.fixed || []).includes(word))) return null;
+	const ratio = frames[HANDHELD.includes(frame) && landscape ? "landscape" : frame];
+	return ratio ? {
+		bezel: Math.round(width * ratio.bezel),
+		radius: Math.round(width * ratio.radius)
+	} : null;
+}
+/**
+* Layouts whose device leaves the canvas by design: the README spread's tablet runs off the right, a `hang` card's
+* device hangs from the top with the copy underneath, and the short feature graphic shows only a phone's top.
+*/
+const LAYOUT_BOUNDS = {
+	spread: { right: true },
+	hang: { top: true },
+	feature: { visible: .3 }
+};
+/**
+* The bounds a card's devices keep, or null when a rule turns the checks off. studio.json "bounds" sets the base and,
+* under "layouts", rules per layout word; the card's own "bounds" goes last.
+*/
+function boundsFor(config, layoutWords, own) {
+	const { layouts, ...base } = {
+		margin: 0,
+		visible: .6,
+		...config.bounds
+	};
+	const byWord = {
+		...LAYOUT_BOUNDS,
+		...layouts
+	};
+	const rules = [
+		base,
+		...layoutWords.map((word) => byWord[word]),
+		own
+	].filter((rule) => rule !== void 0);
+	return rules.includes(false) ? null : Object.assign({}, ...rules);
+}
+/** Why the device showing `raw` breaks its bounds on a W×H card, or null when it keeps them. */
+function boundsProblem(box, frame, rule, W, H, raw) {
+	if (frame === "none") return null;
+	const m = rule.margin;
+	const overRight = box.left + box.width - (W - m);
+	if (!rule.sides && (box.left < m - .5 || overRight > .5 && !(rule.right === true || overRight / box.width <= (Number(rule.right) || 0)))) return `Screen leaves the side of the card: ${raw}`;
+	if (!rule.top && box.top < m - .5) return `Screen leaves the top of the card: ${raw}`;
+	if ((Math.min(box.top + box.height, H) - Math.max(box.top, 0)) / box.height < rule.visible) return `Too little of ${raw} is visible`;
+	if (!rule.cut && HANDHELD.includes(frame) && box.width > box.height && (box.top < -.5 || box.top + box.height > H + 1)) return `Landscape tablet is cut: ${raw}`;
+	return null;
+}
+/**
+* Where a callout sits on the card and how much it is scaled: at `place` when given, otherwise centred over where
+* its region lives on the screen, magnified by `mag` (1.1) and nudged by dx, dy.
+*/
+function calloutPlacement(region, captureWidth, screen, options) {
+	if (options.place) return {
+		left: options.place.left,
+		top: options.place.top,
+		scale: options.place.width / region.w
+	};
+	const fit = screen.width / captureWidth;
+	const scale = fit * (options.mag || 1.1);
+	return {
+		left: screen.left + (region.x + region.w / 2) * fit + (options.dx || 0) - region.w * scale / 2,
+		top: screen.top + (region.y + region.h / 2) * fit + (options.dy || 0) - region.h * scale / 2,
+		scale
+	};
+}
+/** A short last line ("…all\nbuilt in.") reads as a mistake at thumbnail size. Widths are the wrapped lines'. */
+const isWidow = (lineWidths) => lineWidths.length > 1 && lineWidths[lineWidths.length - 1] < Math.max(...lineWidths) * .3;
+/** Whether a capture keeps a real device ratio: its own profile's, or one of the configured capture sizes either way up. */
+function hasDeviceRatio(width, height, ratios, expected) {
+	const ratio = width / height;
+	return expected ? Math.abs(ratio - expected) <= .001 : ratios.some((r) => Math.abs(ratio - r) < .001);
+}
 // src/core/gallery.ts
 /**
 * The parsed contents of a studio file, without editor metadata. Files may carry a "$schema" key (for autocomplete
@@ -102,9 +236,7 @@ function followCallout(box, reference, localized) {
 	if (localized.width && moved.x + moved.w > localized.width || localized.height && moved.y + moved.h > localized.height) return null;
 	return moved;
 }
-// src/renderer/render.ts
-const q = new URLSearchParams(location.search);
-if (q.get("strip")) document.documentElement.dataset.strip = q.get("strip");
+// src/renderer/load.ts
 async function json(file, optional = false) {
 	const response = await fetch(file);
 	if (!response.ok) {
@@ -113,37 +245,346 @@ async function json(file, optional = false) {
 	}
 	return withoutMeta(await response.json());
 }
-const config = await json("../studio.json");
-const defaultLocale = config.defaultLocale || "en-US";
-const locale = q.get("locale") || defaultLocale;
-const [galleries, profiles, copy, defaultCopy] = await Promise.all([
-	json("../gallery.json"),
-	json("../profiles.json"),
-	json(`../${locale}/copy.json`, true),
-	json(`../${defaultLocale}/copy.json`, true)
-]);
-const kind = q.get("kind") || Object.keys(galleries)[0];
-const profile = profiles[kind];
-if (!profile) throw new Error(`No profile for ${kind}`);
-const words = (cards) => cards.map((card) => withCopy(card, kind, copy || {}, locale === defaultLocale ? {} : defaultCopy || {}).card);
-const slides = words(cardsFor(galleries, kind));
-const index = Math.max(0, Math.min(slides.length - 1, Number(q.get("slide") || 0)));
-const { card: slide, missing } = withCopy(cardsFor(galleries, kind)[index], kind, copy || {}, locale === defaultLocale ? {} : defaultCopy || {});
-const report = {
-	locale,
-	missingCopy: copy ? missing : ["copy.json"],
-	fallbackCaptures: [],
-	movedCallouts: [],
-	fixedCallouts: [],
-	fit: 1
-};
+/** The card a preview.html address asks for: ?locale=de-DE&kind=phone&slide=0. */
+async function loadCard(q) {
+	const config = await json("../studio.json");
+	const defaultLocale = config.defaultLocale || "en-US";
+	const locale = q.get("locale") || defaultLocale;
+	const [galleries, profiles, copy, defaultCopy] = await Promise.all([
+		json("../gallery.json"),
+		json("../profiles.json"),
+		json(`../${locale}/copy.json`, true),
+		json(`../${defaultLocale}/copy.json`, true)
+	]);
+	const kind = q.get("kind") || Object.keys(galleries)[0];
+	const profile = profiles[kind];
+	if (!profile) throw new Error(`No profile for ${kind}`);
+	const fallback = locale === defaultLocale ? {} : defaultCopy || {};
+	const cards = cardsFor(galleries, kind);
+	const index = Math.max(0, Math.min(cards.length - 1, Number(q.get("slide") || 0)));
+	const { card: slide, missing } = withCopy(cards[index], kind, copy || {}, fallback);
+	return {
+		config,
+		profiles,
+		locale,
+		defaultLocale,
+		kind,
+		profile,
+		index,
+		slide,
+		theme: (await fetch("../theme.js", { method: "HEAD" })).ok ? (await import(
+			/* @vite-ignore */
+			"../theme.js"
+)).default || {} : {},
+		slides: cards.map((card) => withCopy(card, kind, copy || {}, fallback).card),
+		report: {
+			locale,
+			missingCopy: copy ? missing : ["copy.json"],
+			fallbackCaptures: [],
+			movedCallouts: [],
+			fixedCallouts: [],
+			fit: 1
+		}
+	};
+}
+// src/renderer/callouts.ts
+async function drawCallouts(callouts, scene) {
+	const { main, measured, defaultLocale, load, report } = scene;
+	const sources = /* @__PURE__ */ new Map();
+	const sourceFor = (raw) => {
+		if (!sources.has(raw)) {
+			const img = new Image();
+			sources.set(raw, load(img, raw).then(async (capturedIn) => {
+				if (!capturedIn) throw new Error(`Missing callout capture ${raw}`);
+				await img.decode();
+				return {
+					img,
+					spec: { raw },
+					locale: capturedIn
+				};
+			}));
+		}
+		return sources.get(raw);
+	};
+	for (const [index, c] of callouts.entries()) {
+		const source = c.raw ? await sourceFor(c.raw) : measured[c.device || 0];
+		let box = {
+			x: c.x,
+			y: c.y,
+			w: c.w,
+			h: c.h,
+			target: c.target,
+			targetId: c.targetId,
+			targetClass: c.targetClass,
+			targetMode: c.targetMode
+		};
+		if (source.locale !== defaultLocale || c.targetMode === "element") {
+			const reference = await json(`../${defaultLocale}/raw/${nodesFile(source.spec.raw)}`, true);
+			const localized = source.locale === defaultLocale ? reference : await json(`../${source.locale}/raw/${nodesFile(source.spec.raw)}`, true);
+			const sizeMatches = localized?.width === source.img.naturalWidth && localized?.height === source.img.naturalHeight;
+			const moved = c.targetMode === "element" && !sizeMatches ? null : followCallout(box, reference, localized);
+			if (moved) {
+				box = {
+					...box,
+					...moved
+				};
+				if (source.locale !== defaultLocale) report.movedCallouts.push(index);
+			} else if (c.targetMode === "element" && source.locale === defaultLocale) throw new Error(`The selected accessibility element is missing or incompatible in ${source.spec.raw}. Pick the element again.`);
+			else report.fixedCallouts.push(index);
+		}
+		const { left, top, scale: k } = calloutPlacement(box, source.img.naturalWidth, source.screen || scene.screen, c);
+		const el = document.createElement("div");
+		el.className = `callout${c.role ? ` ${c.role}` : ""}`;
+		el.dataset.checkBounds = "";
+		Object.assign(el.style, {
+			width: `${box.w * k}px`,
+			height: `${box.h * k}px`,
+			left: `${left}px`,
+			top: `${top}px`,
+			borderRadius: `${(c.radius || 0) * k}px`,
+			backgroundImage: `url("${source.img.src}")`,
+			backgroundSize: `${source.img.naturalWidth * k}px auto`,
+			backgroundPosition: `${-box.x * k}px ${-box.y * k}px`
+		});
+		main.append(el);
+	}
+}
+// src/renderer/text.ts
+/** Append runs to an element: plain text, or an em / del / ins around it. */
+function appendRuns(parent, runs) {
+	for (const run of runs) parent.append(run.tag ? Object.assign(document.createElement(run.tag), { textContent: run.text }) : run.text);
+}
+/** The card's header: its title, one span.line per line, and its body; null when it has no title. */
+function headline(slide) {
+	if (!slide.title) return null;
+	const header = document.createElement("header");
+	const h1 = document.createElement("h1");
+	for (const runs of parseHeadline(slide.title)) {
+		const line = document.createElement("span");
+		line.className = "line";
+		appendRuns(line, runs);
+		h1.append(line);
+	}
+	header.append(h1);
+	if (slide.body) header.append(Object.assign(document.createElement("p"), { textContent: slide.body }));
+	return header;
+}
+// src/renderer/devices.ts
+/** Loads captures by name, falling back to the default language and noting each fallback in the report. */
+function captureLoader(locale, defaultLocale, report) {
+	/** Resolves to the language the capture came from, or null when neither has it. */
+	return (img, raw) => new Promise((resolve) => {
+		img.onload = () => resolve(img.dataset.fallback ? defaultLocale : locale);
+		img.onerror = () => {
+			if (img.dataset.fallback) return resolve(null);
+			img.dataset.fallback = "true";
+			report.fallbackCaptures.push(raw);
+			img.src = `../${defaultLocale}/raw/${raw}`;
+		};
+		img.src = `../${locale}/raw/${raw}`;
+	});
+}
+/** A frame element per capture on the card, appended to main; captures start loading. */
+function createDevices(main, slide, profile, load) {
+	return devicesFor(slide).map((spec, i) => {
+		const frame = spec.frame || profile.frame || "phone";
+		const node = document.createElement("div");
+		node.className = `device ${spec.role || (i === 0 ? "primary" : `device-${i + 1}`)} device-frame-${frame}`;
+		node.innerHTML = "<div class=\"screen\"><img data-app-capture alt=\"\"></div>";
+		if (frame === "browser") node.insertAdjacentHTML("beforeend", "<div class=\"dots\"><i></i><i></i><i></i></div>");
+		const img = node.querySelector("img");
+		img.alt = spec.alt || `${slide.feature}: the real app with example data`;
+		main.append(node);
+		return {
+			spec,
+			frame,
+			node,
+			img,
+			loaded: load(img, spec.raw)
+		};
+	});
+}
+/** Wait for every capture; fail on one that is missing or not a configured device ratio. */
+async function settleDevices(devices, profiles) {
+	const locales = await Promise.all(devices.map((d) => d.loaded));
+	devices.forEach((d, i) => {
+		if (!locales[i]) throw new Error(`Missing capture ${d.spec.raw}`);
+	});
+	await Promise.all([...document.images].map((image) => image.decode()));
+	await document.fonts.ready;
+	const ratios = Object.values(profiles).filter((p) => p.captureWidth && p.captureHeight).flatMap((p) => [p.captureWidth / p.captureHeight, p.captureHeight / p.captureWidth]);
+	for (const { img, spec } of devices) {
+		const own = spec.profile ? profiles[spec.profile] : null;
+		const expected = own?.captureWidth && own.captureHeight ? own.captureWidth / own.captureHeight : null;
+		if (!hasDeviceRatio(img.naturalWidth, img.naturalHeight, ratios, expected)) throw new Error(`Recapture ${spec.raw}: ${img.naturalWidth}×${img.naturalHeight} is not a configured device ratio`);
+	}
+	return locales;
+}
+/** Mark each frame portrait or landscape, and set its bezel and radius from its width. */
+function sizeFrames(devices, config, layoutWords) {
+	for (const d of devices) {
+		const landscape = d.img.naturalWidth > d.img.naturalHeight;
+		d.node.classList.add(landscape ? "device-landscape" : "device-portrait");
+		const size = frameSize(config, d.frame, landscape, d.node.clientWidth, layoutWords);
+		if (!size) continue;
+		d.node.style.setProperty("--bezel", `${size.bezel}px`);
+		d.node.style.setProperty("--radius", `${size.radius}px`);
+	}
+}
+/** An element's box relative to the card. */
+function relative(main, element) {
+	const canvas = main.getBoundingClientRect(), r = element.getBoundingClientRect();
+	return {
+		left: r.left - canvas.left,
+		top: r.top - canvas.top,
+		width: r.width,
+		height: r.height
+	};
+}
+function measure(main, devices, locales) {
+	return devices.map(({ spec, node, img }, i) => ({
+		spec,
+		node,
+		img,
+		locale: locales[i] ?? null,
+		box: relative(main, node),
+		screen: relative(main, node.querySelector(".screen"))
+	}));
+}
+/**
+* A device may carry a label (a before/after pair, say): a caption centred above the frame, styled by the theme.
+* A theme can set it under its frame instead: transform: translateY(calc(var(--device-height) + 30px)), or under
+* the card's tallest frame (--tallest-device), so a row of labels lines up.
+*/
+function labelDevices(main, measured) {
+	const tallest = Math.max(...measured.map((d) => d.box.height));
+	for (const { spec, box } of measured) {
+		if (!spec.label) continue;
+		const label = document.createElement("div");
+		label.className = `device-label${spec.role ? ` ${spec.role}` : ""}`;
+		label.dataset.checkBounds = "";
+		const span = document.createElement("span");
+		appendRuns(span, parseHighlight(spec.label));
+		label.append(span);
+		Object.assign(label.style, {
+			left: `${box.left}px`,
+			width: `${box.width}px`,
+			top: `${box.top}px`
+		});
+		label.style.setProperty("--device-height", `${box.height}px`);
+		label.style.setProperty("--tallest-device", `${tallest}px`);
+		main.append(label);
+	}
+}
+/**
+* Fail when a device leaves the card further than its layout allows. A frame keeps `margin` px from the sides and
+* top, shows at least `visible` of itself, and a landscape screen in a phone or tablet frame is never cut at the top
+* or bottom, unless studio.json "bounds", a layout word or the card's own "bounds" says otherwise.
+*/
+function checkBounds(measured, slide, profile, config, layoutWords) {
+	const rule = boundsFor(config, layoutWords, slide.bounds);
+	if (!rule) return;
+	for (const { box, spec } of measured) {
+		const problem = boundsProblem(box, spec.frame || profile.frame || "phone", rule, profile.width, profile.height, spec.raw);
+		if (problem) throw new Error(problem);
+	}
+}
+// src/renderer/fit.ts
+/** The box around the header's text itself, not its element. */
+function textBox(header) {
+	const walker = document.createTreeWalker(header, NodeFilter.SHOW_TEXT);
+	let l = Infinity, t = Infinity, r = -Infinity, b = -Infinity;
+	for (let node; node = walker.nextNode();) {
+		const range = document.createRange();
+		range.selectNodeContents(node);
+		for (const rect of range.getClientRects()) {
+			l = Math.min(l, rect.left);
+			t = Math.min(t, rect.top);
+			r = Math.max(r, rect.right);
+			b = Math.max(b, rect.bottom);
+		}
+	}
+	return {
+		l,
+		t,
+		r,
+		b
+	};
+}
+/** Shrink the header's type in 2% steps until it fits; report.fit is the scale it settled on, 0 when nothing fits. */
+async function fitCopy(main, header, size, minFit, report, refit) {
+	const blocks = [...main.querySelectorAll(".device:not(.device-frame-none)")].map((n) => n.getBoundingClientRect());
+	const fits = () => {
+		if ([...header.querySelectorAll("h1 .line")].some((line) => line.scrollWidth > line.parentElement.clientWidth + 1)) return false;
+		const t = textBox(header);
+		if (t.l < -.5 || t.t < -.5 || t.r > size.W + .5 || t.b > size.H + .5) return false;
+		return blocks.every((d) => t.b + 16 <= d.top || t.t >= d.bottom || t.r + 16 <= d.left || t.l >= d.right);
+	};
+	const sizes = [...header.querySelectorAll("h1, p")].map((el) => [el, parseFloat(getComputedStyle(el).fontSize)]);
+	for (let s = 1; !fits() && s > minFit - .001; s -= .02) {
+		report.fit = Math.round(s * 100) / 100;
+		for (const [el, px] of sizes) el.style.fontSize = `${px * s}px`;
+		await refit?.();
+	}
+	if (!fits()) report.fit = 0;
+}
+/** The last two words of each headline line or body whose last wrapped line is too short. */
+function findWidows(header) {
+	const widows = [];
+	for (const el of header.querySelectorAll("h1 .line, p")) {
+		const range = document.createRange();
+		range.selectNodeContents(el);
+		const lines = /* @__PURE__ */ new Map();
+		for (const rect of range.getClientRects()) {
+			if (!rect.width) continue;
+			const top = Math.round(rect.top / 4), line = lines.get(top);
+			lines.set(top, line ? {
+				left: Math.min(line.left, rect.left),
+				right: Math.max(line.right, rect.right)
+			} : {
+				left: rect.left,
+				right: rect.right
+			});
+		}
+		if (isWidow([...lines.entries()].sort(([a], [b]) => a - b).map(([, l]) => l.right - l.left))) widows.push(el.textContent.trim().split(/\s+/).slice(-2).join(" "));
+	}
+	return widows;
+}
+// src/renderer/identity.ts
+async function identity(slide, config) {
+	const spec = {
+		icon: "brand/icon.png",
+		name: config.app,
+		...config.identity,
+		...typeof slide.identity === "object" ? slide.identity : {}
+	};
+	const banner = document.createElement("div");
+	banner.className = "identity";
+	banner.dataset.checkBounds = "";
+	if ((await fetch(`../${spec.icon}`, { method: "HEAD" })).ok) banner.append(Object.assign(document.createElement("img"), {
+		src: `../${spec.icon}`,
+		alt: ""
+	}));
+	banner.append(Object.assign(document.createElement("span"), { textContent: spec.name ?? "" }));
+	if (slide.tagline) {
+		const small = document.createElement("small");
+		appendRuns(small, parseHighlight(slide.tagline));
+		banner.append(small);
+	}
+	return banner;
+}
+// src/renderer/render.ts
+const q = new URLSearchParams(location.search);
+const root = document.documentElement;
+if (q.get("strip")) root.dataset.strip = q.get("strip");
+const { config, profiles, locale, defaultLocale, kind, profile, slides, index, slide, report, theme } = await loadCard(q);
 const W = profile.width;
 const H = profile.height;
-const theme = (await import(
-	/* @vite-ignore */
-	"../theme.js"
-)).default || {};
-const root = document.documentElement;
+const layoutWords = [
+	kind,
+	slide.feature,
+	...(slide.layout || "").split(/\s+/).filter(Boolean)
+];
 root.lang = locale;
 root.dir = (config.rtl || []).includes(locale) ? "rtl" : "ltr";
 root.classList.add(kind, `frame-${profile.frame || "phone"}`, W > H ? "landscape" : "portrait");
@@ -154,84 +595,12 @@ const main = document.createElement("main");
 main.className = `campaign ${slide.feature} ${slide.layout || ""}`.trim();
 main.innerHTML = "<svg class=\"art\" aria-hidden=\"true\"></svg>";
 document.body.append(main);
-if (slide.title) {
-	const header = document.createElement("header");
-	header.innerHTML = "<h1></h1><p></p>";
-	const h1 = header.querySelector("h1");
-	for (const text of slide.title.split("\n")) {
-		const line = document.createElement("span");
-		line.className = "line";
-		for (const part of text.split(/(\*[^*]+\*|~[^~]+~|\[[^\]]+\])/).filter(Boolean)) {
-			const tag = {
-				"*": "em",
-				"~": "del",
-				"[": "ins"
-			}[part[0]];
-			if (tag && part.length > 2) {
-				const node = document.createElement(tag);
-				node.textContent = part.slice(1, -1);
-				line.append(node);
-			} else line.append(part);
-		}
-		h1.append(line);
-	}
-	if (slide.body) header.querySelector("p").textContent = slide.body;
-	else header.querySelector("p").remove();
-	main.append(header);
-}
-main.setAttribute("aria-label", slide.alt || `${slide.feature}: ${(slide.title || "").replace(/[*~[\]]/g, "").replaceAll("\n", " ")}`);
-const loadCapture = (img, raw) => new Promise((resolve) => {
-	img.onload = () => resolve(img.dataset.fallback ? defaultLocale : locale);
-	img.onerror = () => {
-		if (img.dataset.fallback) return resolve(null);
-		img.dataset.fallback = "true";
-		report.fallbackCaptures.push(raw);
-		img.src = `../${defaultLocale}/raw/${raw}`;
-	};
-	img.src = `../${locale}/raw/${raw}`;
-});
-const devices = devicesFor(slide).map((spec, i) => {
-	const frame = spec.frame || profile.frame || "phone";
-	const node = document.createElement("div");
-	node.className = `device ${spec.role || (i === 0 ? "primary" : `device-${i + 1}`)} device-frame-${frame}`;
-	node.innerHTML = "<div class=\"screen\"><img data-app-capture alt=\"\"></div>";
-	if (frame === "browser") node.insertAdjacentHTML("beforeend", "<div class=\"dots\"><i></i><i></i><i></i></div>");
-	const img = node.querySelector("img");
-	img.alt = spec.alt || `${slide.feature}: the real app with example data`;
-	main.append(node);
-	return {
-		spec,
-		node,
-		img,
-		loaded: loadCapture(img, spec.raw)
-	};
-});
-const capture = devices[0]?.img;
-const highlighted = (parent, text) => text.split(/(\*[^*]+\*)/).filter(Boolean).forEach((part) => parent.append(part.startsWith("*") ? Object.assign(document.createElement("em"), { textContent: part.slice(1, -1) }) : document.createTextNode(part)));
-if (slide.identity) {
-	const spec = {
-		icon: "brand/icon.png",
-		name: config.app,
-		...config.identity,
-		...typeof slide.identity === "object" ? slide.identity : {}
-	};
-	main.querySelector("header")?.remove();
-	const id = document.createElement("div");
-	id.className = "identity";
-	id.dataset.checkBounds = "";
-	const name = Object.assign(document.createElement("span"), { textContent: spec.name ?? "" });
-	if ((await fetch(`../${spec.icon}`, { method: "HEAD" })).ok) id.append(Object.assign(document.createElement("img"), {
-		src: `../${spec.icon}`,
-		alt: ""
-	}));
-	id.append(name);
-	if (slide.tagline) {
-		const small = document.createElement("small");
-		highlighted(small, slide.tagline);
-		id.append(small);
-	}
-	main.append(id);
-}
+const title = slide.identity ? null : headline(slide);
+if (title) main.append(title);
+main.setAttribute("aria-label", slide.alt || `${slide.feature}: ${plainHeadline(slide.title || "")}`);
+const load = captureLoader(locale, defaultLocale, report);
+const devices = createDevices(main, slide, profile, load);
+if (slide.identity) main.append(await identity(slide, config));
 const art = main.querySelector(".art");
 art.setAttribute("viewBox", `0 0 ${W} ${H}`);
 const context = {
@@ -248,263 +617,36 @@ const context = {
 	config,
 	main,
 	art,
-	capture
+	capture: devices[0]?.img
 };
 if (theme.art) art.innerHTML = theme.art(context) || "";
 if (theme.compose) await theme.compose(context);
-const captureLocales = await Promise.all(devices.map((d) => d.loaded));
-devices.forEach((d, i) => {
-	d.locale = captureLocales[i];
-	if (!d.locale) throw new Error(`Missing capture ${d.spec.raw}`);
-});
-await Promise.all([...document.images].map((image) => image.decode()));
-await document.fonts.ready;
-const ratios = Object.values(profiles).filter((p) => p.captureWidth && p.captureHeight).flatMap((p) => [p.captureWidth / p.captureHeight, p.captureHeight / p.captureWidth]);
-for (const { img, spec } of devices) {
-	const ratio = img.naturalWidth / img.naturalHeight;
-	const own = spec.profile ? profiles[spec.profile] : null;
-	const expected = own?.captureWidth && own.captureHeight ? own.captureWidth / own.captureHeight : null;
-	if (expected ? Math.abs(ratio - expected) > .001 : !ratios.some((r) => Math.abs(ratio - r) < .001)) throw new Error(`Recapture ${spec.raw}: ${img.naturalWidth}×${img.naturalHeight} is not a configured device ratio`);
-}
-const relative = (element) => {
-	const canvas = main.getBoundingClientRect(), r = element.getBoundingClientRect();
-	return {
-		left: r.left - canvas.left,
-		top: r.top - canvas.top,
-		width: r.width,
-		height: r.height
-	};
-};
-const layoutWords = [
-	kind,
-	slide.feature,
-	...(slide.layout || "").split(/\s+/).filter(Boolean)
-];
-const frames = config.frames === false ? null : {
-	phone: {
-		bezel: .02,
-		radius: .09
-	},
-	iphone: {
-		bezel: .016,
-		radius: .15
-	},
-	tablet: {
-		bezel: .018,
-		radius: .05
-	},
-	landscape: {
-		bezel: .012,
-		radius: .035
-	},
-	fixed: [],
-	...config.frames
-};
-for (const d of devices) {
-	const frame = d.spec.frame || profile.frame || "phone";
-	const landscape = d.img.naturalWidth > d.img.naturalHeight;
-	d.node.classList.add(landscape ? "device-landscape" : "device-portrait");
-	const ratio = frames && !layoutWords.some((w) => frames.fixed.includes(w)) && frames[[
-		"phone",
-		"iphone",
-		"tablet"
-	].includes(frame) && landscape ? "landscape" : frame];
-	if (!ratio || frame === "none") continue;
-	const width = d.node.clientWidth;
-	d.node.style.setProperty("--bezel", `${Math.round(width * ratio.bezel)}px`);
-	d.node.style.setProperty("--radius", `${Math.round(width * ratio.radius)}px`);
-}
+const locales = await settleDevices(devices, profiles);
+sizeFrames(devices, config, layoutWords);
 if (theme.layout) await theme.layout(context);
-const measured = devices.map((d) => ({
-	...d,
-	locale: d.locale ?? null,
-	box: relative(d.node),
-	screen: relative(d.node.querySelector(".screen"))
-}));
-context.devices = measured;
-for (const { spec, box } of measured) {
-	if (!spec.label) continue;
-	const label = document.createElement("div");
-	label.className = `device-label${spec.role ? ` ${spec.role}` : ""}`;
-	label.dataset.checkBounds = "";
-	const span = document.createElement("span");
-	highlighted(span, spec.label);
-	label.append(span);
-	Object.assign(label.style, {
-		left: `${box.left}px`,
-		width: `${box.width}px`,
-		top: `${box.top}px`
-	});
-	label.style.setProperty("--device-height", `${box.height}px`);
-	label.style.setProperty("--tallest-device", `${Math.max(...measured.map((d) => d.box.height))}px`);
-	main.append(label);
-}
+const measured = context.devices = measure(main, devices, locales);
+labelDevices(main, measured);
 context.device = measured[0]?.box;
 context.screen = measured[0]?.screen;
-const sources = /* @__PURE__ */ new Map();
-const sourceFor = async (raw) => {
-	if (!sources.has(raw)) {
-		const img = new Image();
-		sources.set(raw, loadCapture(img, raw).then(async (capturedIn) => {
-			if (!capturedIn) throw new Error(`Missing callout capture ${raw}`);
-			await img.decode();
-			return {
-				img,
-				spec: { raw },
-				locale: capturedIn
-			};
-		}));
-	}
-	return sources.get(raw);
-};
-for (const [ci, c] of (slide.callouts || []).entries()) {
-	const d = c.raw ? await sourceFor(c.raw) : measured[c.device || 0];
-	let box = {
-		x: c.x,
-		y: c.y,
-		w: c.w,
-		h: c.h,
-		target: c.target,
-		targetId: c.targetId,
-		targetClass: c.targetClass,
-		targetMode: c.targetMode
-	};
-	if (d.locale !== defaultLocale || c.targetMode === "element") {
-		const reference = await json(`../${defaultLocale}/raw/${nodesFile(d.spec.raw)}`, true);
-		const localized = d.locale === defaultLocale ? reference : await json(`../${d.locale}/raw/${nodesFile(d.spec.raw)}`, true);
-		const sizeMatches = localized?.width === d.img.naturalWidth && localized?.height === d.img.naturalHeight;
-		const moved = c.targetMode === "element" && !sizeMatches ? null : followCallout(box, reference, localized);
-		if (moved) {
-			box = {
-				...box,
-				...moved
-			};
-			if (d.locale !== defaultLocale) report.movedCallouts.push(ci);
-		} else if (c.targetMode === "element" && d.locale === defaultLocale) throw new Error(`The selected accessibility element is missing or incompatible in ${d.spec.raw}. Pick the element again.`);
-		else report.fixedCallouts.push(ci);
-	}
-	let k, left, top;
-	if (c.place) {
-		k = c.place.width / box.w;
-		left = c.place.left;
-		top = c.place.top;
-	} else {
-		const screen = d.screen || context.screen;
-		const scale = screen.width / d.img.naturalWidth;
-		k = scale * (c.mag || 1.1);
-		left = screen.left + (box.x + box.w / 2) * scale + (c.dx || 0) - box.w * k / 2;
-		top = screen.top + (box.y + box.h / 2) * scale + (c.dy || 0) - box.h * k / 2;
-	}
-	const el = document.createElement("div");
-	el.className = `callout${c.role ? ` ${c.role}` : ""}`;
-	el.dataset.checkBounds = "";
-	Object.assign(el.style, {
-		width: `${box.w * k}px`,
-		height: `${box.h * k}px`,
-		left: `${left}px`,
-		top: `${top}px`,
-		borderRadius: `${(c.radius || 0) * k}px`,
-		backgroundImage: `url("${d.img.src}")`,
-		backgroundSize: `${d.img.naturalWidth * k}px auto`,
-		backgroundPosition: `${-box.x * k}px ${-box.y * k}px`
-	});
-	main.append(el);
-}
+await drawCallouts(slide.callouts || [], {
+	main,
+	measured,
+	screen: context.screen,
+	defaultLocale,
+	load,
+	report
+});
 if (theme.decorate) await theme.decorate(context);
-{
-	const { layouts: own, ...base } = {
-		margin: 0,
-		visible: .6,
-		...config.bounds
-	};
-	const layouts = {
-		spread: { right: true },
-		hang: { top: true },
-		feature: { visible: .3 },
-		...own
-	};
-	const rules = [
-		base,
-		...layoutWords.map((w) => layouts[w]).filter((r) => r !== void 0),
-		slide.bounds
-	].filter((r) => r !== void 0);
-	if (!rules.includes(false)) {
-		const rule = Object.assign({}, ...rules);
-		const m = rule.margin;
-		for (const { box, spec } of measured) {
-			const frame = spec.frame || profile.frame || "phone";
-			if (frame === "none") continue;
-			const overRight = box.left + box.width - (W - m);
-			if (!rule.sides && (box.left < m - .5 || overRight > .5 && !(rule.right === true || overRight / box.width <= (Number(rule.right) || 0)))) throw new Error(`Screen leaves the side of the card: ${spec.raw}`);
-			if (!rule.top && box.top < m - .5) throw new Error(`Screen leaves the top of the card: ${spec.raw}`);
-			if ((Math.min(box.top + box.height, H) - Math.max(box.top, 0)) / box.height < rule.visible) throw new Error(`Too little of ${spec.raw} is visible`);
-			if (!rule.cut && [
-				"phone",
-				"iphone",
-				"tablet"
-			].includes(frame) && box.width > box.height && (box.top < -.5 || box.top + box.height > H + 1)) throw new Error(`Landscape tablet is cut: ${spec.raw}`);
-		}
-	}
-}
+checkBounds(measured, slide, profile, config, layoutWords);
 report.continuous = Array.isArray(theme.continuous) ? theme.continuous.includes(kind) : !!theme.continuous;
 const header = main.querySelector("header");
 if (header) {
-	const textBox = () => {
-		const walker = document.createTreeWalker(header, NodeFilter.SHOW_TEXT);
-		let l = Infinity, t = Infinity, r = -Infinity, b = -Infinity;
-		for (let node; node = walker.nextNode();) {
-			const range = document.createRange();
-			range.selectNodeContents(node);
-			for (const rect of range.getClientRects()) {
-				l = Math.min(l, rect.left);
-				t = Math.min(t, rect.top);
-				r = Math.max(r, rect.right);
-				b = Math.max(b, rect.bottom);
-			}
-		}
-		return {
-			l,
-			t,
-			r,
-			b
-		};
-	};
-	const blocks = [...main.querySelectorAll(".device:not(.device-frame-none)")].map((n) => n.getBoundingClientRect());
-	const fits = () => {
-		if ([...header.querySelectorAll("h1 .line")].some((line) => line.scrollWidth > line.parentElement.clientWidth + 1)) return false;
-		const t = textBox();
-		if (t.l < -.5 || t.t < -.5 || t.r > W + .5 || t.b > H + .5) return false;
-		return blocks.every((d) => t.b + 16 <= d.top || t.t >= d.bottom || t.r + 16 <= d.left || t.l >= d.right);
-	};
-	const sizes = [...header.querySelectorAll("h1, p")].map((el) => [el, parseFloat(getComputedStyle(el).fontSize)]);
-	const minFit = config.minFit || .72;
-	for (let s = 1; !fits() && s > minFit - .001; s -= .02) {
-		report.fit = Math.round(s * 100) / 100;
-		for (const [el, size] of sizes) el.style.fontSize = `${size * s}px`;
-		if (theme.refit) await theme.refit(context);
-	}
-	if (!fits()) report.fit = 0;
-	for (const el of header.querySelectorAll("h1 .line, p")) {
-		const range = document.createRange();
-		range.selectNodeContents(el);
-		const lines = /* @__PURE__ */ new Map();
-		for (const rect of range.getClientRects()) {
-			if (!rect.width) continue;
-			const top = Math.round(rect.top / 4), line = lines.get(top);
-			lines.set(top, line ? {
-				left: Math.min(line.left, rect.left),
-				right: Math.max(line.right, rect.right)
-			} : {
-				left: rect.left,
-				right: rect.right
-			});
-		}
-		const widths = [...lines.entries()].sort(([a], [b]) => a - b).map(([, l]) => l.right - l.left);
-		if (widths.length > 1 && widths[widths.length - 1] < Math.max(...widths) * .3) {
-			const words = el.textContent.trim().split(/\s+/);
-			(report.widows ||= []).push(words.slice(-2).join(" "));
-		}
-	}
+	await fitCopy(main, header, {
+		W,
+		H
+	}, config.minFit || .72, report, theme.refit && (() => theme.refit(context)));
+	const widows = findWidows(header);
+	if (widows.length) report.widows = widows;
 }
 if (q.has("fit")) {
 	root.classList.add("fit-scene");
