@@ -253,6 +253,7 @@ const context = {
 if (theme.art) art.innerHTML = theme.art(context) || "";
 if (theme.compose) await theme.compose(context);
 const captureLocales = await Promise.all(devices.map((d) => d.loaded));
+report.fallbackCaptures = devices.filter((d) => report.fallbackCaptures.includes(d.spec.raw)).map((d) => d.spec.raw);
 devices.forEach((d, i) => {
 	d.locale = captureLocales[i];
 	if (!d.locale) throw new Error(`Missing capture ${d.spec.raw}`);
