@@ -17,6 +17,7 @@ import type {CardReport, Listing} from '../core/types';
 import {loadListing, readJson, requireListing} from './project';
 import {serve} from './server';
 import {loadPlaywright} from './playwright';
+import {listingProblems, storeFor} from '../core/stores';
 
 export interface ExportOptions {
   /** The store-listing folder (default: the one this studio copy lives in). */
@@ -71,7 +72,6 @@ export interface ExportResult {
 }
 
 // Play's listing limits, in characters.
-const LIMITS: [keyof Listing, number][] = [['title', 30], ['shortDescription', 80], ['fullDescription', 4000]];
 const IMAGES = /\.(jpe?g|png|webp)$/i;
 
 type Column = number[];
@@ -285,11 +285,7 @@ export async function exportListing(options: ExportOptions = {}): Promise<Export
         }
       }
       const words = listingFor(locale);
-      for (const [field, max] of words ? LIMITS : []) {
-        const value = words![field];
-        const length = typeof value === 'string' ? [...value].length : 0;
-        if (length > max) warn(`${locale}/listing.json ${String(field)} has ${length} characters; Play allows ${max}`);
-      }
+      for (const problem of words ? listingProblems(words, storeFor(config, profiles)) : []) warn(`${locale}/listing.json ${problem.message}`);
       if (options.fastlane && words) {
         fs.mkdirSync(laneDir(locale), {recursive: true});
         for (const [field, name] of [['title', 'title'], ['shortDescription', 'short_description'], ['fullDescription', 'full_description']] as const) {

@@ -10,6 +10,7 @@ import {validate, type Schema} from '../core/validate';
 import {cardsFor, devicesFor} from '../core/gallery';
 import {readJson, requireListing, STUDIO_DIR} from './project';
 import type {Copy, Galleries, Listing, Profiles, StudioConfig} from '../core/types';
+import {listingProblems, storeFor} from '../core/stores';
 
 export interface Issue {
   level: 'error' | 'warning';
@@ -29,7 +30,6 @@ export interface CheckResult {
   counted: {galleries: number; cards: number; captures: number; locales: number};
 }
 
-const LIMITS: [keyof Listing, number][] = [['title', 30], ['shortDescription', 80], ['fullDescription', 4000]];
 
 /** Width and height of a PNG or JPEG, read from its header. */
 export function imageSize(file: string): {width: number; height: number} | null {
@@ -78,6 +78,7 @@ export function checkListing(listingDir?: string): CheckResult {
   if (!config || !profiles || !galleries) return {ok: false, issues, counted};
 
   const defaultLocale = config.defaultLocale || 'en-US';
+  const store = storeFor(config, profiles);
   const locales = config.locales || [defaultLocale];
   counted.locales = locales.length;
   if (!locales.includes(defaultLocale)) error('studio.json', `defaultLocale ${defaultLocale} isn't in locales`, {path: 'locales', fix: `Add "${defaultLocale}" to locales.`});
@@ -142,11 +143,7 @@ export function checkListing(listingDir?: string): CheckResult {
       else load<Copy>(file, 'copy');
     }
     const words = readJson<Listing | null>(path.join(listing, locale, 'listing.json'), null);
-    for (const [field, max] of words ? LIMITS : []) {
-      const value = field === 'title' ? words![field] ?? words!.appName : words![field];
-      const length = typeof value === 'string' ? [...value].length : 0;
-      if (length > max) error(`${locale}/listing.json`, `${String(field)} has ${length} characters; Play allows ${max}`, {path: String(field)});
-    }
+    for (const problem of words ? listingProblems(words, store) : []) error(`${locale}/listing.json`, problem.message, {path: problem.field});
   }
   return {ok: !issues.some(issue => issue.level === 'error'), issues, counted};
 }

@@ -54,7 +54,7 @@ Every theme recolors from three variables (`--paper`, `--ink`, `--accent`). `npx
 - a device cut off where it shouldn't be;
 - a background that breaks between cards in the store carousel;
 - captures that aren't a real device shape;
-- store text over Play's limits, starter placeholders left in, languages still borrowing English.
+- store text over Google Play's or the App Store's limits, starter placeholders left in, languages still borrowing English.
 
 ## All the way to automatic
 

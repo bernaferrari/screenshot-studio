@@ -879,6 +879,44 @@ var init_validate = __esmMin((() => {
 	join = (base, key) => typeof key === "number" ? `${base}[${key}]` : /^[A-Za-z_$][\w$]*$/.test(key) ? base ? `${base}.${key}` : key : `${base}[${JSON.stringify(key)}]`;
 	show = (value) => JSON.stringify(value)?.slice(0, 60) ?? String(value);
 }));
+// src/core/stores.ts
+/** Which store a listing is for: the App Store when its capture or galleries are iOS, Google Play otherwise. */
+function storeFor(config, profiles) {
+	return config.capture?.platform === "ios" || Object.values(profiles).some((profile) => profile.platform === "ios") ? "App Store" : "Google Play";
+}
+/** Fields of listing.json over the store's limits. `appName` counts as the title. */
+function listingProblems(words, store) {
+	const problems = [];
+	for (const [field, max] of Object.entries(LIMITS[store])) {
+		const value = field === "title" ? words.title ?? words.appName : words[field];
+		const length = typeof value === "string" ? [...value].length : 0;
+		if (length > max) problems.push({
+			field,
+			length,
+			max,
+			message: `${field} has ${length} characters; ${store} allows ${max}`
+		});
+	}
+	return problems;
+}
+var LIMITS;
+var init_stores = __esmMin((() => {
+	LIMITS = {
+		"Google Play": {
+			title: 30,
+			shortDescription: 80,
+			fullDescription: 4e3
+		},
+		"App Store": {
+			title: 30,
+			subtitle: 30,
+			promotionalText: 170,
+			keywords: 100,
+			description: 4e3,
+			whatsNew: 4e3
+		}
+	};
+}));
 // src/node/check.ts
 /**
 * Check an app's listing without rendering anything: every file against its schema, then what schemas can't see
@@ -972,6 +1010,7 @@ function checkListing(listingDir) {
 		counted
 	};
 	const defaultLocale = config.defaultLocale || "en-US";
+	const store = storeFor(config, profiles);
 	const locales = config.locales || [defaultLocale];
 	counted.locales = locales.length;
 	if (!locales.includes(defaultLocale)) error("studio.json", `defaultLocale ${defaultLocale} isn't in locales`, {
@@ -1056,11 +1095,7 @@ function checkListing(listingDir) {
 			else load(file, "copy");
 		}
 		const words = readJson(node_path.default.join(listing, locale, "listing.json"), null);
-		for (const [field, max] of words ? LIMITS$1 : []) {
-			const value = field === "title" ? words[field] ?? words.appName : words[field];
-			const length = typeof value === "string" ? [...value].length : 0;
-			if (length > max) error(`${locale}/listing.json`, `${String(field)} has ${length} characters; Play allows ${max}`, { path: String(field) });
-		}
+		for (const problem of words ? listingProblems(words, store) : []) error(`${locale}/listing.json`, problem.message, { path: problem.field });
 	}
 	return {
 		ok: !issues.some((issue) => issue.level === "error"),
@@ -1082,16 +1117,11 @@ async function run$9(argv) {
 	console.log(argv.includes("--json") ? JSON.stringify(result, null, 2) : formatIssues(result));
 	return result.ok ? 0 : 1;
 }
-var LIMITS$1;
 var init_check = __esmMin((() => {
 	init_validate();
 	init_gallery();
 	init_project();
-	LIMITS$1 = [
-		["title", 30],
-		["shortDescription", 80],
-		["fullDescription", 4e3]
-	];
+	init_stores();
 }));
 // src/node/workspace/review.ts
 /**
@@ -1971,11 +2001,7 @@ async function exportListing(options = {}) {
 				}
 			}
 			const words = listingFor(locale);
-			for (const [field, max] of words ? LIMITS : []) {
-				const value = words[field];
-				const length = typeof value === "string" ? [...value].length : 0;
-				if (length > max) warn(`${locale}/listing.json ${String(field)} has ${length} characters; Play allows ${max}`);
-			}
+			for (const problem of words ? listingProblems(words, storeFor(config, profiles)) : []) warn(`${locale}/listing.json ${problem.message}`);
 			if (options.fastlane && words) {
 				node_fs.default.mkdirSync(laneDir(locale), { recursive: true });
 				for (const [field, name] of [
@@ -2053,16 +2079,12 @@ async function run$7(argv) {
 	}
 	return result.ok ? 0 : 1;
 }
-var LIMITS, IMAGES;
+var IMAGES;
 var init_export = __esmMin((() => {
 	init_project();
 	init_server();
 	init_playwright();
-	LIMITS = [
-		["title", 30],
-		["shortDescription", 80],
-		["fullDescription", 4e3]
-	];
+	init_stores();
 	IMAGES = /\.(jpe?g|png|webp)$/i;
 }));
 // src/node/ios.ts
