@@ -237,6 +237,35 @@ var init_project = __esmMin((() => {
 	init_gallery();
 	readCopy = (listing, locale) => readJson(node_path.default.join(listing, locale, "copy.json"), {});
 }));
+// src/node/playwright.ts
+/** Finding Playwright, which renders every card: wherever it is, with a message that says how to get it when it isn't. */
+/** Where Playwright may live, most specific first. */
+function candidates() {
+	const found = [];
+	if (process.env.PLAYWRIGHT_MODULE) found.push(process.env.PLAYWRIGHT_MODULE);
+	for (const start of [__dirname, process.cwd()]) for (let dir = start;; dir = node_path.default.dirname(dir)) {
+		found.push(node_path.default.join(dir, "node_modules", "playwright"));
+		if (node_path.default.dirname(dir) === dir) break;
+	}
+	const cache = node_path.default.join(node_os.default.homedir(), ".npm", "_npx");
+	if (node_fs.default.existsSync(cache)) for (const entry of node_fs.default.readdirSync(cache)) found.push(node_path.default.join(cache, entry, "node_modules", "playwright"));
+	return found;
+}
+/** The directory of an installed Playwright, or null. */
+function findPlaywright() {
+	for (const dir of candidates()) if (node_fs.default.existsSync(node_path.default.join(dir, "package.json"))) return dir;
+	try {
+		return node_path.default.dirname(require.resolve("playwright/package.json"));
+	} catch {
+		return null;
+	}
+}
+function loadPlaywright() {
+	const dir = findPlaywright();
+	if (!dir) throw new Error("Playwright renders the cards and isn't installed. Run the studio with `npx screenshot-studio …`, or install it: `npm install -D playwright && npx playwright install chromium`.");
+	return require(dir);
+}
+var init_playwright = __esmMin((() => {}));
 // src/node/workspace/store.ts
 /** Local project registration and coverage. It never modifies a connected project's files. */
 function folder(input) {
@@ -1589,8 +1618,7 @@ var init_server = __esmMin((() => {
 }));
 // src/node/export.ts
 /**
-* Render every card to a store-ready image and check the composition. Requires Playwright
-* (set PLAYWRIGHT_MODULE to an existing installation if it is not resolvable from here).
+* Render every card to a store-ready image and check the composition (with Playwright, found wherever it is installed).
 *   node store-listing/studio/export.cjs [--locale de-DE] [--kind phone] [--card 3] [--strict] [--fastlane] [--json]
 * Without --locale every locale in studio.json is rendered. --strict fails when a non-default locale
 * still borrows default-locale words or captures, or a callout could not follow its UI element.
@@ -1719,7 +1747,7 @@ async function exportListing(options = {}) {
 		};
 	};
 	const { cardsFor, devicesFor, outputFile } = await Promise.resolve().then(() => (init_gallery(), gallery_exports));
-	const { chromium } = require(process.env.PLAYWRIGHT_MODULE || "playwright");
+	const { chromium } = loadPlaywright();
 	let server = null, browser = null;
 	let failures = 0;
 	try {
@@ -1902,7 +1930,7 @@ async function exportListing(options = {}) {
 				await sheet.close();
 				log(`${locale}/${strip.file}  (strip of ${strip.kind} ${strip.cards.map((i) => i + 1).join(", ")})`);
 			}
-			if (!options.kind) {
+			if (!options.kind && options.card === void 0) {
 				const files = Object.values(manifest.galleries).flat().map((m) => node_path.default.join(dir, m.file));
 				for (const folder of new Set(files.map((f) => node_path.default.dirname(f)))) for (const f of node_fs.default.readdirSync(folder)) {
 					if (!IMAGES.test(f) || written.has(node_path.default.join(folder, f))) continue;
@@ -2000,6 +2028,7 @@ var LIMITS, IMAGES;
 var init_export = __esmMin((() => {
 	init_project();
 	init_server();
+	init_playwright();
 	LIMITS = [
 		["title", 30],
 		["shortDescription", 80],
@@ -2873,7 +2902,6 @@ var init_locales = __esmMin((() => {
 * The icon factory: one drawing, every icon an app ships.
 *   npx screenshot-studio icons [store-listing/brand/icon.json]
 *   npx screenshot-studio icons --import drawable.xml > store-listing/brand/foreground.svg
-* Needs Playwright (set PLAYWRIGHT_MODULE to an existing installation if it is not resolvable from here).
 *
 * An app draws its icon once, as SVG layers on Android's 108 x 108 adaptive canvas (launchers show the
 * middle 72, from 18 to 90; keep the mark inside the 66-wide safe circle centred on 54, 54):
@@ -3060,7 +3088,7 @@ async function buildIcons(options = {}) {
 			}
 		});
 	};
-	const { chromium } = require(process.env.PLAYWRIGHT_MODULE || "playwright");
+	const { chromium } = loadPlaywright();
 	const browser = await chromium.launch();
 	try {
 		page = await browser.newPage();
@@ -3279,6 +3307,7 @@ async function run$3(argv) {
 var MIME, CLIP, DENSITIES, ICO_SIZES, canvas, visible, dataUri, USAGE$2;
 var init_icon = __esmMin((() => {
 	init_project();
+	init_playwright();
 	MIME = {
 		".png": "image/png",
 		".jpg": "image/jpeg",
@@ -3329,7 +3358,7 @@ var init_icon = __esmMin((() => {
 * category: an android:appCategory value (game, audio, video, image, social, news, maps, productivity).
 * targetSdk (default 34; Android refuses installs below 24), versionCode (1) and versionName ("1.0") set the
 * manifest, for apps that read them (an SDK tracker).
-* Needs the Android SDK (ANDROID_HOME or ~/Library/Android/sdk) and Playwright (PLAYWRIGHT_MODULE) for the icons.
+* Needs the Android SDK (ANDROID_HOME or ~/Library/Android/sdk) and Playwright for the icons.
 * Builds into <spec dir>/.fixture-apps/ (keep it git-ignored) and signs with the local debug keystore; an unchanged
 * spec reuses the APKs already there. --install and --uninstall only ever talk to an emulator, never a phone.
 * buildFixtureApps() does the same from code and returns the packages and APKs.
@@ -3375,7 +3404,7 @@ function layers(app) {
 	};
 }
 async function renderIcons(apps, out) {
-	const { chromium } = require(process.env.PLAYWRIGHT_MODULE || "playwright");
+	const { chromium } = loadPlaywright();
 	const browser = await chromium.launch();
 	try {
 		const page = await browser.newPage({ viewport: {
@@ -3551,6 +3580,7 @@ async function run$2(argv) {
 var numeric, USAGE$1;
 var init_fixture_apps = __esmMin((() => {
 	init_project();
+	init_playwright();
 	numeric = (a, b) => a.localeCompare(b, void 0, { numeric: true });
 	USAGE$1 = "Usage: npx screenshot-studio fixtures fixture-apps.json [--install <emulator-serial>] [--uninstall <emulator-serial>]";
 }));
@@ -3933,7 +3963,7 @@ async function previewReadme(options = {}) {
 <article class="markdown-body">${body}</article>`;
 	const page = node_path.default.join(node_fs.default.mkdtempSync(node_path.default.join(node_os.default.tmpdir(), "readme-preview-")), "readme.html");
 	node_fs.default.writeFileSync(page, html);
-	const { chromium } = require(process.env.PLAYWRIGHT_MODULE || "playwright");
+	const { chromium } = loadPlaywright();
 	const browser = await chromium.launch();
 	try {
 		const tab = await browser.newPage({
@@ -3995,6 +4025,7 @@ async function run(argv) {
 var USAGE;
 var init_readme_preview = __esmMin((() => {
 	init_project();
+	init_playwright();
 	USAGE = "Usage: npx screenshot-studio readme [--repo <folder>] [--out <file.png>] [--width 1012]";
 }));
 // src/cli/main.ts
@@ -4005,6 +4036,7 @@ var init_readme_preview = __esmMin((() => {
 * runs the same commands directly.
 */
 init_project();
+init_playwright();
 init_export();
 init_recapture();
 init_check();
@@ -4052,7 +4084,7 @@ const COMMANDS = {
 	},
 	recapture: {
 		summary: "Build the app, capture on the emulator or simulator and export",
-		usage: "recapture [locale…] [--boot] [--profile phone] [--simulator \"iPhone 17 Pro Max\"] [--no-build] [--no-capture] [--no-export] [--dry-run]",
+		usage: "recapture [locale…] [--boot] [--profile phone] [--serial emulator-5578] [--simulator \"iPhone 17 Pro Max\"] [--no-build] [--no-capture] [--no-export] [--dry-run]",
 		run: async (argv) => (await Promise.resolve().then(() => (init_recapture(), recapture_exports))).run(argv)
 	},
 	locales: {
@@ -4113,9 +4145,7 @@ function delegate(listing, name, argv) {
 	const theirs = node_fs.default.readFileSync(node_path.default.join(listing, "studio", "VERSION"), "utf8").trim();
 	if (theirs !== version()) console.error(`(The app uses studio ${theirs}; this is ${version()}. \`npx screenshot-studio sync\` updates it.)`);
 	const env = { ...process.env };
-	if (!env.PLAYWRIGHT_MODULE) try {
-		env.PLAYWRIGHT_MODULE = node_path.default.dirname(require.resolve("playwright/package.json"));
-	} catch {}
+	if (!env.PLAYWRIGHT_MODULE) env.PLAYWRIGHT_MODULE = findPlaywright() ?? void 0;
 	return (0, node_child_process.spawnSync)(process.execPath, [
 		entry,
 		name,

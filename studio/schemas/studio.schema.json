@@ -344,7 +344,7 @@
       "additionalProperties": true
     }
   },
-  "additionalProperties": true,
+  "additionalProperties": false,
   "$defs": {
     "locale": {
       "type": "string",

@@ -2,7 +2,6 @@
  * The icon factory: one drawing, every icon an app ships.
  *   npx screenshot-studio icons [store-listing/brand/icon.json]
  *   npx screenshot-studio icons --import drawable.xml > store-listing/brand/foreground.svg
- * Needs Playwright (set PLAYWRIGHT_MODULE to an existing installation if it is not resolvable from here).
  *
  * An app draws its icon once, as SVG layers on Android's 108 x 108 adaptive canvas (launchers show the
  * middle 72, from 18 to 90; keep the mark inside the 66-wide safe circle centred on 54, 54):
@@ -52,6 +51,7 @@ import os from 'node:os';
 import {execFileSync} from 'node:child_process';
 import type {Page} from 'playwright';
 import {readJson} from './project';
+import {loadPlaywright} from './playwright';
 
 type Shape = 'square' | 'rounded' | 'circle' | 'mark';
 /** Where Android's launcher icons go. */
@@ -247,7 +247,7 @@ export async function buildIcons(options: IconOptions = {}): Promise<IconResult>
     return page.screenshot({omitBackground: !opaque, clip: {x: 0, y: 0, width: size, height: size}});
   };
 
-  const {chromium} = require(process.env.PLAYWRIGHT_MODULE || 'playwright') as typeof import('playwright');
+  const {chromium} = loadPlaywright();
   const browser = await chromium.launch();
   try {
     page = await browser.newPage();

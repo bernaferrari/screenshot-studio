@@ -12,7 +12,7 @@
  * category: an android:appCategory value (game, audio, video, image, social, news, maps, productivity).
  * targetSdk (default 34; Android refuses installs below 24), versionCode (1) and versionName ("1.0") set the
  * manifest, for apps that read them (an SDK tracker).
- * Needs the Android SDK (ANDROID_HOME or ~/Library/Android/sdk) and Playwright (PLAYWRIGHT_MODULE) for the icons.
+ * Needs the Android SDK (ANDROID_HOME or ~/Library/Android/sdk) and Playwright for the icons.
  * Builds into <spec dir>/.fixture-apps/ (keep it git-ignored) and signs with the local debug keystore; an unchanged
  * spec reuses the APKs already there. --install and --uninstall only ever talk to an emulator, never a phone.
  * buildFixtureApps() does the same from code and returns the packages and APKs.
@@ -22,6 +22,7 @@ import os from 'node:os';
 import path from 'node:path';
 import {execFileSync} from 'node:child_process';
 import {readJson} from './project';
+import {loadPlaywright} from './playwright';
 
 /** A Lucide icon name, SVG markup on a 24-unit stroke grid, or text. */
 type Glyph = string | {svg: string} | {text: string};
@@ -91,7 +92,7 @@ function layers(app: FixtureApp): {background: string; foreground: string} {
 }
 
 async function renderIcons(apps: FixtureApp[], out: string): Promise<void> {
-  const {chromium} = require(process.env.PLAYWRIGHT_MODULE || 'playwright') as typeof import('playwright');
+  const {chromium} = loadPlaywright();
   const browser = await chromium.launch();
   try {
     const page = await browser.newPage({viewport: {width: 432, height: 432}});

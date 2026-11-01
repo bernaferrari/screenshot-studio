@@ -8,6 +8,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import {spawnSync} from 'node:child_process';
 import {findListing} from '../node/project';
+import {findPlaywright} from '../node/playwright';
 
 type Command = {summary: string; usage: string; package?: boolean; run: (argv: string[]) => Promise<number>};
 
@@ -25,7 +26,7 @@ const COMMANDS: Record<string, Command> = {
     run: async argv => (await import('../node/check')).run(argv)},
   export: {summary: 'Render and check every card', usage: 'export [--locale de-DE] [--kind phone] [--card 0] [--strict] [--fastlane] [--prune] [--json]',
     run: async argv => (await import('../node/export')).run(argv)},
-  recapture: {summary: 'Build the app, capture on the emulator or simulator and export', usage: 'recapture [locale…] [--boot] [--profile phone] [--simulator "iPhone 17 Pro Max"] [--no-build] [--no-capture] [--no-export] [--dry-run]',
+  recapture: {summary: 'Build the app, capture on the emulator or simulator and export', usage: 'recapture [locale…] [--boot] [--profile phone] [--serial emulator-5578] [--simulator "iPhone 17 Pro Max"] [--no-build] [--no-capture] [--no-export] [--dry-run]',
     run: async argv => (await import('../node/recapture')).run(argv)},
   locales: {summary: 'Language coverage, or add a language', usage: 'locales [--init de-DE]',
     run: async argv => (await import('../node/locales')).run(argv)},
@@ -61,7 +62,7 @@ function delegate(listing: string, name: string, argv: string[]): number {
   const theirs = fs.readFileSync(path.join(listing, 'studio', 'VERSION'), 'utf8').trim();
   if (theirs !== version()) console.error(`(The app uses studio ${theirs}; this is ${version()}. \`npx screenshot-studio sync\` updates it.)`);
   const env = {...process.env};
-  if (!env.PLAYWRIGHT_MODULE) { try { env.PLAYWRIGHT_MODULE = path.dirname(require.resolve('playwright/package.json')); } catch { /* the app may have its own */ } }
+  if (!env.PLAYWRIGHT_MODULE) env.PLAYWRIGHT_MODULE = findPlaywright() ?? undefined;
   return spawnSync(process.execPath, [entry, name, ...argv], {stdio: 'inherit', env}).status ?? 1;
 }
 

@@ -1,6 +1,5 @@
 /**
- * Render every card to a store-ready image and check the composition. Requires Playwright
- * (set PLAYWRIGHT_MODULE to an existing installation if it is not resolvable from here).
+ * Render every card to a store-ready image and check the composition (with Playwright, found wherever it is installed).
  *   node store-listing/studio/export.cjs [--locale de-DE] [--kind phone] [--card 3] [--strict] [--fastlane] [--json]
  * Without --locale every locale in studio.json is rendered. --strict fails when a non-default locale
  * still borrows default-locale words or captures, or a callout could not follow its UI element.
@@ -17,6 +16,7 @@ import type {Browser, Page} from 'playwright';
 import type {CardReport, Listing} from '../core/types';
 import {loadListing, readJson} from './project';
 import {serve} from './server';
+import {loadPlaywright} from './playwright';
 
 export interface ExportOptions {
   /** The store-listing folder (default: the one this studio copy lives in). */
@@ -157,7 +157,7 @@ export async function exportListing(options: ExportOptions = {}): Promise<Export
   };
 
   const {cardsFor, devicesFor, outputFile} = await import('../core/gallery');
-  const {chromium} = require(process.env.PLAYWRIGHT_MODULE || 'playwright') as typeof import('playwright');
+  const {chromium} = loadPlaywright();
   let server: Server | null = null, browser: Browser | null = null;
   let failures = 0;
   try {
@@ -271,7 +271,8 @@ export async function exportListing(options: ExportOptions = {}): Promise<Export
         log(`${locale}/${strip.file}  (strip of ${strip.kind} ${strip.cards.map(i => i + 1).join(', ')})`);
       }
       // Stale outputs: images in a folder of cards that no card, contact sheet or strip writes any more.
-      if (!options.kind) {
+      // Only a full export knows every file it writes; a partial one (--kind, --card) can't tell stale from skipped.
+      if (!options.kind && options.card === undefined) {
         const files = Object.values(manifest.galleries).flat().map(m => path.join(dir, m.file));
         for (const folder of new Set(files.map(f => path.dirname(f)))) {
           for (const f of fs.readdirSync(folder)) {
