@@ -37,7 +37,8 @@ One entry per gallery (phone, 7-inch, 10-inch, README, a feature graphic…):
 |---|---|
 | `width`, `height` | The exported image |
 | `captureWidth`, `captureHeight`, `captureDensity` | The emulator display for this gallery's captures |
-| `frame` | `phone`, `tablet`, `browser` or `none` |
+| `frame` | `phone`, `iphone`, `tablet`, `browser` or `none` |
+| `platform`, `simulator` | `"ios"` and the simulator its captures come from ([Capturing](capture.md#ios)) |
 | `label` | The name shown in the editor |
 | `defaultLocaleOnly` | Render once, in the default language (README art) |
 
@@ -104,6 +105,7 @@ Coordinates are capture pixels; `dx`/`dy` move it. A callout may come from anoth
 | Frame | Bezel | Radius |
 |---|---|---|
 | Phone | 0.02 | 0.09 |
+| iPhone | 0.016 | 0.15 |
 | Tablet | 0.018 | 0.05 |
 | Landscape capture in either | 0.012 | 0.035 |
 

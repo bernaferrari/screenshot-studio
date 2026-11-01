@@ -42,6 +42,7 @@
     "frame": {
       "enum": [
         "phone",
+        "iphone",
         "tablet",
         "browser",
         "none"

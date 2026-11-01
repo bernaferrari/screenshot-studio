@@ -13,7 +13,7 @@ type Command = {summary: string; usage: string; package?: boolean; run: (argv: s
 
 const COMMANDS: Record<string, Command> = {
   init: {summary: 'Set up Screenshot Studio in an app (or from a folder of screenshots)', package: true,
-    usage: 'init [app] [--name "My App"] [--package com.example.app] [--theme starter] [--screenshots ./folder] [--locales en-US,de-DE]',
+    usage: 'init [app] [--name "My App"] [--package com.example.app] [--theme starter] [--screenshots ./folder] [--locales en-US,de-DE] [--platform ios]',
     run: async argv => (await import('../node/init')).run(argv)},
   sync: {summary: "Update the app's copy of the studio to this version", package: true, usage: 'sync [app] [--check]',
     run: async argv => (await import('../node/init')).runSync(argv)},
@@ -25,7 +25,7 @@ const COMMANDS: Record<string, Command> = {
     run: async argv => (await import('../node/check')).run(argv)},
   export: {summary: 'Render and check every card', usage: 'export [--locale de-DE] [--kind phone] [--card 0] [--strict] [--fastlane] [--json]',
     run: async argv => (await import('../node/export')).run(argv)},
-  recapture: {summary: 'Build the app, capture on the emulator and export', usage: 'recapture [locale…] [--boot] [--profile phone] [--no-build] [--no-capture] [--no-export] [--dry-run]',
+  recapture: {summary: 'Build the app, capture on the emulator or simulator and export', usage: 'recapture [locale…] [--boot] [--profile phone] [--simulator "iPhone 17 Pro Max"] [--no-build] [--no-capture] [--no-export] [--dry-run]',
     run: async argv => (await import('../node/recapture')).run(argv)},
   locales: {summary: 'Language coverage, or add a language', usage: 'locales [--init de-DE]',
     run: async argv => (await import('../node/locales')).run(argv)},

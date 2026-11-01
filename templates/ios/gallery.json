@@ -1,0 +1,9 @@
+{
+  "$schema": "./studio/schemas/gallery.schema.json",
+  "iphone": [
+    {"feature": "hero", "raw": "iphone/01-hero.png", "layout": "big"},
+    {"feature": "second", "raw": "iphone/02-second.png", "layout": "big"}
+  ],
+  "iphone63": {"inherits": "iphone", "cards": [{}, {}]},
+  "ipad": [{"feature": "hero", "raw": "ipad/01-hero.png", "layout": "big"}]
+}

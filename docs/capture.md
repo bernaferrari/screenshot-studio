@@ -97,3 +97,84 @@ node store-listing/studio/fixture-apps.cjs store-listing/fixture-apps.json --ins
 ```
 
 Each entry gets a label, an adaptive icon (a Lucide glyph or text on a gradient), a category and, if needed, `targetSdk`, `versionCode` and `versionName`. Builds are cached in `.fixture-apps/` beside the spec.
+
+## iOS
+
+The same studio makes App Store screenshots from an iOS simulator. You need Xcode with a simulator runtime.
+
+```sh
+npx screenshot-studio init --platform ios --name "My App" --package com.example.myapp
+npx screenshot-studio init --platform ios --screenshots ./simulator-shots   # or from screenshots you already have
+```
+
+`--platform ios` makes three galleries with the sizes App Store Connect asks for ([screenshot specifications](https://developer.apple.com/help/app-store-connect/reference/app-information/screenshot-specifications/)):
+
+| Gallery | Size | Captured on |
+|---|---|---|
+| `iphone` | 1320 × 2868 (6.9″) | the newest *iPhone … Pro Max* simulator |
+| `iphone63` | 1206 × 2622 (6.3″, required) | nothing: it shows the `iphone` captures at its own size (`"inherits": "iphone"`) |
+| `ipad` | 2064 × 2752 (13″, required for iPad apps) | the newest *iPad Pro 13-inch* simulator |
+
+6.5″ (1284 × 2778) is only required when there's no 6.9″ set; add a profile for it if you want one. The iPhone galleries use the `iphone` frame (a thinner bezel and rounder corners); `theme.css` gets their positions appended after the theme's look.
+
+Each iOS profile in `profiles.json` has `"platform": "ios"`, a capture size and the `simulator` it is captured on (a name from `xcrun simctl list devices available`, or a UDID). The capture size must be that simulator's screen in pixels; `shot` refuses anything else.
+
+### The tour
+
+`store-listing/capture-simulator.py`:
+
+```python
+import sys
+from pathlib import Path
+sys.path.insert(0, str(Path(__file__).resolve().parent / 'studio'))
+from ios import Simulator, parser
+
+args = parser(__doc__).parse_args()                  # --simulator, --profile, --locale, --only, --keep
+with Simulator(args, 'com.example.myapp') as s:
+    for profile in s.profiles():                     # iphone, ipad: boots each profile's simulator
+        s.appearance('light')                        # or s.night(False)
+        s.launch(screenshotScene='home')             # -screenshotScene home, in the locale's language
+        s.shot('01-home')                            # <locale>/raw/<profile>/01-home.png
+        s.launch(screenshotScene='settings')
+        s.shot('02-settings')
+```
+
+While the tour runs, each simulator gets a status bar at 9:41 with full battery, Wi-Fi and signal and no carrier (`simctl status_bar override`), and the default text size. On exit the status bar is cleared, appearance and text size are put back, and simulators the tour booted are shut down (`--keep` leaves them running).
+
+| Method | Does |
+|---|---|
+| `launch(*args, **defaults)` | Restart the app with launch arguments; `screenshotScene='home'` becomes `-screenshotScene home`. Adds `-AppleLanguages (de-DE) -AppleLocale de_DE` for the locale |
+| `open_url(url)` | Open a deep link in the running app |
+| `appearance('dark')`, `night(on)` | Light or dark |
+| `privacy('grant', 'photos')` | Grant a permission up front, so no alert covers a scene |
+| `install(app)`, `terminate()` | Install a simulator `.app`; stop the app |
+| `shot(*targets)` | Save the screen (square corners; the frame rounds them), checking its size |
+| `use(profile, simulator, w, h)` | A simulator outside `profiles.json` |
+
+**Navigation is the app's job.** simctl can't tap, and there is no UI tree, so there's no `tap('Settings')`, no tap map and no `.nodes.json`. (Callouts still work with hand-drawn regions; they just don't follow elements between languages.) Instead the app's Debug build opens the screen a launch argument names, filled with fictional sample data:
+
+```swift
+#if DEBUG
+// -screenshotScene settings arrives as a UserDefaults value in the argument domain.
+if let scene = UserDefaults.standard.string(forKey: "screenshotScene") { router.show(scene, sampleData: true) }
+#endif
+```
+
+A URL scheme (`open_url('myapp://settings')`) works too, and keeps the running app's language.
+
+**Languages.** `launch` sets the app's language for that launch only; the simulator's system language stays as it is. So the app is in German, but text drawn by iOS outside the app (the iPad status bar's app name, a share sheet) is in the simulator's language. The clock shows 9:41 or 09:41 depending on the simulator's region format.
+
+### recapture
+
+```json
+"capture": {
+  "platform": "ios",
+  "build": "xcodebuild -scheme \"My App\" -configuration Debug -sdk iphonesimulator -derivedDataPath build/capture -quiet build",
+  "install": [{"app": "build/capture/Build/Products/Debug-iphonesimulator/My App.app", "package": "com.example.myapp"}],
+  "runs": [{"locales": "all"}]
+}
+```
+
+With `"platform": "ios"`, `recapture` builds, installs the `.app` on every simulator the capture profiles use, then runs `capture-simulator.py` (the default `script`) per language and profile, and exports. `--boot` boots those simulators first and leaves them running; `--simulator NAME` (or `capture.simulator`) is the simulator for profiles that name none. A failed run clears the status bar and appearance (`python3 store-listing/studio/ios.py reset --simulator NAME`) and tries again.
+
+The exporter's store text checks and `export --fastlane` are still written for Google Play.

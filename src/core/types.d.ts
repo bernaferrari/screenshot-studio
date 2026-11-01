@@ -4,7 +4,7 @@
 //   export default {...};
 
 /** How a capture is framed. `none` shows it as the whole image. */
-export type FrameKind = 'phone' | 'tablet' | 'browser' | 'none';
+export type FrameKind = 'phone' | 'iphone' | 'tablet' | 'browser' | 'none';
 
 /** store-listing/studio.json */
 export interface StudioConfig {
@@ -41,6 +41,7 @@ export interface StudioConfig {
 
 export interface FramesConfig {
   phone?: FrameRatio;
+  iphone?: FrameRatio;
   tablet?: FrameRatio;
   browser?: FrameRatio;
   landscape?: FrameRatio;
@@ -75,7 +76,10 @@ export interface FastlaneConfig {
 export interface CaptureConfig {
   /** Shell command that builds the capture app, run from the repository. */
   build?: string;
-  install?: {apk: string; package: string}[];
+  /** Where captures come from: an Android emulator (the default) or an iOS simulator. */
+  platform?: 'android' | 'ios';
+  /** What to install before capturing: an APK (Android) or a simulator .app (iOS), with its package or bundle ID. */
+  install?: {apk?: string; app?: string; package: string}[];
   runs?: CaptureRun[];
   /** Retries per capture run (default 2). */
   retries?: number;
@@ -87,6 +91,8 @@ export interface CaptureConfig {
   serial?: string;
   /** The emulator image `recapture --boot` starts when none is running. */
   avd?: string;
+  /** iOS: the simulator (name or UDID) for profiles that name none. */
+  simulator?: string;
 }
 export interface CaptureRun {
   script?: string;
@@ -110,6 +116,10 @@ export interface Profile {
   label?: string;
   /** Render once, in the default language (README art, a share image). */
   defaultLocaleOnly?: boolean;
+  /** Which capture backend takes this gallery's captures (default android). */
+  platform?: 'android' | 'ios' | 'web';
+  /** iOS: the simulator (name or UDID) this gallery is captured on. */
+  simulator?: string;
 }
 
 /** store-listing/gallery.json: each gallery's cards. */

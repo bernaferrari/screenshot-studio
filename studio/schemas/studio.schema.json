@@ -78,6 +78,9 @@
             "phone": {
               "$ref": "#/$defs/ratio"
             },
+            "iphone": {
+              "$ref": "#/$defs/ratio"
+            },
             "tablet": {
               "$ref": "#/$defs/ratio"
             },
@@ -218,6 +221,13 @@
     "capture": {
       "type": "object",
       "properties": {
+        "platform": {
+          "enum": [
+            "android",
+            "ios"
+          ],
+          "description": "Where captures come from: an Android emulator (default) or an iOS simulator."
+        },
         "build": {
           "type": "string",
           "description": "Shell command that builds the capture app, run from the repository."
@@ -227,12 +237,28 @@
           "items": {
             "type": "object",
             "required": [
-              "apk",
               "package"
+            ],
+            "anyOf": [
+              {
+                "required": [
+                  "apk"
+                ]
+              },
+              {
+                "required": [
+                  "app"
+                ]
+              }
             ],
             "properties": {
               "apk": {
-                "type": "string"
+                "type": "string",
+                "description": "Android: the APK to install."
+              },
+              "app": {
+                "type": "string",
+                "description": "iOS: the simulator .app to install."
               },
               "package": {
                 "type": "string"

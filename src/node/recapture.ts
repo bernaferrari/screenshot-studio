@@ -13,6 +13,8 @@
  *     "retries": 2,                                                  per capture run
  *     "serial": "emulator-5578",                                     the capture emulator (or CAPTURE_SERIAL)
  *     "avd": "Pixel_9_API_36",                                       what --boot starts when it isn't running
+ *     "platform": "ios",                                             capture on iOS simulators instead (below)
+ *     "simulator": "iPhone 17 Pro Max",                              iOS: for profiles that name no "simulator"
  *     "export": "cd store-listing && node render.mjs --locale {locale}",  instead of studio/export.cjs, per locale
  *     "after": ["python3 store-listing/prepare.py"]                  shell commands once everything is exported
  *   }
@@ -20,12 +22,18 @@
  * Each run is `python3 <script> --serial <emulator> --locale <locale> [--profile <profile>] <args>`, through
  * `uv run --with pillow` when uv is installed. The default locale goes first, since it records the tap map
  * other locales replay. --boot starts the capture emulator headless when it isn't running and waits for it.
+ *
+ * iOS ("platform": "ios"): install entries are {"app": "build/…/App.app", "package": "<bundle ID>"}, the default
+ * script is store-listing/capture-simulator.py, the capture profiles are profiles.json's "platform": "ios" ones with
+ * a capture size, each on its "simulator", and --boot boots those simulators. Each run is
+ * `python3 <script> --locale <locale> [--profile <profile>] [--simulator <default>] <args>`.
  */
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import {spawn, spawnSync} from 'node:child_process';
 import {loadListing} from './project';
+import {bootSimulator, simulatorsFor} from './ios';
 
 export interface RecaptureOptions {
   listing?: string;
@@ -34,6 +42,8 @@ export interface RecaptureOptions {
   /** Only this capture profile. */
   profile?: string;
   serial?: string;
+  /** iOS: the simulator for profiles that name none (default: studio.json capture.simulator). */
+  simulator?: string;
   /** Start the capture emulator when it isn't running. */
   boot?: boolean;
   build?: boolean;
@@ -95,22 +105,26 @@ export async function recapture(options: RecaptureOptions = {}): Promise<Recaptu
   const result: RecaptureResult = {ok: false, locales, failedExports: []};
   try {
     if (!capture) throw new Error('studio.json has no "capture" block; see docs/capture.md');
+    const ios = capture.platform === 'ios';
     const serial = options.serial || capture.serial || process.env.CAPTURE_SERIAL || DEFAULT_SERIAL;
-    if (!serial.startsWith('emulator-')) throw new Error('Use a capture emulator, never a physical phone.');
+    if (!ios && !serial.startsWith('emulator-')) throw new Error('Use a capture emulator, never a physical phone.');
+    const simulator = options.simulator || capture.simulator || process.env.CAPTURE_SIMULATOR;
     const unknown = locales.filter(locale => !configured.includes(locale));
     if (unknown.length) throw new Error(`Not in studio.json locales: ${unknown.join(', ')}`);
     locales.sort((a, b) => Number(b === defaultLocale) - Number(a === defaultLocale));
-    const captureProfiles = Object.keys(profiles).filter(name => profiles[name].captureDensity);
+    const captureProfiles = Object.keys(profiles).filter(name => ios
+      ? profiles[name].platform === 'ios' && profiles[name].captureWidth : profiles[name].captureDensity);
     if (options.profile && !profiles[options.profile]?.captureWidth) throw new Error(`No capture profile ${options.profile} in profiles.json`);
 
     const python = has('uv') ? ['uv', 'run', '-q', '--with', 'pillow', 'python3'] : ['python3'];
-    const env: NodeJS.ProcessEnv = {...process.env, CAPTURE_SERIAL: serial, ANDROID_SERIAL: serial};
+    const env: NodeJS.ProcessEnv = ios ? {...process.env, ...(simulator ? {CAPTURE_SIMULATOR: simulator} : {})}
+      : {...process.env, CAPTURE_SERIAL: serial, ANDROID_SERIAL: serial};
     const expand = (word: string) => String(word).replace(/\$\{(\w+)\}/g, (_, name: string) => {
       if (env[name] === undefined) throw new Error(`Set ${name} for this capture (studio.json capture args use it)`);
       return env[name]!;
     });
     const run = (command: string, args: string[] = [], {shell = false, check = true} = {}) => {
-      const line = shell ? command : [command, ...args].join(' ');
+      const line = shell ? command : [command, ...args].map(word => /\s/.test(word) ? JSON.stringify(word) : word).join(' ');
       log(`\n$ ${line}`);
       if (options.dryRun) return true;
       const done = shell ? spawnSync('sh', ['-c', command], {cwd: repo, env, stdio: 'inherit'})
@@ -119,24 +133,35 @@ export async function recapture(options: RecaptureOptions = {}): Promise<Recaptu
       return done.status === 0;
     };
 
-    const studioPy = path.relative(repo, path.join(__dirname, 'capture.py'));
+    const studioPy = path.relative(repo, path.join(__dirname, ios ? 'ios.py' : 'capture.py'));
+    // iOS: every simulator the selected profiles capture on.
+    const sims = ios && options.capture !== false ? simulatorsFor(profiles, captureProfiles.filter(name => !options.profile || name === options.profile), simulator) : [];
+    const device = (sim?: string) => ios ? ['--simulator', sim!] : ['--serial', serial];
     if (options.build !== false && capture.build) run(capture.build, [], {shell: true});
     if (options.capture !== false) {
-      if (options.boot && !options.dryRun) await bootEmulator(serial, capture.avd, log);
-      for (const {apk, package: id} of capture.install || []) run(python[0], [...python.slice(1), studioPy, 'install', apk, '--package', id, '--serial', serial]);
+      if (options.boot && !options.dryRun) {
+        if (ios) for (const sim of sims) await bootSimulator(sim, log);
+        else await bootEmulator(serial, capture.avd, log);
+      }
+      for (const {apk, app, package: id} of capture.install || []) {
+        const file = ios ? app : apk;
+        if (!file) throw new Error(`capture.install needs ${ios ? '"app" (a simulator .app)' : '"apk"'} for ${id}`);
+        for (const sim of ios ? sims : [undefined]) run(python[0], [...python.slice(1), studioPy, 'install', file, '--package', id, ...device(sim)]);
+      }
       for (const locale of locales) {
         for (const spec of capture.runs || [{}]) {
           const wanted = spec.locales || 'all';
           if (wanted === 'default' ? locale !== defaultLocale : Array.isArray(wanted) && !wanted.includes(locale)) continue;
           const runProfiles = spec.profiles === false ? [null] : (spec.profiles || captureProfiles).filter(name => !options.profile || name === options.profile);
           for (const profile of runProfiles) {
-            const args = [...python.slice(1), spec.script || 'store-listing/capture-emulator.py', '--serial', serial, '--locale', locale,
+            const script = spec.script || (ios ? 'store-listing/capture-simulator.py' : 'store-listing/capture-emulator.py');
+            const args = [...python.slice(1), script, ...(ios ? (simulator ? ['--simulator', simulator] : []) : ['--serial', serial]), '--locale', locale,
               ...(profile ? ['--profile', profile] : []), ...(spec.args || []).map(expand)];
             const attempts = (capture.retries ?? 2) + 1;
             for (let attempt = 1; ; attempt++) {
               if (run(python[0], args, {check: attempt === attempts})) break;
-              log(`Capture failed; reset the emulator and try again (${attempt + 1}/${attempts})`);
-              run(python[0], [...python.slice(1), studioPy, 'reset', '--serial', serial]);
+              log(`Capture failed; reset the ${ios ? 'simulator' : 'emulator'} and try again (${attempt + 1}/${attempts})`);
+              for (const sim of ios ? sims : [undefined]) run(python[0], [...python.slice(1), studioPy, 'reset', ...device(sim)]);
             }
           }
         }
@@ -158,13 +183,13 @@ export async function recapture(options: RecaptureOptions = {}): Promise<Recaptu
   return result;
 }
 
-/** `recapture [locale…] [--profile phone] [--boot] [--no-build] [--no-capture] [--no-export] [--dry-run]` */
+/** `recapture [locale…] [--profile phone] [--simulator name] [--boot] [--no-build] [--no-capture] [--no-export] [--dry-run]` */
 export async function run(argv: string[]): Promise<number> {
   const flag = (name: string) => argv.includes(`--${name}`);
   const option = (name: string) => { const i = argv.indexOf(`--${name}`); return i >= 0 ? argv[i + 1] : undefined; };
-  const values = new Set(['profile', 'serial', 'listing'].map(option).filter(Boolean));
+  const values = new Set(['profile', 'serial', 'simulator', 'listing'].map(option).filter(Boolean));
   const result = await recapture({
-    locales: argv.filter(word => !word.startsWith('--') && !values.has(word)), profile: option('profile'), serial: option('serial'),
+    locales: argv.filter(word => !word.startsWith('--') && !values.has(word)), profile: option('profile'), serial: option('serial'), simulator: option('simulator'),
     listing: option('listing'), boot: flag('boot'), build: !flag('no-build'), capture: !flag('no-capture'), export: !flag('no-export'),
     dryRun: flag('dry-run'),
   });
