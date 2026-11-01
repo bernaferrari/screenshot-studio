@@ -11,7 +11,7 @@ Working on the studio itself. Agents changing it: read `AGENTS.md` too.
 | `src/node/` | The Node library: export, check, recapture, init, server and workspace, MCP, icons, fixtures |
 | `src/cli/main.ts` | The `screenshot-studio` command, and the library's public exports |
 | `ui/src/` | The editor (React, shadcn/ui, Tailwind) |
-| `capture/` | The emulator and simulator side (Python: `capture.py`, `ios.py`, `uitree.py`) |
+| `capture/` | The emulator and simulator side (Python): tours import `capture.py` and `ios.py`; `capture_*.py` and `uitree.py` hold the rest, shipped flat beside them |
 | `schemas/` | JSON Schemas for the files an app keeps |
 | `themes/`, `templates/` | What `init` copies into a new app |
 | `skills/store-screenshots/` | The skill `init` installs in an app ([Agents](agents.md)) |

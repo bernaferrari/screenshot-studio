@@ -41,23 +41,9 @@ import tempfile
 import time
 from pathlib import Path
 
-def find_listing():
-    """The app's store-listing folder: SCREENSHOT_STUDIO_LISTING (recapture sets it), the folder of the tour being
-    run (tours live in store-listing/), or the nearest store-listing/ at or above the working directory."""
-    if os.environ.get('SCREENSHOT_STUDIO_LISTING'):
-        return Path(os.environ['SCREENSHOT_STUDIO_LISTING']).resolve()
-    script = Path(sys.argv[0]).resolve().parent if sys.argv and sys.argv[0] else None
-    if script and (script / 'studio.json').exists():
-        return script
-    for folder in [Path.cwd(), *Path.cwd().parents]:
-        for candidate in (folder, folder / 'store-listing'):
-            if (candidate / 'studio.json').exists():
-                return candidate
-    return None
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+from capture_tour import Tour, find_listing  # noqa: E402,F401
 
-
-# Found once, when a tour needs it: commands like `reset` run without an app.
-LISTING = None
 SIMULATOR = os.environ.get('CAPTURE_SIMULATOR')
 # 9:41 on 9 January (an iPad shows the date too; the weekday is the simulator's own). simctl reads an ISO time as UTC and shows it in the simulator's
 # time zone, which is the Mac's, so 9:41 local is converted; it shows as 9:41 or 09:41 as the simulator's region formats it.
@@ -133,27 +119,14 @@ def apple_language(locale):
     return language, f'{parts[0]}_{region}' if region else parts[0]
 
 
-class Simulator:
+class Simulator(Tour):
     def __init__(self, args, bundle, *, app=None, locale=True, content_size='large', listing=None):
         """args: parsed `parser()` arguments. bundle: the app's bundle identifier. app: an .app to install on each
         simulator first. locale: launch in the --locale language (False leaves the simulator's). content_size: the
         text size while capturing (None leaves it)."""
-        listing = listing or LISTING or find_listing()
-        if not listing:
-            raise SystemExit('No store-listing/studio.json found. Run the tour from the app, or through `npx screenshot-studio recapture`.')
-        self.listing = Path(listing)
-        config = self.listing / 'studio.json'
-        self.studio = json.loads(config.read_text()) if config.exists() else {}
-        self.reference = self.studio.get('defaultLocale', 'en-US')
-        self.locale = getattr(args, 'locale', None) or self.reference
-        if not re.fullmatch(r'[a-z]{2,3}(?:-[A-Za-z0-9]{2,8})*', self.locale):
-            raise SystemExit(f'Invalid locale {self.locale}')
-        self.raw = self.listing / self.locale / 'raw'
+        Tour.__init__(self, args, listing)
         self.bundle, self.app, self.app_locale, self.content_size = bundle, app, locale, content_size
         self.default = getattr(args, 'simulator', None) or (self.studio.get('capture') or {}).get('simulator') or SIMULATOR
-        only = getattr(args, 'only', None)
-        self.only = set(only.split(',')) if only else None
-        self.selected = getattr(args, 'profile', None)
         self.keep = getattr(args, 'keep', False)
         self.udid = None
         self.profile = self.theme = None
@@ -202,11 +175,7 @@ class Simulator:
     def profiles(self, only=None):
         """Yield each iOS capture profile's name (profiles.json entries with "platform": "ios" and a capture size)
         after switching to its simulator. only: names to keep (default: --profile)."""
-        only = only or ([] if self.selected in (None, 'all') else self.selected.split(','))
-        config = json.loads((self.listing / 'profiles.json').read_text())
-        unknown = set(only) - set(config)
-        if unknown:
-            raise SystemExit(f'No profile {", ".join(sorted(unknown))} in profiles.json')
+        config, only = self.profile_config(only)
         for name, p in config.items():
             if not isinstance(p, dict) or p.get('platform') != 'ios' or 'captureWidth' not in p or (only and name not in only):
                 continue
@@ -265,13 +234,6 @@ class Simulator:
             file = Path(tmp) / 'shot.png'
             simctl('io', self.udid, 'screenshot', '--type=png', '--mask=ignored', file)
             return file.read_bytes()
-
-    def target(self, name):
-        if isinstance(name, Path):
-            return name
-        if '/' in name or '.' in name:
-            return self.raw / name
-        return self.raw / self.profile / f'{name}.png'
 
     def shot(self, *names, settle=1.2):
         """Capture the screen to each target and return their paths. A plain name is
