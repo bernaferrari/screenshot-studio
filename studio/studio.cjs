@@ -1597,7 +1597,7 @@ var init_server = __esmMin((() => {
 * It also warns (and --strict fails) when a gallery folder holds images no card writes any more, when a
 * continuous background (theme `continuous`) breaks at a seam, and when <locale>/listing.json is over Play's
 * limits. --fastlane writes fastlane/metadata/android/<locale>/ text and screenshots (studio.json "fastlane").
-* --json prints the result as JSON (for agents and tools); exportListing() returns the same result.
+* --prune deletes images no card writes any more. --json prints the result as JSON (for agents and tools); exportListing() returns the same result.
 */
 var export_exports = /* @__PURE__ */ __exportAll({
 	exportListing: () => exportListing,
@@ -1904,7 +1904,14 @@ async function exportListing(options = {}) {
 			}
 			if (!options.kind) {
 				const files = Object.values(manifest.galleries).flat().map((m) => node_path.default.join(dir, m.file));
-				for (const folder of new Set(files.map((f) => node_path.default.dirname(f)))) for (const f of node_fs.default.readdirSync(folder)) if (IMAGES.test(f) && !written.has(node_path.default.join(folder, f))) warn(`${node_path.default.relative(listing, node_path.default.join(folder, f))} is no longer in the gallery; delete it`);
+				for (const folder of new Set(files.map((f) => node_path.default.dirname(f)))) for (const f of node_fs.default.readdirSync(folder)) {
+					if (!IMAGES.test(f) || written.has(node_path.default.join(folder, f))) continue;
+					const stale = node_path.default.relative(listing, node_path.default.join(folder, f));
+					if (options.prune) {
+						node_fs.default.rmSync(node_path.default.join(folder, f));
+						log(`deleted ${stale} (no card writes it any more)`);
+					} else warn(`${stale} is no longer in the gallery; delete it, or export with --prune`);
+				}
 			}
 			const words = listingFor(locale);
 			for (const [field, max] of words ? LIMITS : []) {
@@ -1964,7 +1971,7 @@ function formatSummary(result) {
 	if (result.warnings.length) lines.push("", `${result.warnings.length} warning(s):`, ...result.warnings.map((w) => `  ${w}`));
 	return lines.join("\n");
 }
-/** `export [--locale de-DE] [--kind phone] [--card 3] [--strict] [--fastlane] [--json]` */
+/** `export [--locale de-DE] [--kind phone] [--card 3] [--strict] [--fastlane] [--prune] [--json]` */
 async function run$7(argv) {
 	const arg = (name) => {
 		const i = argv.indexOf(`--${name}`);
@@ -1978,6 +1985,7 @@ async function run$7(argv) {
 		card: card === void 0 ? void 0 : Number(card),
 		strict: argv.includes("--strict"),
 		fastlane: argv.includes("--fastlane"),
+		prune: argv.includes("--prune"),
 		listing: arg("listing"),
 		log: json ? () => {} : void 0
 	});
@@ -4039,7 +4047,7 @@ const COMMANDS = {
 	},
 	export: {
 		summary: "Render and check every card",
-		usage: "export [--locale de-DE] [--kind phone] [--card 0] [--strict] [--fastlane] [--json]",
+		usage: "export [--locale de-DE] [--kind phone] [--card 0] [--strict] [--fastlane] [--prune] [--json]",
 		run: async (argv) => (await Promise.resolve().then(() => (init_export(), export_exports))).run(argv)
 	},
 	recapture: {

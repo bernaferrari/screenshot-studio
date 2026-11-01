@@ -7,7 +7,7 @@
  * It also warns (and --strict fails) when a gallery folder holds images no card writes any more, when a
  * continuous background (theme `continuous`) breaks at a seam, and when <locale>/listing.json is over Play's
  * limits. --fastlane writes fastlane/metadata/android/<locale>/ text and screenshots (studio.json "fastlane").
- * --json prints the result as JSON (for agents and tools); exportListing() returns the same result.
+ * --prune deletes images no card writes any more. --json prints the result as JSON (for agents and tools); exportListing() returns the same result.
  */
 import fs from 'node:fs';
 import os from 'node:os';
@@ -31,6 +31,8 @@ export interface ExportOptions {
   strict?: boolean;
   /** Also write fastlane / F-Droid metadata. */
   fastlane?: boolean;
+  /** Delete images in the gallery folders that no card writes any more, instead of warning about them. */
+  prune?: boolean;
   /** Progress lines (default: console.log). */
   log?: (line: string) => void;
 }
@@ -273,7 +275,10 @@ export async function exportListing(options: ExportOptions = {}): Promise<Export
         const files = Object.values(manifest.galleries).flat().map(m => path.join(dir, m.file));
         for (const folder of new Set(files.map(f => path.dirname(f)))) {
           for (const f of fs.readdirSync(folder)) {
-            if (IMAGES.test(f) && !written.has(path.join(folder, f))) warn(`${path.relative(listing, path.join(folder, f))} is no longer in the gallery; delete it`);
+            if (!IMAGES.test(f) || written.has(path.join(folder, f))) continue;
+            const stale = path.relative(listing, path.join(folder, f));
+            if (options.prune) { fs.rmSync(path.join(folder, f)); log(`deleted ${stale} (no card writes it any more)`); }
+            else warn(`${stale} is no longer in the gallery; delete it, or export with --prune`);
           }
         }
       }
@@ -319,14 +324,14 @@ export function formatSummary(result: ExportResult): string {
   return lines.join('\n');
 }
 
-/** `export [--locale de-DE] [--kind phone] [--card 3] [--strict] [--fastlane] [--json]` */
+/** `export [--locale de-DE] [--kind phone] [--card 3] [--strict] [--fastlane] [--prune] [--json]` */
 export async function run(argv: string[]): Promise<number> {
   const arg = (name: string) => { const i = argv.indexOf(`--${name}`); return i >= 0 ? argv[i + 1] : undefined; };
   const json = argv.includes('--json');
   const card = arg('card');
   const result = await exportListing({
     locales: arg('locale') ? [arg('locale')!] : undefined, kind: arg('kind'), card: card === undefined ? undefined : Number(card),
-    strict: argv.includes('--strict'), fastlane: argv.includes('--fastlane'), listing: arg('listing'),
+    strict: argv.includes('--strict'), fastlane: argv.includes('--fastlane'), prune: argv.includes('--prune'), listing: arg('listing'),
     log: json ? () => {} : undefined,
   });
   if (json) console.log(JSON.stringify(result, null, 2));
