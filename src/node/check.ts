@@ -124,6 +124,15 @@ export function checkListing(listingDir?: string): CheckResult {
         warn(`${defaultLocale}/copy.json`, `card "${card.feature}" (${kind}) has no headline`, {fix: `Add {"${card.feature}": {"title": "…", "body": "…"}}.`});
     });
   }
+  // Starter placeholders: init writes these so the first export renders; they must never ship.
+  const PLACEHOLDER = /^Your headline|One short (supporting )?line|Why it matters, briefly|^One clear\n|^The core\n|Up to (80|4,?000) characters/;
+  for (const [key, entry] of Object.entries(defaultCopy)) for (const [field, value] of Object.entries(entry || {}))
+    if (typeof value === 'string' && PLACEHOLDER.test(value)) warn(`${defaultLocale}/copy.json`, `is still the starter placeholder`, {path: `${key}.${field}`, fix: 'Write a benefit headline for this screen.'});
+  for (const locale of locales) {
+    const words = readJson<Listing | null>(path.join(listing, locale, 'listing.json'), null);
+    for (const [field, value] of Object.entries(words || {}))
+      if (typeof value === 'string' && PLACEHOLDER.test(value)) warn(`${locale}/listing.json`, `is still the starter placeholder`, {path: field, fix: 'Write the store text.'});
+  }
   for (const key of Object.keys(defaultCopy)) if (!used.has(key)) warn(`${defaultLocale}/copy.json`, `"${key}" isn't used by any card`, {path: key, fix: 'Remove it, or fix the card\'s feature name.'});
 
   for (const locale of locales) {

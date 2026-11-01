@@ -134,6 +134,12 @@ export async function exportListing(options: ExportOptions = {}): Promise<Export
   const tallies: LocaleTally[] = [];
   const staged: {shots: string; destination: string}[] = [];
   const warn = (message: string) => { warnings.push(message); log(`warning: ${message}`); };
+  // export-report.json: the last export's result, for the editor's review queue.
+  const finish = (result: ExportResult): ExportResult => {
+    const ran = {locales: options.locales, kind: options.kind, card: options.card, strict: !!options.strict};
+    try { fs.writeFileSync(path.join(listing, 'export-report.json'), JSON.stringify({...result, finishedAt: new Date().toISOString(), options: ran}, null, 2) + '\n'); } catch {}
+    return result;
+  };
 
   // fastlane: "fastlane": {"dir": "fastlane/metadata/android", "screenshots": {"phone": "images/phoneScreenshots"},
   // "screenshotLocales": ["en-US"] (or "all"), "locales": {"ru-RU": "ru"}} (all optional; these are the defaults but
@@ -216,6 +222,7 @@ export async function exportListing(options: ExportOptions = {}): Promise<Export
             if (report.fixedCallouts.length) { tally.fixedCallouts++; notes.push('callout kept its default-locale position'); }
           }
           if (report.fit < 1) { tally.shrunk++; notes.push(`copy shrunk to ${Math.round(report.fit * 100)}%`); }
+          if (report.widows?.length) warn(`${label}: "${report.widows.join('", "')}" is left on a short last line; reword or shorten the copy`);
           tally.cards++;
           const card: ExportedCard = {locale, kind, index: i, feature: slide.feature, file: path.join(locale, file).split(path.sep).join('/'), width, height, bytes: bytes.length, notes};
           cards.push(card);
@@ -294,9 +301,9 @@ export async function exportListing(options: ExportOptions = {}): Promise<Export
       for (const f of fs.readdirSync(destination)) if (IMAGES.test(f)) fs.rmSync(path.join(destination, f));
       for (const f of fs.readdirSync(shots)) fs.copyFileSync(path.join(shots, f), path.join(destination, f));
     }
-    return {ok: true, cards, warnings, locales: tallies};
+    return finish({ok: true, cards, warnings, locales: tallies});
   } catch (error) {
-    return {ok: false, cards, warnings, locales: tallies, error: error instanceof Error ? error.message : String(error)};
+    return finish({ok: false, cards, warnings, locales: tallies, error: error instanceof Error ? error.message : String(error)});
   } finally {
     for (const {shots} of staged) fs.rmSync(shots, {recursive: true, force: true});
     await browser?.close();

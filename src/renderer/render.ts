@@ -298,6 +298,22 @@ if (header) {
     if (theme.refit) await theme.refit(context);
   }
   if (!fits()) report.fit = 0;
+  // A short last line ("…all\nbuilt in.") reads as a mistake at thumbnail size: report it so the copy can be reworded.
+  for (const el of header.querySelectorAll<HTMLElement>('h1 .line, p')) {
+    const range = document.createRange();
+    range.selectNodeContents(el);
+    const lines = new Map<number, {left: number; right: number}>();
+    for (const rect of range.getClientRects()) {
+      if (!rect.width) continue;
+      const top = Math.round(rect.top / 4), line = lines.get(top);
+      lines.set(top, line ? {left: Math.min(line.left, rect.left), right: Math.max(line.right, rect.right)} : {left: rect.left, right: rect.right});
+    }
+    const widths = [...lines.entries()].sort(([a], [b]) => a - b).map(([, l]) => l.right - l.left);
+    if (widths.length > 1 && widths[widths.length - 1] < Math.max(...widths) * .3) {
+      const words = el.textContent!.trim().split(/\s+/);
+      (report.widows ||= []).push(words.slice(-2).join(' '));
+    }
+  }
 }
 
 if (q.has('fit')) {

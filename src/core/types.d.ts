@@ -283,4 +283,6 @@ export interface CardReport {
   /** The scale copy was shrunk to (1 = not shrunk, 0 = does not fit). */
   fit: number;
   continuous?: boolean;
+  /** Last words left alone on their own line. */
+  widows?: string[];
 }
