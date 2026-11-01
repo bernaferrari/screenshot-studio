@@ -50,6 +50,8 @@ let node_http = require("node:http");
 node_http = __toESM(node_http, 1);
 let node_crypto = require("node:crypto");
 let node_util = require("node:util");
+let node_readline = require("node:readline");
+node_readline = __toESM(node_readline, 1);
 let node_url = require("node:url");
 // src/core/gallery.ts
 var gallery_exports = /* @__PURE__ */ __exportAll({
@@ -279,7 +281,7 @@ function imageFiles(root, limit = 2e3) {
 				dir: file,
 				depth: depth + 1
 			});
-			else if (entry.isFile() && IMAGE.test(entry.name) && !seen.has(file)) {
+			else if (entry.isFile() && IMAGE$1.test(entry.name) && !seen.has(file)) {
 				seen.add(file);
 				const stat = node_fs.default.statSync(file);
 				files.push({
@@ -437,7 +439,7 @@ function createWorkspaceStore({ registryFile = process.env.SCREENSHOT_STUDIO_PRO
 			const reference = config.defaultLocale || "en-US", languages = config.locales || [reference];
 			if (!languages.length || languages.some((locale) => !localePattern.test(locale))) throw Error("studio.json has an invalid language list.");
 			const copy = readJson(node_path.default.join(listing, reference, "copy.json"), {});
-			const fields = Object.entries(copy).flatMap(([key, values]) => Object.keys(values).map((field) => ({
+			const fields = Object.entries(copy).flatMap(([key, values]) => Object.entries(values).filter(([, text]) => typeof text === "string" && text.trim()).map(([field]) => ({
 				key,
 				field
 			})));
@@ -587,7 +589,7 @@ function createWorkspaceStore({ registryFile = process.env.SCREENSHOT_STUDIO_PRO
 					return false;
 				}
 			});
-			if (studio || markers || depth > 0 && /screenshots?/i.test(node_path.default.basename(dir)) && entries.some((entry) => entry.isFile() && IMAGE.test(entry.name))) {
+			if (studio || markers || depth > 0 && /screenshots?/i.test(node_path.default.basename(dir)) && entries.some((entry) => entry.isFile() && IMAGE$1.test(entry.name))) {
 				const canonical = node_fs.default.realpathSync(dir);
 				if (!seen.has(canonical)) {
 					seen.add(canonical);
@@ -632,7 +634,7 @@ function createWorkspaceStore({ registryFile = process.env.SCREENSHOT_STUDIO_PRO
 		}
 	};
 }
-var SKIP, MARKERS, IMAGE, errorCode, localePattern, exists, inside, statusError, assetURL;
+var SKIP, MARKERS, IMAGE$1, errorCode, localePattern, exists, inside, statusError, assetURL;
 var init_store = __esmMin((() => {
 	init_project();
 	SKIP = /* @__PURE__ */ new Set([
@@ -653,7 +655,7 @@ var init_store = __esmMin((() => {
 		"store-listing",
 		"fastlane/metadata"
 	];
-	IMAGE = /\.(png|jpe?g|webp)$/i;
+	IMAGE$1 = /\.(png|jpe?g|webp)$/i;
 	errorCode = (error) => error && typeof error === "object" && "code" in error ? String(error.code) : void 0;
 	localePattern = /^[a-z]{2,3}(-[A-Za-z0-9]{2,8})*$/;
 	exists = (file) => {
@@ -669,6 +671,601 @@ var init_store = __esmMin((() => {
 	};
 	statusError = (message, status = 400) => Object.assign(new Error(message), { status });
 	assetURL = (id, relative) => `/p/${id}/${relative.split(node_path.default.sep).map(encodeURIComponent).join("/")}`;
+}));
+// src/node/workspace/events.ts
+/**
+* Live reload: one recursive watcher per project's store-listing/, shared by every editor tab that listens, and a
+* Server-Sent Events stream that tells those tabs which files changed. Edits arrive in bursts (an agent rewriting
+* theme.css, an exporter writing a language), so changes are collected for a moment and sent together.
+*/
+/**
+* Whether a change matters to the editor. The studio copy (studio/) and export outputs (rendered cards, contact
+* sheets, README strips) are written by the studio itself; the exporter's manifests (assets.json,
+* export-report.json) still count, so export notes refresh when an export finishes.
+*/
+function relevantChange(file) {
+	const parts = file.split("/");
+	const name = parts.at(-1) || "";
+	if (!name || parts[0] === "studio" || parts.some((part) => part.startsWith(".") || part === "node_modules")) return false;
+	if (/(~|\.tmp|\.swp|\.crdownload)$/i.test(name)) return false;
+	if (IMAGE.test(name)) return !(LOCALE$1.test(parts[0]) && parts[1] !== "raw");
+	return true;
+}
+/**
+* Call `listener` with the files that changed under `listing`, `delay` ms after the last change of a burst.
+* Returns a function that stops listening; the watcher closes with its last listener.
+*/
+function watchListing(listing, listener, delay = 120) {
+	listing = node_path.default.resolve(listing);
+	let watch = watches.get(listing);
+	if (!watch) {
+		const listeners = /* @__PURE__ */ new Set(), pending = /* @__PURE__ */ new Set();
+		let timer = null;
+		const flush = () => {
+			timer = null;
+			const files = [...pending].sort();
+			pending.clear();
+			if (files.length) for (const notify of listeners) notify({ files });
+		};
+		let watcher = null;
+		try {
+			watcher = node_fs.default.watch(listing, { recursive: true }, (_event, name) => {
+				if (!name) return;
+				const file = String(name).split(node_path.default.sep).join("/");
+				if (!relevantChange(file)) return;
+				try {
+					if (node_fs.default.statSync(node_path.default.join(listing, file)).isDirectory()) return;
+				} catch {}
+				pending.add(file);
+				if (timer) clearTimeout(timer);
+				timer = setTimeout(flush, delay);
+			});
+			watcher.on("error", () => {
+				watcher?.close();
+				watcher = null;
+			});
+			watcher.unref();
+		} catch {
+			watcher = null;
+		}
+		const current = {
+			listeners,
+			close() {
+				if (timer) clearTimeout(timer);
+				watcher?.close();
+				watches.delete(listing);
+			}
+		};
+		watches.set(listing, current);
+		watch = current;
+	}
+	const own = watch;
+	own.listeners.add(listener);
+	return () => {
+		own.listeners.delete(listener);
+		if (!own.listeners.size) own.close();
+	};
+}
+/** Answer with a Server-Sent Events stream of `change` events for one listing, until the client disconnects. */
+function streamListingChanges(request, response, listing) {
+	response.writeHead(200, {
+		"Content-Type": "text/event-stream",
+		"Cache-Control": "no-store",
+		Connection: "keep-alive",
+		"X-Accel-Buffering": "no"
+	});
+	response.write(`retry: 1500\nevent: ready\ndata: {}\n\n`);
+	const stop = watchListing(listing, (change) => {
+		response.write(`event: change\ndata: ${JSON.stringify(change)}\n\n`);
+	});
+	const heartbeat = setInterval(() => response.write(": keep-alive\n\n"), 25e3);
+	heartbeat.unref();
+	let ended = false;
+	const end = () => {
+		if (ended) return;
+		ended = true;
+		clearInterval(heartbeat);
+		stop();
+	};
+	request.on("close", end);
+	response.on("close", end);
+}
+var IMAGE, LOCALE$1, watches;
+var init_events = __esmMin((() => {
+	IMAGE = /\.(png|jpe?g|webp)$/i;
+	LOCALE$1 = /^[a-z]{2,3}(-[A-Za-z0-9]{2,8})*$/;
+	watches = /* @__PURE__ */ new Map();
+}));
+// src/core/validate.ts
+/** Validate `value` against `schema`; an empty list means valid. */
+function validate(value, schema, root = schema, path = "") {
+	if (schema.$ref) {
+		const name = schema.$ref.replace(/^#\/\$defs\//, "");
+		const target = root.$defs?.[name];
+		if (!target) return [{
+			path,
+			message: `unknown schema reference ${schema.$ref}`
+		}];
+		return validate(value, target, root, path);
+	}
+	const errors = [];
+	const add = (message, at = path) => errors.push({
+		path: at || "(top level)",
+		message
+	});
+	if (schema.allOf) for (const part of schema.allOf) errors.push(...validate(value, part, root, path));
+	if (schema.anyOf) {
+		const attempts = schema.anyOf.map((option) => validate(value, option, root, path));
+		if (!attempts.some((found) => found.length === 0)) {
+			const sameType = schema.anyOf.map((option, i) => ({
+				option,
+				i
+			})).filter(({ option }) => {
+				const resolved = option.$ref ? root.$defs?.[option.$ref.replace(/^#\/\$defs\//, "")] ?? option : option;
+				return (resolved.type ? Array.isArray(resolved.type) ? resolved.type : [resolved.type] : []).some((type) => matchesType(value, type));
+			});
+			if (sameType.length === 1) return [...errors, ...attempts[sameType[0].i]];
+			const consts = schema.anyOf.filter((option) => "const" in option).map((option) => show(option.const));
+			add(`${show(value)} isn't an allowed value${consts.length ? ` (allowed values include ${consts.join(", ")})` : ""}`);
+			return errors;
+		}
+	}
+	if ("const" in schema && value !== schema.const) add(`must be ${show(schema.const)}`);
+	if (schema.enum && !schema.enum.includes(value)) add(`must be one of ${schema.enum.map(show).join(", ")}; got ${show(value)}`);
+	if (schema.type) {
+		const types = Array.isArray(schema.type) ? schema.type : [schema.type];
+		if (!types.some((type) => matchesType(value, type))) {
+			add(`must be ${types.join(" or ")}, not ${typeOf(value)}`);
+			return errors;
+		}
+	}
+	if (typeof value === "string" && schema.pattern && !new RegExp(schema.pattern).test(value)) add(`${show(value)} doesn't match the expected format (${schema.pattern})`);
+	if (typeof value === "number") {
+		if (schema.minimum !== void 0 && value < schema.minimum) add(`must be at least ${schema.minimum}`);
+		if (schema.maximum !== void 0 && value > schema.maximum) add(`must be at most ${schema.maximum}`);
+		if (schema.exclusiveMinimum !== void 0 && value <= schema.exclusiveMinimum) add(`must be more than ${schema.exclusiveMinimum}`);
+	}
+	if (Array.isArray(value)) {
+		if (schema.minItems !== void 0 && value.length < schema.minItems) add(`needs at least ${schema.minItems} item(s)`);
+		if (schema.items) value.forEach((item, i) => errors.push(...validate(item, schema.items, root, join(path, i))));
+	}
+	if (typeOf(value) === "object") {
+		const object = value;
+		for (const key of schema.required || []) if (!(key in object)) add(`is missing "${key}"`);
+		for (const [key, item] of Object.entries(object)) {
+			const own = schema.properties?.[key];
+			if (own) errors.push(...validate(item, own, root, join(path, key)));
+			else if (schema.additionalProperties === false) {
+				const near = Object.keys(schema.properties || {}).find((name) => name.toLowerCase() === key.toLowerCase() || levenshtein(name, key) <= 2);
+				add(`unknown setting "${key}"${near ? `; did you mean "${near}"?` : ""}`, join(path, key));
+			} else if (typeof schema.additionalProperties === "object") errors.push(...validate(item, schema.additionalProperties, root, join(path, key)));
+		}
+	}
+	return errors;
+}
+function levenshtein(a, b) {
+	const row = Array.from({ length: b.length + 1 }, (_, i) => i);
+	for (let i = 1; i <= a.length; i++) {
+		let previous = row[0]++;
+		for (let j = 1; j <= b.length; j++) {
+			const current = row[j];
+			row[j] = Math.min(row[j] + 1, row[j - 1] + 1, previous + (a[i - 1] === b[j - 1] ? 0 : 1));
+			previous = current;
+		}
+	}
+	return row[b.length];
+}
+var typeOf, matchesType, join, show;
+var init_validate = __esmMin((() => {
+	typeOf = (value) => value === null ? "null" : Array.isArray(value) ? "array" : Number.isInteger(value) ? "integer" : typeof value;
+	matchesType = (value, type) => {
+		const actual = typeOf(value);
+		return actual === type || type === "number" && actual === "integer";
+	};
+	join = (base, key) => typeof key === "number" ? `${base}[${key}]` : /^[A-Za-z_$][\w$]*$/.test(key) ? base ? `${base}.${key}` : key : `${base}[${JSON.stringify(key)}]`;
+	show = (value) => JSON.stringify(value)?.slice(0, 60) ?? String(value);
+}));
+// src/node/check.ts
+/**
+* Check an app's listing without rendering anything: every file against its schema, then what schemas can't see
+* (captures that are missing or have the wrong shape, cards without words, words no card uses, store text over
+* Play's limits). Fast enough to run after every edit; `export` then checks the rendered result.
+*   npx screenshot-studio check [--json]
+*/
+var check_exports = /* @__PURE__ */ __exportAll({
+	checkListing: () => checkListing,
+	formatIssues: () => formatIssues,
+	imageSize: () => imageSize,
+	run: () => run$9
+});
+/** Width and height of a PNG or JPEG, read from its header. */
+function imageSize(file) {
+	const fd = node_fs.default.openSync(file, "r");
+	try {
+		const head = Buffer.alloc(65536);
+		const length = node_fs.default.readSync(fd, head, 0, head.length, 0);
+		if (head.readUInt32BE(0) === 2303741511) return {
+			width: head.readUInt32BE(16),
+			height: head.readUInt32BE(20)
+		};
+		if (head[0] === 255 && head[1] === 216) for (let i = 2; i + 9 < length;) {
+			if (head[i] !== 255) {
+				i++;
+				continue;
+			}
+			const marker = head[i + 1];
+			if (marker >= 192 && marker <= 207 && ![
+				196,
+				200,
+				204
+			].includes(marker)) return {
+				height: head.readUInt16BE(i + 5),
+				width: head.readUInt16BE(i + 7)
+			};
+			i += 2 + head.readUInt16BE(i + 2);
+		}
+		return null;
+	} finally {
+		node_fs.default.closeSync(fd);
+	}
+}
+function checkListing(listingDir) {
+	const listing = listingDir ? node_path.default.resolve(listingDir) : node_path.default.resolve(__dirname, "..");
+	const schemas = node_path.default.join(__dirname, "schemas");
+	const issues = [];
+	const error = (file, message, extra = {}) => issues.push({
+		level: "error",
+		file,
+		message,
+		...extra
+	});
+	const warn = (file, message, extra = {}) => issues.push({
+		level: "warning",
+		file,
+		message,
+		...extra
+	});
+	const counted = {
+		galleries: 0,
+		cards: 0,
+		captures: 0,
+		locales: 0
+	};
+	const load = (file, schema, fallback) => {
+		const full = node_path.default.join(listing, file);
+		if (!node_fs.default.existsSync(full)) {
+			if (fallback !== void 0) return fallback;
+			error(file, "is missing", { fix: "Run `npx screenshot-studio init` to create a starter listing." });
+			return null;
+		}
+		let value;
+		try {
+			value = readJson(full);
+		} catch (e) {
+			error(file, e.message);
+			return null;
+		}
+		const definition = readJson(node_path.default.join(schemas, `${schema}.schema.json`), null);
+		if (definition) for (const problem of validate(value, definition)) error(file, problem.message, { path: problem.path });
+		return value;
+	};
+	const config = load("studio.json", "studio");
+	const profiles = load("profiles.json", "profiles");
+	const galleries = load("gallery.json", "gallery");
+	if (!config || !profiles || !galleries) return {
+		ok: false,
+		issues,
+		counted
+	};
+	const defaultLocale = config.defaultLocale || "en-US";
+	const locales = config.locales || [defaultLocale];
+	counted.locales = locales.length;
+	if (!locales.includes(defaultLocale)) error("studio.json", `defaultLocale ${defaultLocale} isn't in locales`, {
+		path: "locales",
+		fix: `Add "${defaultLocale}" to locales.`
+	});
+	for (const file of ["theme.css"]) if (!node_fs.default.existsSync(node_path.default.join(listing, file))) warn(file, "is missing; cards render unstyled");
+	const ratios = Object.values(profiles).filter((p) => p.captureWidth && p.captureHeight).flatMap((p) => [p.captureWidth / p.captureHeight, p.captureHeight / p.captureWidth]);
+	const defaultCopy = load(`${defaultLocale}/copy.json`, "copy", {}) || {};
+	const used = /* @__PURE__ */ new Set();
+	const checkedRaws = /* @__PURE__ */ new Set();
+	for (const kind of Object.keys(galleries)) {
+		if (!profiles[kind]) {
+			error("gallery.json", `gallery "${kind}" has no profile`, {
+				path: kind,
+				fix: `Add "${kind}" to profiles.json with its width and height.`
+			});
+			continue;
+		}
+		let cards;
+		try {
+			cards = cardsFor(galleries, kind);
+		} catch (e) {
+			error("gallery.json", e.message, { path: kind });
+			continue;
+		}
+		counted.galleries++;
+		cards.forEach((card, i) => {
+			counted.cards++;
+			const at = `${kind}[${i}]`;
+			used.add(card.feature).add(`${kind}/${card.feature}`);
+			const devices = devicesFor(card);
+			for (const [d, device] of devices.entries()) {
+				const raw = node_path.default.join(listing, defaultLocale, "raw", device.raw);
+				if (checkedRaws.has(raw)) continue;
+				checkedRaws.add(raw);
+				counted.captures++;
+				if (!node_fs.default.existsSync(raw)) {
+					error("gallery.json", `capture ${defaultLocale}/raw/${device.raw} doesn't exist`, {
+						path: devices.length > 1 ? `${at}.devices[${d}].raw` : `${at}.raw`,
+						fix: "Capture it (`npx screenshot-studio recapture`), add the file, or fix the path."
+					});
+					continue;
+				}
+				const size = imageSize(raw);
+				if (size && ratios.length && !ratios.some((r) => Math.abs(size.width / size.height - r) < .001)) error("gallery.json", `${device.raw} is ${size.width}×${size.height}, which isn't the shape of any capture size in profiles.json`, {
+					path: `${at}.raw`,
+					fix: "Recapture it at a configured size, or add a profile whose captureWidth × captureHeight has this shape."
+				});
+			}
+			for (const [c, callout] of (card.callouts || []).entries()) {
+				if (!callout.raw && (callout.device || 0) >= devices.length) error("gallery.json", `callout ${c} points at device ${callout.device || 0}, but the card has ${devices.length}`, { path: `${at}.callouts[${c}]` });
+				if (callout.raw && !node_fs.default.existsSync(node_path.default.join(listing, defaultLocale, "raw", callout.raw))) error("gallery.json", `callout capture ${callout.raw} doesn't exist`, { path: `${at}.callouts[${c}].raw` });
+			}
+			const words = card.sharedCopy === false ? defaultCopy[`${kind}/${card.feature}`] : {
+				...defaultCopy[card.feature],
+				...defaultCopy[`${kind}/${card.feature}`]
+			};
+			if (devices.length && !card.identity && !(words && "title" in words) && profiles[kind].frame !== "none") warn(`${defaultLocale}/copy.json`, `card "${card.feature}" (${kind}) has no headline`, { fix: `Add {"${card.feature}": {"title": "…", "body": "…"}}.` });
+		});
+	}
+	const PLACEHOLDER = /^Your headline|One short (supporting )?line|Why it matters, briefly|^One clear\n|^The core\n|Up to (80|4,?000) characters/;
+	for (const [key, entry] of Object.entries(defaultCopy)) for (const [field, value] of Object.entries(entry || {})) if (typeof value === "string" && PLACEHOLDER.test(value)) warn(`${defaultLocale}/copy.json`, `is still the starter placeholder`, {
+		path: `${key}.${field}`,
+		fix: "Write a benefit headline for this screen."
+	});
+	for (const locale of locales) {
+		const words = readJson(node_path.default.join(listing, locale, "listing.json"), null);
+		for (const [field, value] of Object.entries(words || {})) if (typeof value === "string" && PLACEHOLDER.test(value)) warn(`${locale}/listing.json`, `is still the starter placeholder`, {
+			path: field,
+			fix: "Write the store text."
+		});
+	}
+	for (const key of Object.keys(defaultCopy)) if (!used.has(key)) warn(`${defaultLocale}/copy.json`, `"${key}" isn't used by any card`, {
+		path: key,
+		fix: "Remove it, or fix the card's feature name."
+	});
+	for (const locale of locales) {
+		if (locale !== defaultLocale) {
+			const file = `${locale}/copy.json`;
+			if (!node_fs.default.existsSync(node_path.default.join(listing, file))) warn(file, "is missing; this language shows the default words", { fix: `Run \`npx screenshot-studio locales --init ${locale}\`.` });
+			else load(file, "copy");
+		}
+		const words = readJson(node_path.default.join(listing, locale, "listing.json"), null);
+		for (const [field, max] of words ? LIMITS$1 : []) {
+			const value = field === "title" ? words[field] ?? words.appName : words[field];
+			const length = typeof value === "string" ? [...value].length : 0;
+			if (length > max) error(`${locale}/listing.json`, `${String(field)} has ${length} characters; Play allows ${max}`, { path: String(field) });
+		}
+	}
+	return {
+		ok: !issues.some((issue) => issue.level === "error"),
+		issues,
+		counted
+	};
+}
+function formatIssues(result) {
+	const { counted, issues } = result;
+	const lines = issues.map((issue) => `${issue.level === "error" ? "✗" : "!"} ${issue.file}${issue.path ? ` ${issue.path}` : ""}: ${issue.message}${issue.fix ? `\n    → ${issue.fix}` : ""}`);
+	const errors = issues.filter((i) => i.level === "error").length, warnings = issues.length - errors;
+	lines.push(`${lines.length ? "\n" : ""}${counted.galleries} galleries, ${counted.cards} cards, ${counted.captures} captures, ${counted.locales} language(s): ` + (issues.length ? `${errors} error(s), ${warnings} warning(s)` : "all good"));
+	return lines.join("\n");
+}
+/** `check [--json]` */
+async function run$9(argv) {
+	const at = argv.indexOf("--listing");
+	const result = checkListing(at >= 0 ? argv[at + 1] : void 0);
+	console.log(argv.includes("--json") ? JSON.stringify(result, null, 2) : formatIssues(result));
+	return result.ok ? 0 : 1;
+}
+var LIMITS$1;
+var init_check = __esmMin((() => {
+	init_validate();
+	init_gallery();
+	init_project();
+	LIMITS$1 = [
+		["title", 30],
+		["shortDescription", 80],
+		["fullDescription", 4e3]
+	];
+}));
+// src/node/workspace/review.ts
+/**
+* The review queue: everything in a listing that needs fixing, in one list. It joins the fast file check
+* (checkListing) with what the last export noticed: per-card notes from <locale>/assets.json and the warnings and
+* error in export-report.json. Each issue says which card it concerns when that can be known, so the editor can link
+* to it.
+*/
+/** A JSON file the studio writes, or null when it is missing or unreadable. */
+function optionalJson(file) {
+	try {
+		return readJson(file, null);
+	} catch {
+		return null;
+	}
+}
+/** Everything to fix in the listing at `listing` (a store-listing folder). */
+function reviewListing(listing) {
+	listing = node_path.default.resolve(listing);
+	const check = checkListing(listing);
+	const issues = [];
+	const galleries = optionalJson(node_path.default.join(listing, "gallery.json")) || {};
+	const config = optionalJson(node_path.default.join(listing, "studio.json")) || {};
+	const reference = config.defaultLocale || "en-US";
+	const cards = (kind) => {
+		try {
+			return galleries[kind] ? cardsFor(galleries, kind) : [];
+		} catch {
+			return [];
+		}
+	};
+	const card = (kind, index) => {
+		const found = cards(kind)[index];
+		return found ? {
+			kind,
+			index,
+			feature: found.feature
+		} : void 0;
+	};
+	const byFeature = (kind, feature) => {
+		const index = cards(kind).findIndex((c) => c.feature === feature);
+		return index < 0 ? void 0 : {
+			kind,
+			index,
+			feature
+		};
+	};
+	check.issues.forEach((issue, n) => {
+		let concerns;
+		const at = issue.file === "gallery.json" && issue.path?.match(/^([A-Za-z0-9_-]+)\[(\d+)\]/);
+		if (at) concerns = card(at[1], Number(at[2]));
+		const named = issue.message.match(/card "([^"]+)" \(([^)]+)\)/);
+		if (!concerns && named) concerns = byFeature(named[2], named[1]);
+		const locale = issue.file.match(/^([a-z]{2,3}(?:-[A-Za-z0-9]{2,8})*)\//)?.[1];
+		issues.push({
+			id: `check-${n}`,
+			source: "check",
+			level: issue.level,
+			file: issue.file,
+			...issue.path ? { path: issue.path } : {},
+			message: issue.message,
+			...issue.fix ? { fix: issue.fix } : {},
+			...concerns ? { card: concerns } : {},
+			...locale ? { locale } : {}
+		});
+	});
+	for (const locale of config.locales || [reference]) {
+		const manifest = optionalJson(node_path.default.join(listing, locale, "assets.json"));
+		for (const [kind, entries] of Object.entries(manifest?.galleries || {})) for (const entry of entries) for (const [n, note] of (entry.notes || []).entries()) {
+			const { level, fix } = noteFix(note, reference);
+			issues.push({
+				id: `notes-${locale}-${kind}-${entry.slide}-${n}`,
+				source: "export",
+				level,
+				file: `${locale}/${entry.file}`,
+				message: note,
+				...fix ? { fix } : {},
+				locale,
+				card: card(kind, entry.slide) || {
+					kind,
+					index: entry.slide,
+					feature: entry.feature
+				}
+			});
+		}
+	}
+	const report = optionalJson(node_path.default.join(listing, "export-report.json"));
+	if (report) {
+		if (report.error) issues.push({
+			id: "export-error",
+			source: "export",
+			level: "error",
+			file: "",
+			message: report.error,
+			fix: "Fix what it names, then export again (`npx screenshot-studio export`)."
+		});
+		(report.warnings || []).forEach((warning, n) => {
+			const seam = warning.match(/^([^/]+)\/([^:]+): the background breaks at the seam between cards (\d+) and (\d+)/);
+			const stale = warning.match(/^(.+) is no longer in the gallery; delete it$/);
+			const limit = warning.match(/^(\S+\/listing\.json) (\w+) has/);
+			const output = warning.match(/^([a-z]{2,3}(?:-[A-Za-z0-9]{2,8})*)\/(\S+?\.(?:jpe?g|png|webp)): /);
+			const byOutput = output ? Object.keys(galleries).flatMap((kind) => cards(kind).map((c, i) => ({
+				kind,
+				i,
+				file: outputFile(kind, c, i)
+			}))).find((o) => o.file === output[2]) : void 0;
+			const base = {
+				id: `export-warning-${n}`,
+				source: "export",
+				level: "warning",
+				message: warning
+			};
+			if (seam) issues.push({
+				...base,
+				file: "theme.js",
+				locale: seam[1],
+				card: card(seam[2], Number(seam[3]) - 1),
+				fix: "Draw the background in panorama coordinates (studio/shapes.js) so it continues from one card into the next."
+			});
+			else if (stale) issues.push({
+				...base,
+				file: stale[1],
+				fix: "Delete the file; no card writes it any more."
+			});
+			else if (limit) issues.push({
+				...base,
+				file: limit[1],
+				path: limit[2],
+				fix: "Shorten it to fit Play's limit."
+			});
+			else if (output) issues.push({
+				...base,
+				message: warning.slice(output[0].length),
+				file: `${output[1]}/${output[2]}`,
+				locale: output[1],
+				...byOutput ? { card: card(byOutput.kind, byOutput.i) } : {},
+				.../short last line/.test(warning) ? { fix: "Reword or shorten the words so the last line isn't a lone word or two." } : {}
+			});
+			else issues.push({
+				...base,
+				file: ""
+			});
+		});
+	}
+	const rank = {
+		error: 0,
+		warning: 1,
+		info: 2
+	};
+	issues.sort((a, b) => rank[a.level] - rank[b.level]);
+	return {
+		checkedAt: (/* @__PURE__ */ new Date()).toISOString(),
+		check: {
+			ok: check.ok,
+			counted: check.counted
+		},
+		lastExport: report ? {
+			finishedAt: report.finishedAt || node_fs.default.statSync(node_path.default.join(listing, "export-report.json")).mtime.toISOString(),
+			ok: report.ok,
+			...report.error ? { error: report.error } : {},
+			cards: report.cards?.length || 0,
+			locales: (report.locales || []).map((tally) => tally.locale),
+			...report.options ? { options: report.options } : {}
+		} : null,
+		issues
+	};
+}
+var noteFix;
+var init_review = __esmMin((() => {
+	init_gallery();
+	init_check();
+	init_project();
+	noteFix = (note, reference) => note.startsWith("untranslated") ? {
+		level: "warning",
+		fix: "Translate these words in Languages, or in the card inspector."
+	} : note.startsWith(`${reference} capture`) ? {
+		level: "warning",
+		fix: "Capture this language (`npx screenshot-studio recapture`) so the card shows its own screen."
+	} : note.startsWith("callout") ? {
+		level: "warning",
+		fix: "The callout's UI element wasn't found in this language. Pick the callout again on an element both languages share."
+	} : note.startsWith("copy shrunk") ? {
+		level: "info",
+		fix: "Shorter words keep the headline at full size."
+	} : {
+		level: "warning",
+		fix: ""
+	};
 }));
 // src/node/workspace/routes.ts
 /** Workspace HTTP routes. Project files stay under their registered repository root. */
@@ -725,7 +1322,7 @@ function workspaceRoutes({ store, uiDirectory, activeProjectId = null, selectFol
 			}
 			if (pathname === "/api/projects/discover" && request.method === "POST") return send(response, await store.discover((await body(request)).root)), true;
 			if (pathname === "/api/workspace/pick-folder" && request.method === "POST") return send(response, { path: await selectFolder() }), true;
-			const match = pathname.match(/^\/api\/projects\/([a-zA-Z0-9-]+)(?:\/(files|reveal))?$/);
+			const match = pathname.match(/^\/api\/projects\/([a-zA-Z0-9-]+)(?:\/(files|reveal|events|review))?$/);
 			if (match) {
 				const [, id, action] = match, project = store.get(id);
 				if (!project) throw statusError("This project is no longer connected.", 404);
@@ -738,6 +1335,14 @@ function workspaceRoutes({ store, uiDirectory, activeProjectId = null, selectFol
 							url: `/p/${id}/${image.file.split("/").map(encodeURIComponent).join("/")}`
 						}))
 					}), true;
+				}
+				if (action === "events" && request.method === "GET") {
+					streamListingChanges(request, response, node_path.default.join(project.root, "store-listing"));
+					return true;
+				}
+				if (action === "review" && request.method === "GET") {
+					if (!node_fs.default.existsSync(node_path.default.join(project.root, "store-listing", "studio.json"))) throw statusError("This project has no Studio listing to review.", 404);
+					return send(response, reviewListing(node_path.default.join(project.root, "store-listing"))), true;
 				}
 				if (action === "reveal" && request.method === "POST") {
 					const command = process.platform === "darwin" ? "open" : process.platform === "win32" ? "explorer.exe" : "xdg-open";
@@ -793,6 +1398,8 @@ function workspaceRoutes({ store, uiDirectory, activeProjectId = null, selectFol
 var execute, send, body;
 var init_routes = __esmMin((() => {
 	init_store();
+	init_events();
+	init_review();
 	execute = (0, node_util.promisify)(node_child_process.execFile);
 	send = (response, value, status = 200) => {
 		response.writeHead(status, {
@@ -1079,6 +1686,22 @@ async function exportListing(options = {}) {
 		warnings.push(message);
 		log(`warning: ${message}`);
 	};
+	const finish = (result) => {
+		const ran = {
+			locales: options.locales,
+			kind: options.kind,
+			card: options.card,
+			strict: !!options.strict
+		};
+		try {
+			node_fs.default.writeFileSync(node_path.default.join(listing, "export-report.json"), JSON.stringify({
+				...result,
+				finishedAt: (/* @__PURE__ */ new Date()).toISOString(),
+				options: ran
+			}, null, 2) + "\n");
+		} catch {}
+		return result;
+	};
 	const lane = {
 		dir: "fastlane/metadata/android",
 		screenshots: { phone: "images/phoneScreenshots" },
@@ -1196,6 +1819,7 @@ async function exportListing(options = {}) {
 						tally.shrunk++;
 						notes.push(`copy shrunk to ${Math.round(report.fit * 100)}%`);
 					}
+					if (report.widows?.length) warn(`${label}: "${report.widows.join("\", \"")}" is left on a short last line; reword or shorten the copy`);
 					tally.cards++;
 					const card = {
 						locale,
@@ -1283,7 +1907,7 @@ async function exportListing(options = {}) {
 				for (const folder of new Set(files.map((f) => node_path.default.dirname(f)))) for (const f of node_fs.default.readdirSync(folder)) if (IMAGES.test(f) && !written.has(node_path.default.join(folder, f))) warn(`${node_path.default.relative(listing, node_path.default.join(folder, f))} is no longer in the gallery; delete it`);
 			}
 			const words = listingFor(locale);
-			for (const [field, max] of words ? LIMITS$1 : []) {
+			for (const [field, max] of words ? LIMITS : []) {
 				const value = words[field];
 				const length = typeof value === "string" ? [...value].length : 0;
 				if (length > max) warn(`${locale}/listing.json ${String(field)} has ${length} characters; Play allows ${max}`);
@@ -1310,20 +1934,20 @@ async function exportListing(options = {}) {
 			for (const f of node_fs.default.readdirSync(destination)) if (IMAGES.test(f)) node_fs.default.rmSync(node_path.default.join(destination, f));
 			for (const f of node_fs.default.readdirSync(shots)) node_fs.default.copyFileSync(node_path.default.join(shots, f), node_path.default.join(destination, f));
 		}
-		return {
+		return finish({
 			ok: true,
 			cards,
 			warnings,
 			locales: tallies
-		};
+		});
 	} catch (error) {
-		return {
+		return finish({
 			ok: false,
 			cards,
 			warnings,
 			locales: tallies,
 			error: error instanceof Error ? error.message : String(error)
-		};
+		});
 	} finally {
 		for (const { shots } of staged) node_fs.default.rmSync(shots, {
 			recursive: true,
@@ -1364,16 +1988,135 @@ async function run$7(argv) {
 	}
 	return result.ok ? 0 : 1;
 }
-var LIMITS$1, IMAGES;
+var LIMITS, IMAGES;
 var init_export = __esmMin((() => {
 	init_project();
 	init_server();
-	LIMITS$1 = [
+	LIMITS = [
 		["title", 30],
 		["shortDescription", 80],
 		["fullDescription", 4e3]
 	];
 	IMAGES = /\.(jpe?g|png|webp)$/i;
+}));
+// src/node/ios.ts
+/**
+* iOS: the App Store galleries, and the simulators that capture them (Xcode's `xcrun simctl`).
+* The capture itself is Python (capture/ios.py, copied into every app's studio/), like Android's capture.py.
+*/
+/** Which App Store gallery an image belongs to, by its shape. */
+function iosGalleryFor(width, height) {
+	const ratio = height / width;
+	if (ratio >= 1.75) return {
+		kind: "iphone",
+		profile: { ...APP_STORE.iphone }
+	};
+	if (ratio >= 1.15) return {
+		kind: "ipad",
+		profile: { ...APP_STORE.ipad }
+	};
+	if (ratio <= 1 / 1.15) return {
+		kind: "ipad-landscape",
+		profile: { ...APP_STORE["ipad-landscape"] }
+	};
+	return null;
+}
+/** Every available simulator, newest runtime first; empty without Xcode. */
+function simulators() {
+	const run = (0, node_child_process.spawnSync)("xcrun", [
+		"simctl",
+		"list",
+		"devices",
+		"available",
+		"--json"
+	], { encoding: "utf8" });
+	if (run.status !== 0 || !run.stdout) return [];
+	const found = [];
+	for (const [runtime, entries] of Object.entries(JSON.parse(run.stdout).devices)) {
+		const version = (runtime.split(".").pop().match(/\d+/g) || []).map(Number);
+		for (const entry of entries) found.push({
+			...entry,
+			runtime,
+			version
+		});
+	}
+	const newer = (a, b) => {
+		for (let i = 0; i < Math.max(a.length, b.length); i++) if ((a[i] || 0) !== (b[i] || 0)) return (b[i] || 0) - (a[i] || 0);
+		return 0;
+	};
+	return found.sort((a, b) => newer(a.version, b.version));
+}
+/** The simulators `init` writes into profiles.json: the newest Pro Max iPhone (6.9″) and 13-inch iPad Pro. */
+function defaultSimulators(available = simulators()) {
+	const pick = (pattern, fallback) => available.find((d) => pattern.test(d.name))?.name || fallback;
+	return {
+		iphone: pick(/^iPhone \d+ Pro Max$/, "iPhone 17 Pro Max"),
+		ipad: pick(/^iPad Pro 13-inch/, "iPad Pro 13-inch (M5)")
+	};
+}
+/** The simulator a name or UDID means: a booted one first, then the newest runtime. */
+function findSimulator(name, available = simulators()) {
+	if (!available.length) throw new Error("No iOS simulators found. Install Xcode and a simulator runtime (Xcode → Settings → Components).");
+	const matches = available.filter((d) => d.udid.toLowerCase() === name.toLowerCase()).concat(available.filter((d) => d.name === name));
+	if (!matches.length) throw new Error(`No available simulator named "${name}". Available: ${[...new Set(available.map((d) => d.name))].join(", ")}`);
+	return matches.find((d) => d.state === "Booted") || matches[0];
+}
+/** Boot a simulator (headless) and wait until it has finished booting. */
+async function bootSimulator(name, log) {
+	const device = findSimulator(name);
+	if (device.state === "Booted") return device.udid;
+	log(`Booting ${device.name} (${device.runtime.split(".").pop()}, ${device.udid})…`);
+	const run = (0, node_child_process.spawnSync)("xcrun", [
+		"simctl",
+		"bootstatus",
+		device.udid,
+		"-b"
+	], {
+		encoding: "utf8",
+		timeout: 6e5
+	});
+	if (run.status !== 0) throw new Error(`${device.name} did not boot: ${(run.stderr || run.stdout || "").trim()}`);
+	log(`${device.name} is ready.`);
+	return device.udid;
+}
+/** The simulator each iOS capture profile runs on: its own "simulator", else the default. */
+function simulatorsFor(profiles, names, fallback) {
+	const missing = names.filter((name) => !profiles[name]?.simulator && !fallback);
+	if (missing.length) throw new Error(`No simulator for ${missing.join(", ")}: set "simulator" on the profile in profiles.json, or "capture": {"simulator": "…"} in studio.json`);
+	return [...new Set(names.map((name) => profiles[name].simulator || fallback))];
+}
+var APP_STORE;
+var init_ios = __esmMin((() => {
+	APP_STORE = {
+		iphone: {
+			width: 1320,
+			height: 2868,
+			frame: "iphone",
+			platform: "ios",
+			label: "iPhone 6.9″"
+		},
+		iphone63: {
+			width: 1206,
+			height: 2622,
+			frame: "iphone",
+			platform: "ios",
+			label: "iPhone 6.3″"
+		},
+		ipad: {
+			width: 2064,
+			height: 2752,
+			frame: "tablet",
+			platform: "ios",
+			label: "iPad 13″"
+		},
+		"ipad-landscape": {
+			width: 2752,
+			height: 2064,
+			frame: "tablet",
+			platform: "ios",
+			label: "iPad 13″ landscape"
+		}
+	};
 }));
 // src/node/recapture.ts
 /**
@@ -1391,6 +2134,8 @@ var init_export = __esmMin((() => {
 *     "retries": 2,                                                  per capture run
 *     "serial": "emulator-5578",                                     the capture emulator (or CAPTURE_SERIAL)
 *     "avd": "Pixel_9_API_36",                                       what --boot starts when it isn't running
+*     "platform": "ios",                                             capture on iOS simulators instead (below)
+*     "simulator": "iPhone 17 Pro Max",                              iOS: for profiles that name no "simulator"
 *     "export": "cd store-listing && node render.mjs --locale {locale}",  instead of studio/export.cjs, per locale
 *     "after": ["python3 store-listing/prepare.py"]                  shell commands once everything is exported
 *   }
@@ -1398,6 +2143,11 @@ var init_export = __esmMin((() => {
 * Each run is `python3 <script> --serial <emulator> --locale <locale> [--profile <profile>] <args>`, through
 * `uv run --with pillow` when uv is installed. The default locale goes first, since it records the tap map
 * other locales replay. --boot starts the capture emulator headless when it isn't running and waits for it.
+*
+* iOS ("platform": "ios"): install entries are {"app": "build/…/App.app", "package": "<bundle ID>"}, the default
+* script is store-listing/capture-simulator.py, the capture profiles are profiles.json's "platform": "ios" ones with
+* a capture size, each on its "simulator", and --boot boots those simulators. Each run is
+* `python3 <script> --locale <locale> [--profile <profile>] [--simulator <default>] <args>`.
 */
 var recapture_exports = /* @__PURE__ */ __exportAll({
 	DEFAULT_SERIAL: () => DEFAULT_SERIAL,
@@ -1471,12 +2221,14 @@ async function recapture(options = {}) {
 	};
 	try {
 		if (!capture) throw new Error("studio.json has no \"capture\" block; see docs/capture.md");
+		const ios = capture.platform === "ios";
 		const serial = options.serial || capture.serial || process.env.CAPTURE_SERIAL || "emulator-5578";
-		if (!serial.startsWith("emulator-")) throw new Error("Use a capture emulator, never a physical phone.");
+		if (!ios && !serial.startsWith("emulator-")) throw new Error("Use a capture emulator, never a physical phone.");
+		const simulator = options.simulator || capture.simulator || process.env.CAPTURE_SIMULATOR;
 		const unknown = locales.filter((locale) => !configured.includes(locale));
 		if (unknown.length) throw new Error(`Not in studio.json locales: ${unknown.join(", ")}`);
 		locales.sort((a, b) => Number(b === defaultLocale) - Number(a === defaultLocale));
-		const captureProfiles = Object.keys(profiles).filter((name) => profiles[name].captureDensity);
+		const captureProfiles = Object.keys(profiles).filter((name) => ios ? profiles[name].platform === "ios" && profiles[name].captureWidth : profiles[name].captureDensity);
 		if (options.profile && !profiles[options.profile]?.captureWidth) throw new Error(`No capture profile ${options.profile} in profiles.json`);
 		const python = has("uv") ? [
 			"uv",
@@ -1486,7 +2238,10 @@ async function recapture(options = {}) {
 			"pillow",
 			"python3"
 		] : ["python3"];
-		const env = {
+		const env = ios ? {
+			...process.env,
+			...simulator ? { CAPTURE_SIMULATOR: simulator } : {}
+		} : {
 			...process.env,
 			CAPTURE_SERIAL: serial,
 			ANDROID_SERIAL: serial
@@ -1496,7 +2251,7 @@ async function recapture(options = {}) {
 			return env[name];
 		});
 		const run = (command, args = [], { shell = false, check = true } = {}) => {
-			const line = shell ? command : [command, ...args].join(" ");
+			const line = shell ? command : [command, ...args].map((word) => /\s/.test(word) ? JSON.stringify(word) : word).join(" ");
 			log(`\n$ ${line}`);
 			if (options.dryRun) return true;
 			const done = shell ? (0, node_child_process.spawnSync)("sh", ["-c", command], {
@@ -1511,30 +2266,38 @@ async function recapture(options = {}) {
 			if (done.status !== 0 && check) throw new Error(`Failed (${done.status ?? done.signal}): ${line}`);
 			return done.status === 0;
 		};
-		const studioPy = node_path.default.relative(repo, node_path.default.join(__dirname, "capture.py"));
+		const studioPy = node_path.default.relative(repo, node_path.default.join(__dirname, ios ? "ios.py" : "capture.py"));
+		const sims = ios && options.capture !== false ? simulatorsFor(profiles, captureProfiles.filter((name) => !options.profile || name === options.profile), simulator) : [];
+		const device = (sim) => ios ? ["--simulator", sim] : ["--serial", serial];
 		if (options.build !== false && capture.build) run(capture.build, [], { shell: true });
 		if (options.capture !== false) {
-			if (options.boot && !options.dryRun) await bootEmulator(serial, capture.avd, log);
-			for (const { apk, package: id } of capture.install || []) run(python[0], [
-				...python.slice(1),
-				studioPy,
-				"install",
-				apk,
-				"--package",
-				id,
-				"--serial",
-				serial
-			]);
+			if (options.boot && !options.dryRun) {
+				if (ios) for (const sim of sims) await bootSimulator(sim, log);
+				else await bootEmulator(serial, capture.avd, log);
+			}
+			for (const { apk, app, package: id } of capture.install || []) {
+				const file = ios ? app : apk;
+				if (!file) throw new Error(`capture.install needs ${ios ? "\"app\" (a simulator .app)" : "\"apk\""} for ${id}`);
+				for (const sim of ios ? sims : [void 0]) run(python[0], [
+					...python.slice(1),
+					studioPy,
+					"install",
+					file,
+					"--package",
+					id,
+					...device(sim)
+				]);
+			}
 			for (const locale of locales) for (const spec of capture.runs || [{}]) {
 				const wanted = spec.locales || "all";
 				if (wanted === "default" ? locale !== defaultLocale : Array.isArray(wanted) && !wanted.includes(locale)) continue;
 				const runProfiles = spec.profiles === false ? [null] : (spec.profiles || captureProfiles).filter((name) => !options.profile || name === options.profile);
 				for (const profile of runProfiles) {
+					const script = spec.script || (ios ? "store-listing/capture-simulator.py" : "store-listing/capture-emulator.py");
 					const args = [
 						...python.slice(1),
-						spec.script || "store-listing/capture-emulator.py",
-						"--serial",
-						serial,
+						script,
+						...ios ? simulator ? ["--simulator", simulator] : [] : ["--serial", serial],
 						"--locale",
 						locale,
 						...profile ? ["--profile", profile] : [],
@@ -1543,13 +2306,12 @@ async function recapture(options = {}) {
 					const attempts = (capture.retries ?? 2) + 1;
 					for (let attempt = 1;; attempt++) {
 						if (run(python[0], args, { check: attempt === attempts })) break;
-						log(`Capture failed; reset the emulator and try again (${attempt + 1}/${attempts})`);
-						run(python[0], [
+						log(`Capture failed; reset the ${ios ? "simulator" : "emulator"} and try again (${attempt + 1}/${attempts})`);
+						for (const sim of ios ? sims : [void 0]) run(python[0], [
 							...python.slice(1),
 							studioPy,
 							"reset",
-							"--serial",
-							serial
+							...device(sim)
 						]);
 					}
 				}
@@ -1575,7 +2337,7 @@ async function recapture(options = {}) {
 	}
 	return result;
 }
-/** `recapture [locale…] [--profile phone] [--boot] [--no-build] [--no-capture] [--no-export] [--dry-run]` */
+/** `recapture [locale…] [--profile phone] [--simulator name] [--boot] [--no-build] [--no-capture] [--no-export] [--dry-run]` */
 async function run$6(argv) {
 	const flag = (name) => argv.includes(`--${name}`);
 	const option = (name) => {
@@ -1585,12 +2347,14 @@ async function run$6(argv) {
 	const values = new Set([
 		"profile",
 		"serial",
+		"simulator",
 		"listing"
 	].map(option).filter(Boolean));
 	const result = await recapture({
 		locales: argv.filter((word) => !word.startsWith("--") && !values.has(word)),
 		profile: option("profile"),
 		serial: option("serial"),
+		simulator: option("simulator"),
 		listing: option("listing"),
 		boot: flag("boot"),
 		build: !flag("no-build"),
@@ -1604,6 +2368,7 @@ async function run$6(argv) {
 var DEFAULT_SERIAL, sdkRoot, has, adb;
 var init_recapture = __esmMin((() => {
 	init_project();
+	init_ios();
 	DEFAULT_SERIAL = "emulator-5578";
 	sdkRoot = () => process.env.ANDROID_HOME || process.env.ANDROID_SDK_ROOT || [node_path.default.join(node_os.default.homedir(), "Library/Android/sdk"), node_path.default.join(node_os.default.homedir(), "Android/Sdk")].find((dir) => node_fs.default.existsSync(dir)) || "";
 	has = (command) => (0, node_child_process.spawnSync)("sh", ["-c", `command -v ${command}`], { stdio: "ignore" }).status === 0;
@@ -1613,309 +2378,20 @@ var init_recapture = __esmMin((() => {
 		...args
 	], { encoding: "utf8" });
 }));
-// src/core/validate.ts
-/** Validate `value` against `schema`; an empty list means valid. */
-function validate(value, schema, root = schema, path = "") {
-	if (schema.$ref) {
-		const name = schema.$ref.replace(/^#\/\$defs\//, "");
-		const target = root.$defs?.[name];
-		if (!target) return [{
-			path,
-			message: `unknown schema reference ${schema.$ref}`
-		}];
-		return validate(value, target, root, path);
-	}
-	const errors = [];
-	const add = (message, at = path) => errors.push({
-		path: at || "(top level)",
-		message
-	});
-	if (schema.allOf) for (const part of schema.allOf) errors.push(...validate(value, part, root, path));
-	if (schema.anyOf) {
-		const attempts = schema.anyOf.map((option) => validate(value, option, root, path));
-		if (!attempts.some((found) => found.length === 0)) {
-			const sameType = schema.anyOf.map((option, i) => ({
-				option,
-				i
-			})).filter(({ option }) => {
-				const resolved = option.$ref ? root.$defs?.[option.$ref.replace(/^#\/\$defs\//, "")] ?? option : option;
-				return (resolved.type ? Array.isArray(resolved.type) ? resolved.type : [resolved.type] : []).some((type) => matchesType(value, type));
-			});
-			if (sameType.length === 1) return [...errors, ...attempts[sameType[0].i]];
-			const consts = schema.anyOf.filter((option) => "const" in option).map((option) => show(option.const));
-			add(`${show(value)} isn't an allowed value${consts.length ? ` (allowed values include ${consts.join(", ")})` : ""}`);
-			return errors;
-		}
-	}
-	if ("const" in schema && value !== schema.const) add(`must be ${show(schema.const)}`);
-	if (schema.enum && !schema.enum.includes(value)) add(`must be one of ${schema.enum.map(show).join(", ")}; got ${show(value)}`);
-	if (schema.type) {
-		const types = Array.isArray(schema.type) ? schema.type : [schema.type];
-		if (!types.some((type) => matchesType(value, type))) {
-			add(`must be ${types.join(" or ")}, not ${typeOf(value)}`);
-			return errors;
-		}
-	}
-	if (typeof value === "string" && schema.pattern && !new RegExp(schema.pattern).test(value)) add(`${show(value)} doesn't match the expected format (${schema.pattern})`);
-	if (typeof value === "number") {
-		if (schema.minimum !== void 0 && value < schema.minimum) add(`must be at least ${schema.minimum}`);
-		if (schema.maximum !== void 0 && value > schema.maximum) add(`must be at most ${schema.maximum}`);
-		if (schema.exclusiveMinimum !== void 0 && value <= schema.exclusiveMinimum) add(`must be more than ${schema.exclusiveMinimum}`);
-	}
-	if (Array.isArray(value)) {
-		if (schema.minItems !== void 0 && value.length < schema.minItems) add(`needs at least ${schema.minItems} item(s)`);
-		if (schema.items) value.forEach((item, i) => errors.push(...validate(item, schema.items, root, join(path, i))));
-	}
-	if (typeOf(value) === "object") {
-		const object = value;
-		for (const key of schema.required || []) if (!(key in object)) add(`is missing "${key}"`);
-		for (const [key, item] of Object.entries(object)) {
-			const own = schema.properties?.[key];
-			if (own) errors.push(...validate(item, own, root, join(path, key)));
-			else if (schema.additionalProperties === false) {
-				const near = Object.keys(schema.properties || {}).find((name) => name.toLowerCase() === key.toLowerCase() || levenshtein(name, key) <= 2);
-				add(`unknown setting "${key}"${near ? `; did you mean "${near}"?` : ""}`, join(path, key));
-			} else if (typeof schema.additionalProperties === "object") errors.push(...validate(item, schema.additionalProperties, root, join(path, key)));
-		}
-	}
-	return errors;
-}
-function levenshtein(a, b) {
-	const row = Array.from({ length: b.length + 1 }, (_, i) => i);
-	for (let i = 1; i <= a.length; i++) {
-		let previous = row[0]++;
-		for (let j = 1; j <= b.length; j++) {
-			const current = row[j];
-			row[j] = Math.min(row[j] + 1, row[j - 1] + 1, previous + (a[i - 1] === b[j - 1] ? 0 : 1));
-			previous = current;
-		}
-	}
-	return row[b.length];
-}
-var typeOf, matchesType, join, show;
-var init_validate = __esmMin((() => {
-	typeOf = (value) => value === null ? "null" : Array.isArray(value) ? "array" : Number.isInteger(value) ? "integer" : typeof value;
-	matchesType = (value, type) => {
-		const actual = typeOf(value);
-		return actual === type || type === "number" && actual === "integer";
-	};
-	join = (base, key) => typeof key === "number" ? `${base}[${key}]` : /^[A-Za-z_$][\w$]*$/.test(key) ? base ? `${base}.${key}` : key : `${base}[${JSON.stringify(key)}]`;
-	show = (value) => JSON.stringify(value)?.slice(0, 60) ?? String(value);
-}));
-// src/node/check.ts
-/**
-* Check an app's listing without rendering anything: every file against its schema, then what schemas can't see
-* (captures that are missing or have the wrong shape, cards without words, words no card uses, store text over
-* Play's limits). Fast enough to run after every edit; `export` then checks the rendered result.
-*   npx screenshot-studio check [--json]
-*/
-var check_exports = /* @__PURE__ */ __exportAll({
-	checkListing: () => checkListing,
-	formatIssues: () => formatIssues,
-	imageSize: () => imageSize,
-	run: () => run$5
-});
-/** Width and height of a PNG or JPEG, read from its header. */
-function imageSize(file) {
-	const fd = node_fs.default.openSync(file, "r");
-	try {
-		const head = Buffer.alloc(65536);
-		const length = node_fs.default.readSync(fd, head, 0, head.length, 0);
-		if (head.readUInt32BE(0) === 2303741511) return {
-			width: head.readUInt32BE(16),
-			height: head.readUInt32BE(20)
-		};
-		if (head[0] === 255 && head[1] === 216) for (let i = 2; i + 9 < length;) {
-			if (head[i] !== 255) {
-				i++;
-				continue;
-			}
-			const marker = head[i + 1];
-			if (marker >= 192 && marker <= 207 && ![
-				196,
-				200,
-				204
-			].includes(marker)) return {
-				height: head.readUInt16BE(i + 5),
-				width: head.readUInt16BE(i + 7)
-			};
-			i += 2 + head.readUInt16BE(i + 2);
-		}
-		return null;
-	} finally {
-		node_fs.default.closeSync(fd);
-	}
-}
-function checkListing(listingDir) {
-	const listing = listingDir ? node_path.default.resolve(listingDir) : node_path.default.resolve(__dirname, "..");
-	const schemas = node_path.default.join(__dirname, "schemas");
-	const issues = [];
-	const error = (file, message, extra = {}) => issues.push({
-		level: "error",
-		file,
-		message,
-		...extra
-	});
-	const warn = (file, message, extra = {}) => issues.push({
-		level: "warning",
-		file,
-		message,
-		...extra
-	});
-	const counted = {
-		galleries: 0,
-		cards: 0,
-		captures: 0,
-		locales: 0
-	};
-	const load = (file, schema, fallback) => {
-		const full = node_path.default.join(listing, file);
-		if (!node_fs.default.existsSync(full)) {
-			if (fallback !== void 0) return fallback;
-			error(file, "is missing", { fix: "Run `npx screenshot-studio init` to create a starter listing." });
-			return null;
-		}
-		let value;
-		try {
-			value = readJson(full);
-		} catch (e) {
-			error(file, e.message);
-			return null;
-		}
-		const definition = readJson(node_path.default.join(schemas, `${schema}.schema.json`), null);
-		if (definition) for (const problem of validate(value, definition)) error(file, problem.message, { path: problem.path });
-		return value;
-	};
-	const config = load("studio.json", "studio");
-	const profiles = load("profiles.json", "profiles");
-	const galleries = load("gallery.json", "gallery");
-	if (!config || !profiles || !galleries) return {
-		ok: false,
-		issues,
-		counted
-	};
-	const defaultLocale = config.defaultLocale || "en-US";
-	const locales = config.locales || [defaultLocale];
-	counted.locales = locales.length;
-	if (!locales.includes(defaultLocale)) error("studio.json", `defaultLocale ${defaultLocale} isn't in locales`, {
-		path: "locales",
-		fix: `Add "${defaultLocale}" to locales.`
-	});
-	for (const file of ["theme.css"]) if (!node_fs.default.existsSync(node_path.default.join(listing, file))) warn(file, "is missing; cards render unstyled");
-	const ratios = Object.values(profiles).filter((p) => p.captureWidth && p.captureHeight).flatMap((p) => [p.captureWidth / p.captureHeight, p.captureHeight / p.captureWidth]);
-	const defaultCopy = load(`${defaultLocale}/copy.json`, "copy", {}) || {};
-	const used = /* @__PURE__ */ new Set();
-	const checkedRaws = /* @__PURE__ */ new Set();
-	for (const kind of Object.keys(galleries)) {
-		if (!profiles[kind]) {
-			error("gallery.json", `gallery "${kind}" has no profile`, {
-				path: kind,
-				fix: `Add "${kind}" to profiles.json with its width and height.`
-			});
-			continue;
-		}
-		let cards;
-		try {
-			cards = cardsFor(galleries, kind);
-		} catch (e) {
-			error("gallery.json", e.message, { path: kind });
-			continue;
-		}
-		counted.galleries++;
-		cards.forEach((card, i) => {
-			counted.cards++;
-			const at = `${kind}[${i}]`;
-			used.add(card.feature).add(`${kind}/${card.feature}`);
-			const devices = devicesFor(card);
-			for (const [d, device] of devices.entries()) {
-				const raw = node_path.default.join(listing, defaultLocale, "raw", device.raw);
-				if (checkedRaws.has(raw)) continue;
-				checkedRaws.add(raw);
-				counted.captures++;
-				if (!node_fs.default.existsSync(raw)) {
-					error("gallery.json", `capture ${defaultLocale}/raw/${device.raw} doesn't exist`, {
-						path: devices.length > 1 ? `${at}.devices[${d}].raw` : `${at}.raw`,
-						fix: "Capture it (`npx screenshot-studio recapture`), add the file, or fix the path."
-					});
-					continue;
-				}
-				const size = imageSize(raw);
-				if (size && ratios.length && !ratios.some((r) => Math.abs(size.width / size.height - r) < .001)) error("gallery.json", `${device.raw} is ${size.width}×${size.height}, which isn't the shape of any capture size in profiles.json`, {
-					path: `${at}.raw`,
-					fix: "Recapture it at a configured size, or add a profile whose captureWidth × captureHeight has this shape."
-				});
-			}
-			for (const [c, callout] of (card.callouts || []).entries()) {
-				if (!callout.raw && (callout.device || 0) >= devices.length) error("gallery.json", `callout ${c} points at device ${callout.device || 0}, but the card has ${devices.length}`, { path: `${at}.callouts[${c}]` });
-				if (callout.raw && !node_fs.default.existsSync(node_path.default.join(listing, defaultLocale, "raw", callout.raw))) error("gallery.json", `callout capture ${callout.raw} doesn't exist`, { path: `${at}.callouts[${c}].raw` });
-			}
-			const words = card.sharedCopy === false ? defaultCopy[`${kind}/${card.feature}`] : {
-				...defaultCopy[card.feature],
-				...defaultCopy[`${kind}/${card.feature}`]
-			};
-			if (devices.length && !card.identity && !(words && "title" in words) && profiles[kind].frame !== "none") warn(`${defaultLocale}/copy.json`, `card "${card.feature}" (${kind}) has no headline`, { fix: `Add {"${card.feature}": {"title": "…", "body": "…"}}.` });
-		});
-	}
-	for (const key of Object.keys(defaultCopy)) if (!used.has(key)) warn(`${defaultLocale}/copy.json`, `"${key}" isn't used by any card`, {
-		path: key,
-		fix: "Remove it, or fix the card's feature name."
-	});
-	for (const locale of locales) {
-		if (locale !== defaultLocale) {
-			const file = `${locale}/copy.json`;
-			if (!node_fs.default.existsSync(node_path.default.join(listing, file))) warn(file, "is missing; this language shows the default words", { fix: `Run \`npx screenshot-studio locales --init ${locale}\`.` });
-			else load(file, "copy");
-		}
-		const words = readJson(node_path.default.join(listing, locale, "listing.json"), null);
-		for (const [field, max] of words ? LIMITS : []) {
-			const value = field === "title" ? words[field] ?? words.appName : words[field];
-			const length = typeof value === "string" ? [...value].length : 0;
-			if (length > max) error(`${locale}/listing.json`, `${String(field)} has ${length} characters; Play allows ${max}`, { path: String(field) });
-		}
-	}
-	return {
-		ok: !issues.some((issue) => issue.level === "error"),
-		issues,
-		counted
-	};
-}
-function formatIssues(result) {
-	const { counted, issues } = result;
-	const lines = issues.map((issue) => `${issue.level === "error" ? "✗" : "!"} ${issue.file}${issue.path ? ` ${issue.path}` : ""}: ${issue.message}${issue.fix ? `\n    → ${issue.fix}` : ""}`);
-	const errors = issues.filter((i) => i.level === "error").length, warnings = issues.length - errors;
-	lines.push(`${lines.length ? "\n" : ""}${counted.galleries} galleries, ${counted.cards} cards, ${counted.captures} captures, ${counted.locales} language(s): ` + (issues.length ? `${errors} error(s), ${warnings} warning(s)` : "all good"));
-	return lines.join("\n");
-}
-/** `check [--json]` */
-async function run$5(argv) {
-	const at = argv.indexOf("--listing");
-	const result = checkListing(at >= 0 ? argv[at + 1] : void 0);
-	console.log(argv.includes("--json") ? JSON.stringify(result, null, 2) : formatIssues(result));
-	return result.ok ? 0 : 1;
-}
-var LIMITS;
-var init_check = __esmMin((() => {
-	init_validate();
-	init_gallery();
-	init_project();
-	LIMITS = [
-		["title", 30],
-		["shortDescription", 80],
-		["fullDescription", 4e3]
-	];
-}));
 // src/node/init.ts
 /**
 * Set up Screenshot Studio in an app, and keep its copy of the studio current.
 *   npx screenshot-studio init [app-folder] [--name "My App"] [--package com.example.app] [--theme starter]
-*                              [--screenshots ./folder] [--locales en-US,de-DE]
+*                              [--screenshots ./folder] [--locales en-US,de-DE] [--platform android|ios]
 *   npx screenshot-studio sync [app-folder] [--check]
 * `init` creates store-listing/ (never overwriting a file), copies the studio into store-listing/studio/, and with
-* --screenshots builds the galleries from images you already have, so the first cards render with no emulator.
+* --screenshots builds the galleries from images you already have, so the first cards render with no emulator: a folder
+* (number the files to set the order) or a comma-separated list of files in card order.
+* --platform ios makes App Store galleries (iPhone 6.9″ and 6.3″, iPad 13″) and an iOS simulator tour instead.
 */
 var init_exports = /* @__PURE__ */ __exportAll({
 	init: () => init,
-	run: () => run$4,
+	run: () => run$5,
 	runSync: () => runSync,
 	studioDrift: () => studioDrift,
 	syncStudio: () => syncStudio,
@@ -1989,13 +2465,38 @@ function galleryFor(width, height) {
 	return null;
 }
 /** Galleries, profiles and words from a folder of images, copied into <locale>/raw/<gallery>/. */
-function importScreenshots(folder, listing, locale, log) {
-	const images = node_fs.default.readdirSync(folder).filter((file) => /\.(png|jpe?g|webp)$/i.test(file)).sort();
+/**
+* The images to import, in card order: a folder's images sorted naturally (so 2-x comes before 10-x; number the files
+* to set the order), or a comma-separated list of files in the order given.
+*/
+function screenshotFiles(source) {
+	const isImage = (file) => /\.(png|jpe?g|webp)$/i.test(file);
+	if (source.includes(",")) {
+		const files = source.split(",").map((file) => node_path.default.resolve(file.trim()));
+		for (const file of files) if (!node_fs.default.existsSync(file) || !isImage(file)) throw new Error(`${file} isn't a PNG, JPEG or WebP image`);
+		return {
+			folder: "",
+			images: files
+		};
+	}
+	const folder = node_path.default.resolve(source);
+	const images = node_fs.default.readdirSync(folder).filter(isImage).sort((a, b) => a.localeCompare(b, void 0, {
+		numeric: true,
+		sensitivity: "base"
+	}));
 	if (!images.length) throw new Error(`No PNG, JPEG or WebP images in ${folder}`);
+	return {
+		folder,
+		images
+	};
+}
+function importScreenshots(source, listing, locale, log, ios = false) {
+	const { folder, images } = screenshotFiles(source);
 	const profiles = {}, galleries = {}, copy = {};
-	for (const file of images) {
-		const size = imageSize(node_path.default.join(folder, file));
-		const target = size && galleryFor(size.width, size.height);
+	for (const image of images) {
+		const source = node_path.default.join(folder, image), file = node_path.default.basename(image);
+		const size = imageSize(source);
+		const target = size && (ios ? iosGalleryFor : galleryFor)(size.width, size.height);
 		if (!size || !target) {
 			log(`skipped   ${file} (not a phone or tablet shape)`);
 			continue;
@@ -2014,7 +2515,7 @@ function importScreenshots(folder, listing, locale, log) {
 		const feature = cards.some((card) => card.feature === slug(file)) ? `${slug(file)}-${cards.length + 1}` : slug(file);
 		const raw = `${kind}/${String(cards.length + 1).padStart(2, "0")}-${feature}${node_path.default.extname(file).toLowerCase()}`;
 		node_fs.default.mkdirSync(node_path.default.join(listing, locale, "raw", kind), { recursive: true });
-		node_fs.default.copyFileSync(node_path.default.join(folder, file), node_path.default.join(listing, locale, "raw", raw));
+		node_fs.default.copyFileSync(source, node_path.default.join(listing, locale, "raw", raw));
 		cards.push({
 			feature,
 			raw,
@@ -2026,7 +2527,18 @@ function importScreenshots(folder, listing, locale, log) {
 		};
 		log(`imported  ${file} → ${locale}/raw/${raw}`);
 	}
-	if (!Object.keys(galleries).length) throw new Error(`None of the images in ${folder} has a phone or tablet shape`);
+	if (!Object.keys(galleries).length) throw new Error(`None of the images in ${folder || "the list"} has a phone or tablet shape`);
+	if (ios && galleries.iphone) {
+		const after = (map, value) => Object.fromEntries(Object.entries(map).flatMap(([key, v]) => key === "iphone" ? [[key, v], ["iphone63", value]] : [[key, v]]));
+		return {
+			profiles: after(profiles, { ...APP_STORE.iphone63 }),
+			galleries: after(galleries, {
+				inherits: "iphone",
+				cards: galleries.iphone.map(() => ({}))
+			}),
+			copy
+		};
+	}
 	return {
 		profiles,
 		galleries,
@@ -2041,6 +2553,8 @@ function init(options = {}) {
 	const name = options.name || node_path.default.basename(app);
 	const pkg = options.package || "";
 	const theme = options.theme || "starter";
+	const ios = options.platform === "ios";
+	if (options.platform && !["android", "ios"].includes(options.platform)) throw new Error(`Unknown platform "${options.platform}": use android or ios`);
 	if (!node_fs.default.existsSync(node_path.default.join(THEMES, theme, "theme.css"))) throw new Error(`No theme "${theme}". Available: ${themes().map((t) => t.name).join(", ")}`);
 	const locales = [.../* @__PURE__ */ new Set(["en-US", ...options.locales || []])];
 	const result = {
@@ -2050,7 +2564,8 @@ function init(options = {}) {
 		cards: 0,
 		theme
 	};
-	const fill = (text) => text.replaceAll("{{name}}", name).replaceAll("{{package}}", pkg || "com.example.app");
+	const sims = ios ? defaultSimulators() : null;
+	const fill = (text) => text.replaceAll("{{name}}", name).replaceAll("{{package}}", pkg || "com.example.app").replaceAll("{{scheme}}", name.toLowerCase().replace(/[^a-z0-9]+/g, "") || "myapp").replaceAll("{{iphoneSimulator}}", sims?.iphone || "").replaceAll("{{ipadSimulator}}", sims?.ipad || "");
 	const write = (relative, content) => {
 		const file = node_path.default.join(listing, relative);
 		if (node_fs.default.existsSync(file)) {
@@ -2064,7 +2579,8 @@ function init(options = {}) {
 		result.created.push(relative);
 		log(`created   ${relative}`);
 	};
-	const template = (relative, target = relative) => write(target, fill(node_fs.default.readFileSync(node_path.default.join(TEMPLATES, relative), "utf8")));
+	const source = (relative) => ios && node_fs.default.existsSync(node_path.default.join(IOS_TEMPLATES, relative)) ? node_path.default.join(IOS_TEMPLATES, relative) : node_path.default.join(TEMPLATES, relative);
+	const template = (relative, target = relative) => write(target, fill(node_fs.default.readFileSync(source(relative), "utf8")));
 	node_fs.default.mkdirSync(listing, { recursive: true });
 	const config = {
 		...readJson(node_path.default.join(TEMPLATES, "studio.json")),
@@ -2074,7 +2590,10 @@ function init(options = {}) {
 	if (pkg) config.package = pkg;
 	else delete config.package;
 	if (options.screenshots) {
-		const imported = importScreenshots(node_path.default.resolve(options.screenshots), listing, "en-US", log);
+		const imported = importScreenshots(options.screenshots, listing, "en-US", log, ios);
+		if (sims) {
+			for (const [kind, profile] of Object.entries(imported.profiles)) if (profile.captureWidth) profile.simulator = kind === "iphone" ? sims.iphone : sims.ipad;
+		}
 		write("studio.json", config);
 		write("profiles.json", {
 			$schema: "./studio/schemas/profiles.schema.json",
@@ -2088,9 +2607,18 @@ function init(options = {}) {
 			$schema: "../studio/schemas/copy.schema.json",
 			...imported.copy
 		});
-		result.cards = Object.values(imported.galleries).reduce((n, cards) => n + cards.length, 0);
+		result.cards = Object.values(imported.galleries).reduce((n, gallery) => n + (Array.isArray(gallery) ? gallery : gallery.cards).length, 0);
 	} else {
-		if (pkg) config.capture = {
+		if (pkg && ios) config.capture = {
+			platform: "ios",
+			build: `xcodebuild -scheme "${name}" -configuration Debug -sdk iphonesimulator -derivedDataPath build/capture -quiet build`,
+			install: [{
+				app: `build/capture/Build/Products/Debug-iphonesimulator/${name}.app`,
+				package: pkg
+			}],
+			runs: [{ locales: "all" }]
+		};
+		else if (pkg) config.capture = {
 			build: "./gradlew :app:assembleStoreCapture -q",
 			install: [{
 				apk: "app/build/outputs/apk/storeCapture/app-storeCapture.apk",
@@ -2102,15 +2630,17 @@ function init(options = {}) {
 		template("profiles.json");
 		template("gallery.json");
 		template("en-US/copy.json");
-		if (pkg) template("capture-emulator.py");
-		result.cards = 4;
+		if (pkg && !ios) template("capture-emulator.py");
+		result.cards = ios ? 5 : 4;
 	}
+	if (ios) template("capture-simulator.py");
 	template("en-US/listing.json");
 	template("gitignore", ".gitignore");
 	template("README.md");
 	for (const file of ["theme.css", "theme.js"]) {
-		const source = node_path.default.join(THEMES, theme, file);
-		if (node_fs.default.existsSync(source)) write(file, fill(node_fs.default.readFileSync(source, "utf8")));
+		const from = node_path.default.join(THEMES, theme, file);
+		const extra = ios && file === "theme.css" ? node_fs.default.readFileSync(node_path.default.join(IOS_TEMPLATES, "theme.css"), "utf8") : "";
+		if (node_fs.default.existsSync(from)) write(file, fill(node_fs.default.readFileSync(from, "utf8") + extra));
 	}
 	for (const asset of node_fs.default.existsSync(node_path.default.join(THEMES, theme, "assets")) ? node_fs.default.readdirSync(node_path.default.join(THEMES, theme, "assets")) : []) {
 		const target = node_path.default.join(listing, "assets", asset);
@@ -2124,10 +2654,16 @@ function init(options = {}) {
 	}
 	syncStudio(app);
 	log(`synced    store-listing/studio (v${version$1()})`);
+	const skill = node_path.default.join(PACKAGE, "skills", "store-screenshots", "SKILL.md");
+	if (node_fs.default.existsSync(skill) && !node_fs.default.existsSync(node_path.default.join(app, ".claude", "skills", "store-screenshots", "SKILL.md"))) {
+		node_fs.default.mkdirSync(node_path.default.join(app, ".claude", "skills", "store-screenshots"), { recursive: true });
+		node_fs.default.copyFileSync(skill, node_path.default.join(app, ".claude", "skills", "store-screenshots", "SKILL.md"));
+		log("created   .claude/skills/store-screenshots/SKILL.md");
+	}
 	return result;
 }
 /** `init [app] [--name …] [--package …] [--theme …] [--screenshots folder] [--locales a,b]` */
-async function run$4(argv) {
+async function run$5(argv) {
 	const option = (name) => {
 		const i = argv.indexOf(`--${name}`);
 		return i >= 0 ? argv[i + 1] : void 0;
@@ -2137,7 +2673,8 @@ async function run$4(argv) {
 		"package",
 		"theme",
 		"screenshots",
-		"locales"
+		"locales",
+		"platform"
 	].map(option));
 	const app = argv.find((word) => !word.startsWith("--") && !values.has(word));
 	try {
@@ -2147,12 +2684,13 @@ async function run$4(argv) {
 			package: option("package"),
 			theme: option("theme"),
 			screenshots: option("screenshots"),
-			locales: option("locales")?.split(",").map((l) => l.trim()).filter(Boolean)
+			locales: option("locales")?.split(",").map((l) => l.trim()).filter(Boolean),
+			platform: option("platform")
 		});
 		const where = node_path.default.relative(process.cwd(), node_path.default.dirname(result.listing)) || ".";
 		const cd = where === "." ? "" : `cd ${where} && `;
 		console.log(`\nReady: ${result.cards} card(s) with the ${result.theme} theme.\n`);
-		console.log(option("screenshots") ? `Next:\n  ${cd}npx screenshot-studio export        render the cards\n  npx screenshot-studio studio --open  edit words and look in the editor` : `Next:\n  1. Add a capture build that fills the app with sample data (docs/playbook.md, section 1)\n  2. Write the tour in store-listing/capture-emulator.py\n  3. ${cd}npx screenshot-studio recapture --boot`);
+		console.log(option("screenshots") ? `Next:\n  ${cd}npx screenshot-studio export        render the cards\n  npx screenshot-studio studio --open  edit words and look in the editor` : option("platform") === "ios" ? `Next:\n  1. Make the app's Debug build open each screen from a launch argument (-screenshotScene) with sample data (docs/capture.md, iOS)\n  2. Write the tour in store-listing/capture-simulator.py; check capture.build in studio.json\n  3. ${cd}npx screenshot-studio recapture --boot` : `Next:\n  1. Add a capture build that fills the app with sample data (docs/playbook.md, section 1)\n  2. Write the tour in store-listing/capture-emulator.py\n  3. ${cd}npx screenshot-studio recapture --boot`);
 		return 0;
 	} catch (error) {
 		console.error(error.message);
@@ -2176,13 +2714,15 @@ async function runSync(argv) {
 	console.log(`Synced studio v${version$1()} into ${node_path.default.join(app, "store-listing", "studio")}`);
 	return 0;
 }
-var PACKAGE, STUDIO, TEMPLATES, THEMES, version$1, requirePackage, slug, words;
+var PACKAGE, STUDIO, TEMPLATES, IOS_TEMPLATES, THEMES, version$1, requirePackage, slug, words;
 var init_init = __esmMin((() => {
 	init_check();
 	init_project();
+	init_ios();
 	PACKAGE = node_path.default.resolve(__dirname, "..");
 	STUDIO = node_path.default.join(PACKAGE, "studio");
 	TEMPLATES = node_path.default.join(PACKAGE, "templates", "starter");
+	IOS_TEMPLATES = node_path.default.join(PACKAGE, "templates", "ios");
 	THEMES = node_path.default.join(PACKAGE, "themes");
 	version$1 = () => node_fs.default.readFileSync(node_path.default.join(STUDIO, "VERSION"), "utf8").trim();
 	requirePackage = () => {
@@ -2203,7 +2743,7 @@ var locales_exports = /* @__PURE__ */ __exportAll({
 	addLocale: () => addLocale,
 	formatCoverage: () => formatCoverage,
 	localeCoverage: () => localeCoverage,
-	run: () => run$3
+	run: () => run$4
 });
 /** Every capture a locale's cards draw (device screens and callout crops); galleries marked defaultLocaleOnly count only for the default. */
 function capturesFor({ galleries, profiles, defaultLocale }, locale) {
@@ -2283,7 +2823,7 @@ function addLocale(locale, listing) {
 		alreadyListed
 	};
 }
-async function run$3(argv) {
+async function run$4(argv) {
 	if (argv.includes("--help") || argv.includes("-h")) {
 		console.log(USAGE$3);
 		return 0;
@@ -2372,7 +2912,7 @@ var init_locales = __esmMin((() => {
 var icon_exports = /* @__PURE__ */ __exportAll({
 	buildIcons: () => buildIcons,
 	importVector: () => importVector,
-	run: () => run$2
+	run: () => run$3
 });
 /** Android VectorDrawable XML as an SVG on the 108 canvas: `npx screenshot-studio icons --import drawable.xml > layer.svg`. */
 function importVector(file) {
@@ -2703,7 +3243,7 @@ function ico(images) {
 	});
 	return Buffer.concat([header, ...images]);
 }
-async function run$2(argv) {
+async function run$3(argv) {
 	if (argv.includes("--help") || argv.includes("-h")) {
 		console.log(USAGE$2);
 		return 0;
@@ -2788,7 +3328,7 @@ var init_icon = __esmMin((() => {
 */
 var fixture_apps_exports = /* @__PURE__ */ __exportAll({
 	buildFixtureApps: () => buildFixtureApps,
-	run: () => run$1
+	run: () => run$2
 });
 /** LUCIDE_DIR, or lucide-react in the studio master's node_modules (studio/ sits beside it). */
 function lucideDir() {
@@ -2965,7 +3505,7 @@ async function buildFixtureApps(options) {
 	}
 	return result;
 }
-async function run$1(argv) {
+async function run$2(argv) {
 	if (argv.includes("--help") || argv.includes("-h")) {
 		console.log(USAGE$1);
 		return 0;
@@ -3005,6 +3545,309 @@ var init_fixture_apps = __esmMin((() => {
 	init_project();
 	numeric = (a, b) => a.localeCompare(b, void 0, { numeric: true });
 	USAGE$1 = "Usage: npx screenshot-studio fixtures fixture-apps.json [--install <emulator-serial>] [--uninstall <emulator-serial>]";
+}));
+// src/node/mcp.ts
+/**
+* Screenshot Studio as an MCP server, so an agent can make and check store art the way a person would: look at the
+* listing, check it, render cards, and look at the images. Speaks MCP over stdio (JSON-RPC 2.0, newline-delimited),
+* with no dependencies.
+*   npx screenshot-studio mcp            # in an app; or pass --listing path/to/app
+* Add it to Claude Code: claude mcp add screenshot-studio -- npx screenshot-studio mcp
+*/
+var mcp_exports = /* @__PURE__ */ __exportAll({
+	createTools: () => createTools,
+	run: () => run$1
+});
+function createTools(defaultListing) {
+	const where = (args) => {
+		const found = findListing(typeof args.listing === "string" ? args.listing : defaultListing);
+		if (!found) throw new Error("No store-listing/studio.json found. Run `npx screenshot-studio init` in the app first, or pass \"listing\".");
+		return found;
+	};
+	return [
+		{
+			name: "describe_listing",
+			description: "What the listing contains: galleries and their sizes, every card (feature, layout, captures, headline in the default language, output file), languages and the theme files. Start here.",
+			inputSchema: {
+				type: "object",
+				properties: listingArg
+			},
+			async call(args) {
+				const listing = where(args);
+				const { config, profiles, galleries, defaultLocale, locales } = loadListing(listing);
+				const copy = readCopy(listing, defaultLocale);
+				return [text({
+					listing,
+					app: config.app,
+					defaultLocale,
+					locales,
+					files: {
+						theme: ["theme.css", "theme.js"].filter((f) => node_fs.default.existsSync(node_path.default.join(listing, f))),
+						gallery: "gallery.json",
+						copy: `${defaultLocale}/copy.json`
+					},
+					galleries: Object.fromEntries(Object.keys(galleries).map((kind) => [kind, {
+						size: `${profiles[kind].width}×${profiles[kind].height}`,
+						frame: profiles[kind].frame,
+						defaultLocaleOnly: !!profiles[kind].defaultLocaleOnly,
+						cards: cardsFor(galleries, kind).map((card, index) => ({
+							index,
+							feature: card.feature,
+							layout: card.layout,
+							captures: devicesFor(card).map((d) => d.raw),
+							title: (copy[`${kind}/${card.feature}`] || copy[card.feature])?.title,
+							output: `${defaultLocale}/${outputFile(kind, card, index)}`
+						}))
+					}]))
+				})];
+			}
+		},
+		{
+			name: "check",
+			description: "Check every file without rendering: schemas, missing or wrong-shaped captures, missing words, store text over limits. Fast; run it after each edit. Returns issues with a fix for each.",
+			inputSchema: {
+				type: "object",
+				properties: listingArg
+			},
+			async call(args) {
+				const result = checkListing(where(args));
+				return [text(formatIssues(result)), text({
+					ok: result.ok,
+					issues: result.issues
+				})];
+			}
+		},
+		{
+			name: "render_card",
+			description: "Render one card and return the image, so you can see it. Also returns the renderer's notes (copy shrunk to fit, borrowed captures) or why it failed (copy that doesn't fit, a device out of bounds). Use it to iterate on theme.css, gallery.json or copy.json.",
+			inputSchema: {
+				type: "object",
+				properties: {
+					...listingArg,
+					gallery: {
+						type: "string",
+						description: "The gallery, e.g. phone, tablet7, tablet10, readme."
+					},
+					card: {
+						type: "integer",
+						description: "The card's index in the gallery (0-based)."
+					},
+					locale: {
+						type: "string",
+						description: "The language (default: the default language)."
+					}
+				},
+				required: ["gallery", "card"]
+			},
+			async call(args) {
+				const listing = where(args);
+				const { defaultLocale } = loadListing(listing);
+				const result = await exportListing({
+					listing,
+					locales: [typeof args.locale === "string" ? args.locale : defaultLocale],
+					kind: String(args.gallery),
+					card: Number(args.card),
+					log: () => {}
+				});
+				if (!result.ok || !result.cards.length) return [text(`Render failed: ${result.error || "no such card"}`)];
+				const card = result.cards[0];
+				return [image(node_path.default.join(listing, card.file), 1400), text({
+					file: card.file,
+					notes: card.notes,
+					warnings: result.warnings
+				})];
+			}
+		},
+		{
+			name: "export",
+			description: "Render and check every card (optionally one language or gallery) and write the images. Returns every file written, notes per card, and warnings such as seams that break between cards or images no card writes any more.",
+			inputSchema: {
+				type: "object",
+				properties: {
+					...listingArg,
+					locale: {
+						type: "string",
+						description: "Only this language."
+					},
+					gallery: {
+						type: "string",
+						description: "Only this gallery."
+					},
+					strict: {
+						type: "boolean",
+						description: "Fail on warnings and untranslated words."
+					}
+				}
+			},
+			async call(args) {
+				const result = await exportListing({
+					listing: where(args),
+					locales: typeof args.locale === "string" ? [args.locale] : void 0,
+					kind: typeof args.gallery === "string" ? args.gallery : void 0,
+					strict: !!args.strict,
+					log: () => {}
+				});
+				return [text(result)];
+			}
+		},
+		{
+			name: "view_image",
+			description: "Look at an image in the listing: an exported card, a contact sheet (contact-phone.jpg shows the whole strip, to judge it as a set), or a raw capture. The path is relative to the store-listing folder.",
+			inputSchema: {
+				type: "object",
+				properties: {
+					...listingArg,
+					file: {
+						type: "string",
+						description: "e.g. en-US/contact-phone.jpg or en-US/raw/phone/01-home.png"
+					}
+				},
+				required: ["file"]
+			},
+			async call(args) {
+				const listing = where(args);
+				const file = node_path.default.resolve(listing, String(args.file));
+				if (!file.startsWith(listing + node_path.default.sep)) throw new Error("The file must be inside the store-listing folder.");
+				if (!node_fs.default.existsSync(file)) throw new Error(`${args.file} doesn't exist. Export first, or check the path with describe_listing.`);
+				return [image(file, 1600)];
+			}
+		}
+	];
+}
+/** An image as MCP content, scaled down on macOS when it's large so it stays within an agent's image limits. */
+function image(file, maxSide) {
+	let data = node_fs.default.readFileSync(file);
+	let mimeType = /\.png$/i.test(file) ? "image/png" : "image/jpeg";
+	if (process.platform === "darwin" && data.length > 6e5) {
+		const scaled = node_path.default.join(node_fs.default.mkdtempSync(node_path.default.join(require("node:os").tmpdir(), "studio-mcp-")), "image.jpg");
+		try {
+			require("node:child_process").execFileSync("sips", [
+				"-Z",
+				String(maxSide),
+				"-s",
+				"format",
+				"jpeg",
+				file,
+				"--out",
+				scaled
+			], { stdio: "ignore" });
+			data = node_fs.default.readFileSync(scaled);
+			mimeType = "image/jpeg";
+		} catch {}
+		node_fs.default.rmSync(node_path.default.dirname(scaled), {
+			recursive: true,
+			force: true
+		});
+	}
+	return {
+		type: "image",
+		data: data.toString("base64"),
+		mimeType
+	};
+}
+/** `mcp [--listing path]`: serve until stdin closes. */
+async function run$1(argv) {
+	const at = argv.indexOf("--listing");
+	const tools = createTools(at >= 0 ? argv[at + 1] : void 0);
+	const send = (message) => process.stdout.write(JSON.stringify(message) + "\n");
+	const version = (() => {
+		try {
+			return node_fs.default.readFileSync(node_path.default.join(__dirname, "VERSION"), "utf8").trim();
+		} catch {
+			return "1.0";
+		}
+	})();
+	console.log = (...parts) => process.stderr.write(parts.join(" ") + "\n");
+	const input = node_readline.default.createInterface({ input: process.stdin });
+	for await (const line of input) {
+		if (!line.trim()) continue;
+		let request;
+		try {
+			request = JSON.parse(line);
+		} catch {
+			send({
+				jsonrpc: "2.0",
+				id: null,
+				error: {
+					code: -32700,
+					message: "Parse error"
+				}
+			});
+			continue;
+		}
+		const reply = (result) => request.id !== void 0 && send({
+			jsonrpc: "2.0",
+			id: request.id,
+			result
+		});
+		const fail = (code, message) => request.id !== void 0 && send({
+			jsonrpc: "2.0",
+			id: request.id,
+			error: {
+				code,
+				message
+			}
+		});
+		switch (request.method) {
+			case "initialize":
+				reply({
+					protocolVersion: PROTOCOL,
+					capabilities: { tools: {} },
+					serverInfo: {
+						name: "screenshot-studio",
+						version
+					},
+					instructions: "Make and check app store screenshots from real app captures. Start with describe_listing, edit theme.css / gallery.json / <locale>/copy.json, then check, render_card to see a card, and view_image en-US/contact-phone.jpg after export to judge the whole strip."
+				});
+				break;
+			case "notifications/initialized":
+			case "notifications/cancelled": break;
+			case "ping":
+				reply({});
+				break;
+			case "tools/list":
+				reply({ tools: tools.map(({ name, description, inputSchema }) => ({
+					name,
+					description,
+					inputSchema
+				})) });
+				break;
+			case "tools/call": {
+				const tool = tools.find((t) => t.name === request.params?.name);
+				if (!tool) {
+					fail(-32602, `Unknown tool ${String(request.params?.name)}`);
+					break;
+				}
+				try {
+					reply({ content: await tool.call(request.params?.arguments || {}) });
+				} catch (error) {
+					reply({
+						content: [text(error.message)],
+						isError: true
+					});
+				}
+				break;
+			}
+			default: fail(-32601, `Method not found: ${request.method}`);
+		}
+	}
+	return 0;
+}
+var PROTOCOL, text, listingArg;
+var init_mcp = __esmMin((() => {
+	init_check();
+	init_export();
+	init_project();
+	init_gallery();
+	PROTOCOL = "2025-06-18";
+	text = (value) => ({
+		type: "text",
+		text: typeof value === "string" ? value : JSON.stringify(value, null, 2)
+	});
+	listingArg = { listing: {
+		type: "string",
+		description: "The app folder or its store-listing folder. Defaults to the one the server was started in."
+	} };
 }));
 // src/node/readme-preview.ts
 /**
@@ -3165,7 +4008,7 @@ const COMMANDS = {
 	init: {
 		summary: "Set up Screenshot Studio in an app (or from a folder of screenshots)",
 		package: true,
-		usage: "init [app] [--name \"My App\"] [--package com.example.app] [--theme starter] [--screenshots ./folder] [--locales en-US,de-DE]",
+		usage: "init [app] [--name \"My App\"] [--package com.example.app] [--theme starter] [--screenshots ./folder] [--locales en-US,de-DE] [--platform ios]",
 		run: async (argv) => (await Promise.resolve().then(() => (init_init(), init_exports))).run(argv)
 	},
 	sync: {
@@ -3200,8 +4043,8 @@ const COMMANDS = {
 		run: async (argv) => (await Promise.resolve().then(() => (init_export(), export_exports))).run(argv)
 	},
 	recapture: {
-		summary: "Build the app, capture on the emulator and export",
-		usage: "recapture [locale…] [--boot] [--profile phone] [--no-build] [--no-capture] [--no-export] [--dry-run]",
+		summary: "Build the app, capture on the emulator or simulator and export",
+		usage: "recapture [locale…] [--boot] [--profile phone] [--simulator \"iPhone 17 Pro Max\"] [--no-build] [--no-capture] [--no-export] [--dry-run]",
 		run: async (argv) => (await Promise.resolve().then(() => (init_recapture(), recapture_exports))).run(argv)
 	},
 	locales: {
@@ -3218,6 +4061,11 @@ const COMMANDS = {
 		summary: "Build fictional apps to install on the capture emulator",
 		usage: "fixtures fixture-apps.json [--install emulator-5578] [--uninstall emulator-5578]",
 		run: async (argv) => (await Promise.resolve().then(() => (init_fixture_apps(), fixture_apps_exports))).run(argv)
+	},
+	mcp: {
+		summary: "Run as an MCP server, so agents can check, render and look at cards",
+		usage: "mcp [--listing path/to/app]",
+		run: async (argv) => (await Promise.resolve().then(() => (init_mcp(), mcp_exports))).run(argv)
 	},
 	readme: {
 		summary: "Preview the README as GitHub shows it",

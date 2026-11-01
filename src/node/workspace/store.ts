@@ -229,7 +229,8 @@ export function createWorkspaceStore({registryFile = process.env.SCREENSHOT_STUD
       const reference = config.defaultLocale || 'en-US', languages = config.locales || [reference];
       if (!languages.length || languages.some(locale => !localePattern.test(locale))) throw Error('studio.json has an invalid language list.');
       const copy = read<Copy>(path.join(listing, reference, 'copy.json'), {});
-      const fields = Object.entries(copy).flatMap(([key, values]) => Object.keys(values).map(field => ({key, field})));
+      // A field left empty in the reference on purpose (README art without a headline) needs no translation.
+      const fields = Object.entries(copy).flatMap(([key, values]) => Object.entries(values).filter(([, text]) => typeof text === 'string' && text.trim()).map(([field]) => ({key, field})));
       const raws = new Set<string>(), outputs: (Omit<Preview, 'url' | 'source'> & {kind: string; file: string; raws: string[]})[] = [], galleries: GallerySummary[] = [];
       const requiredRaws = (card: Card): string[] => [...devicesFor(card).map(d => d.raw), ...(card.callouts || []).map(c => c.raw).filter((raw): raw is string => Boolean(raw))];
       for (const kind of Object.keys(layout)) {

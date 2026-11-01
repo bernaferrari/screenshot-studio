@@ -7,6 +7,8 @@ import {execFile} from 'node:child_process';
 import {promisify} from 'node:util';
 import {statusError} from './store';
 import type {WorkspaceStore} from './store';
+import {streamListingChanges} from './events';
+import {reviewListing} from './review';
 
 /** How a route asks the server to answer with a file under a root it trusts. */
 export interface ServeFileOptions {
@@ -69,13 +71,21 @@ export function workspaceRoutes({store, uiDirectory, activeProjectId = null, sel
         }
         if (pathname === '/api/projects/discover' && request.method === 'POST') return send(response, await store.discover((await body(request)).root)), true;
         if (pathname === '/api/workspace/pick-folder' && request.method === 'POST') return send(response, {path: await selectFolder()}), true;
-        const match = pathname.match(/^\/api\/projects\/([a-zA-Z0-9-]+)(?:\/(files|reveal))?$/);
+        const match = pathname.match(/^\/api\/projects\/([a-zA-Z0-9-]+)(?:\/(files|reveal|events|review))?$/);
         if (match) {
           const [, id, action] = match, project = store.get(id);
           if (!project) throw statusError('This project is no longer connected.', 404);
           if (action === 'files' && request.method === 'GET') {
             const library = store.library(id);
             return send(response, {...library, files: library.files.map(image => ({...image, url: `/p/${id}/${image.file.split('/').map(encodeURIComponent).join('/')}`}))}), true;
+          }
+          // Live reload: which files changed under the project's store-listing/, as Server-Sent Events.
+          if (action === 'events' && request.method === 'GET') {
+            streamListingChanges(request, response, path.join(project.root, 'store-listing')); return true;
+          }
+          if (action === 'review' && request.method === 'GET') {
+            if (!fs.existsSync(path.join(project.root, 'store-listing', 'studio.json'))) throw statusError('This project has no Studio listing to review.', 404);
+            return send(response, reviewListing(path.join(project.root, 'store-listing'))), true;
           }
           if (action === 'reveal' && request.method === 'POST') {
             const command = process.platform === 'darwin' ? 'open' : process.platform === 'win32' ? 'explorer.exe' : 'xdg-open';
