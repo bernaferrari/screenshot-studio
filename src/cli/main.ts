@@ -91,3 +91,4 @@ export {cardsFor, withCopy, copyKeys, devicesFor, outputFile, nodesFile, followC
 export {validate} from '../core/validate';
 
 if (require.main === module) main(process.argv.slice(2)).then(code => { process.exitCode = code; }, (error: Error) => { console.error(error.message); process.exitCode = 1; });
+export {parseHeadline, parseHighlight, frameSize, boundsFor, boundsProblem, calloutPlacement, isWidow, hasDeviceRatio} from '../core/layout';
