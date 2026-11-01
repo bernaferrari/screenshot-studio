@@ -21,7 +21,7 @@ Instructions for agents changing the studio itself. To *use* the studio in an ap
 ```sh
 npm run build        # build:studio (tsc + rolldown → studio/) and build:ui (Vite → studio/assets/)
 npm run typecheck
-npm test             # unit tests, against the built studio/studio.cjs
+npm test             # unit tests, against the built studio/studio.cjs, and the editor's logic in ui/src/lib
 npm run test:ui      # the editor in a browser
 ```
 
