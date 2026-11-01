@@ -3,8 +3,8 @@ const assert = require("node:assert/strict");
 const fs = require("node:fs");
 const os = require("node:os");
 const path = require("node:path");
-const { createWorkspaceStore } = require("./workspace-store.cjs");
-const { serve } = require("./server.cjs");
+const { createWorkspaceStore } = require("../studio/studio.cjs");
+const { serve } = require("../studio/studio.cjs");
 function fixture(t) {
   const root = fs.realpathSync(
     fs.mkdtempSync(path.join(os.tmpdir(), "studio-workspace-")),
@@ -226,7 +226,7 @@ test("mounted editors isolate writes, block path escapes, and keep shared UI rea
   );
 });
 test("drafts survive project switches, isolate locales, and detect changed disk copy", async () => {
-  const { createDraftStore } = await import("./editor-drafts.js"),
+  const { createDraftStore } = await import("../ui/src/lib/editor-drafts.ts"),
     values = new Map();
   const storage = {
     getItem: (k) => values.get(k),

@@ -1,0 +1,246 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/bernaferrari/screenshot-studio/schemas/gallery.schema.json",
+  "title": "Screenshot Studio cards (store-listing/gallery.json)",
+  "type": "object",
+  "properties": {
+    "$schema": {
+      "type": "string"
+    }
+  },
+  "additionalProperties": {
+    "anyOf": [
+      {
+        "type": "array",
+        "items": {
+          "$ref": "#/$defs/card"
+        }
+      },
+      {
+        "type": "object",
+        "required": [
+          "inherits",
+          "cards"
+        ],
+        "properties": {
+          "inherits": {
+            "type": "string",
+            "description": "Merge each card over this gallery's card at the same position."
+          },
+          "cards": {
+            "type": "array",
+            "items": {
+              "type": "object"
+            }
+          }
+        },
+        "additionalProperties": false
+      }
+    ]
+  },
+  "$defs": {
+    "frame": {
+      "enum": [
+        "phone",
+        "tablet",
+        "browser",
+        "none"
+      ]
+    },
+    "card": {
+      "type": "object",
+      "required": [
+        "feature"
+      ],
+      "properties": {
+        "feature": {
+          "type": "string",
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._/-]*$",
+          "description": "The card's name; its words are copy.json[feature]."
+        },
+        "layout": {
+          "type": "string",
+          "description": "Words that become CSS classes on the card."
+        },
+        "raw": {
+          "type": "string",
+          "description": "One capture, from <locale>/raw/."
+        },
+        "frame": {
+          "$ref": "#/$defs/frame"
+        },
+        "devices": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/device"
+          }
+        },
+        "callouts": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/callout"
+          }
+        },
+        "file": {
+          "type": "string",
+          "pattern": "\\.(jpe?g|png)$"
+        },
+        "transparent": {
+          "type": "boolean"
+        },
+        "vars": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "string"
+          }
+        },
+        "identity": {
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "object",
+              "properties": {
+                "icon": {
+                  "type": "string"
+                },
+                "name": {
+                  "type": "string"
+                }
+              }
+            }
+          ]
+        },
+        "bounds": {
+          "anyOf": [
+            {
+              "const": false
+            },
+            {
+              "type": "object"
+            }
+          ]
+        },
+        "sharedCopy": {
+          "type": "boolean"
+        },
+        "alt": {
+          "type": "string"
+        }
+      },
+      "additionalProperties": true
+    },
+    "device": {
+      "type": "object",
+      "required": [
+        "raw"
+      ],
+      "properties": {
+        "raw": {
+          "type": "string"
+        },
+        "role": {
+          "type": "string"
+        },
+        "frame": {
+          "$ref": "#/$defs/frame"
+        },
+        "label": {
+          "type": "string"
+        },
+        "alt": {
+          "type": "string"
+        },
+        "profile": {
+          "type": "string"
+        }
+      },
+      "additionalProperties": true
+    },
+    "callout": {
+      "type": "object",
+      "required": [
+        "x",
+        "y",
+        "w",
+        "h"
+      ],
+      "properties": {
+        "x": {
+          "type": "number"
+        },
+        "y": {
+          "type": "number"
+        },
+        "w": {
+          "type": "number",
+          "exclusiveMinimum": 0
+        },
+        "h": {
+          "type": "number",
+          "exclusiveMinimum": 0
+        },
+        "mag": {
+          "type": "number",
+          "exclusiveMinimum": 0
+        },
+        "radius": {
+          "type": "number",
+          "minimum": 0
+        },
+        "dx": {
+          "type": "number"
+        },
+        "dy": {
+          "type": "number"
+        },
+        "device": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "raw": {
+          "type": "string"
+        },
+        "role": {
+          "type": "string"
+        },
+        "place": {
+          "type": "object",
+          "required": [
+            "left",
+            "top",
+            "width"
+          ],
+          "properties": {
+            "left": {
+              "type": "number"
+            },
+            "top": {
+              "type": "number"
+            },
+            "width": {
+              "type": "number"
+            }
+          }
+        },
+        "target": {
+          "type": "string"
+        },
+        "targetId": {
+          "type": "string"
+        },
+        "targetClass": {
+          "type": "string"
+        },
+        "targetMode": {
+          "enum": [
+            "element",
+            "box"
+          ]
+        }
+      },
+      "additionalProperties": false
+    }
+  }
+}

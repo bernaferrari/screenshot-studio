@@ -1,6 +1,6 @@
 const {test} = require('node:test');
 const assert = require('node:assert/strict');
-const load = () => import('./gallery.js');
+const load = () => Promise.resolve(require('../studio/studio.cjs'));
 const tree = nodes => ({width: 500, height: 800, nodes});
 const reference = tree([{path: '0.1', id: 'app:id/action', cls: 'Button', b: [20, 40, 200, 100]}]);
 const box = {x: 20, y: 40, w: 180, h: 60, target: '0.1', targetClass: 'Button', targetMode: 'element'};
@@ -51,6 +51,6 @@ test('element mode requires an explicit target rather than guessing by overlap',
 });
 
 test('single-capture shorthand preserves its frame override', async () => {
-  const {devicesFor} = await import('./gallery.js');
+  const {devicesFor} = await Promise.resolve(require('../studio/studio.cjs'));
   assert.deepEqual(devicesFor({raw:'home.png',frame:'none'}), [{raw:'home.png',frame:'none'}]);
 });

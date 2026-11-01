@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { createDraftStore } from "../../../studio/editor-drafts.js";
+import { createDraftStore } from "./editor-drafts";
 export {
   cardsFor,
   devicesFor,
@@ -7,7 +7,7 @@ export {
   outputFile,
   nodesFile,
   followCallout,
-} from "../../../studio/gallery.js";
+} from "../../../src/core/gallery";
 export const modifierKey = /Mac|iPhone|iPad/.test(navigator.platform)
   ? "⌘"
   : "Ctrl";

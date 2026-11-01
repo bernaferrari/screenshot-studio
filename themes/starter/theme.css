@@ -1,0 +1,15 @@
+/* {{name}}: a clean starting point. Make it the app's own: its fonts, its colors, one motif. */
+:root{--paper:#f6f6fb;--ink:#15172b;--accent:#4150d0}
+body,.campaign{background:var(--paper);color:var(--ink);font-family:system-ui,var(--script-font),sans-serif}
+
+header{left:72px;right:72px;top:130px;text-align:center}
+h1{font-size:104px;line-height:1.04;letter-spacing:-.03em;font-weight:700}
+h1 em{font-style:normal;color:var(--accent)}
+header p{margin:24px auto 0;font-size:40px;line-height:1.3;opacity:.75;max-width:880px}
+
+.device{background:#fff;box-shadow:0 40px 90px -24px #15172b55}
+.phone .big .device{left:110px;top:520px;width:860px}
+.tablet7 .big .device{left:110px;top:560px;width:980px}
+.tablet10 header{left:96px;right:auto;top:0;bottom:0;width:620px;display:flex;flex-direction:column;justify-content:center;text-align:left}
+.tablet10 h1 .line{white-space:normal}
+.tablet10 .big .device{left:760px;top:200px;width:1100px}

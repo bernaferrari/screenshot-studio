@@ -7,8 +7,8 @@ const fs = require("node:fs"),
   zlib = require("node:zlib");
 const { pathToFileURL } = require("node:url");
 const { chromium } = require("playwright");
-const { serve } = require("./server.cjs");
-const { createWorkspaceStore } = require("./workspace-store.cjs");
+const { serve } = require("../studio/studio.cjs");
+const { createWorkspaceStore } = require("../studio/studio.cjs");
 function png(width, height) {
   const crc = (buffer) => {
     let c = 0xffffffff;
@@ -625,7 +625,7 @@ test("the compiled UI opens a shadcn launch screen directly from disk", async (t
   const browser = await chromium.launch();
   t.after(() => browser.close());
   const page = await browser.newPage();
-  await page.goto(pathToFileURL(path.join(__dirname, "index.html")).href);
+  await page.goto(pathToFileURL(path.join(__dirname, "../studio/index.html")).href);
   await page
     .getByText("Open your screenshot workspace", { exact: true })
     .waitFor();

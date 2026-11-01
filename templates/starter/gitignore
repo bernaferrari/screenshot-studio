@@ -1,0 +1,12 @@
+# Commit the reference language's captures and exports (a README uses them) and every language's words.
+# Other languages regenerate from the capture and the studio, so their images stay out of git.
+node_modules/
+__pycache__/
+.fixture-apps/
+/[a-z][a-z]-*/*
+/[a-z][a-z][a-z]-*/*
+/[a-z][a-z]/*
+/[a-z][a-z][a-z]/*
+!/*/copy.json
+!/*/listing.json
+!/en-US/*

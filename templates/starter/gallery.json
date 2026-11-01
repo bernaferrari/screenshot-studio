@@ -1,0 +1,9 @@
+{
+  "$schema": "./studio/schemas/gallery.schema.json",
+  "phone": [
+    {"feature": "hero", "raw": "phone/01-hero.png", "layout": "big"},
+    {"feature": "second", "raw": "phone/02-second.png", "layout": "big"}
+  ],
+  "tablet7": [{"feature": "hero", "raw": "tablet7/01-hero.png", "layout": "big"}],
+  "tablet10": [{"feature": "hero", "raw": "tablet10/01-hero.png", "layout": "big"}]
+}

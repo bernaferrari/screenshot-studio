@@ -1,32 +1,52 @@
 /** Workspace HTTP routes. Project files stay under their registered repository root. */
-const fs = require('node:fs');
-const path = require('node:path');
-const os = require('node:os');
-const {execFile} = require('node:child_process');
-const {promisify} = require('node:util');
-const {statusError} = require('./workspace-store.cjs');
+import fs from 'node:fs';
+import path from 'node:path';
+import os from 'node:os';
+import type {IncomingMessage, ServerResponse} from 'node:http';
+import {execFile} from 'node:child_process';
+import {promisify} from 'node:util';
+import {statusError} from './store';
+import type {WorkspaceStore} from './store';
+
+/** How a route asks the server to answer with a file under a root it trusts. */
+export interface ServeFileOptions {
+  editable?: boolean;
+  /** The store-listing folder whose gallery.json and copy.json may be written. */
+  listingRoot?: string;
+}
+export type ServeFile = (allowedRoot: string, url: string, options?: ServeFileOptions) => Promise<void>;
+/** Handles a request when it is a workspace route; resolves false to let the server serve it. */
+export type WorkspaceHandler = (request: IncomingMessage, response: ServerResponse, pathname: string, serveFile: ServeFile) => Promise<boolean>;
+export interface WorkspaceRouteOptions {
+  store: WorkspaceStore;
+  uiDirectory: string;
+  activeProjectId?: string | null;
+  /** Asks for a folder; null when the person cancels. */
+  selectFolder?: () => Promise<string | null>;
+}
+
 const execute = promisify(execFile);
-const send = (response, value, status = 200) => {
+const send = (response: ServerResponse, value: unknown, status = 200): void => {
   response.writeHead(status, {'Content-Type': 'application/json', 'Cache-Control': 'no-store'});
   response.end(JSON.stringify(value));
 };
-const body = request => new Promise((resolve, reject) => {
+const body = (request: IncomingMessage): Promise<Record<string, unknown>> => new Promise((resolve, reject) => {
   let data = '', size = 0;
-  request.on('data', chunk => { size += chunk.length; if (size > 256 * 1024) reject(statusError('This request is too large.', 413)); else data += chunk; });
+  request.on('data', (chunk: Buffer) => { size += chunk.length; if (size > 256 * 1024) reject(statusError('This request is too large.', 413)); else data += chunk; });
   request.on('end', () => { try { resolve(data ? JSON.parse(data) : {}); } catch { reject(statusError('Send valid JSON.')); } });
   request.on('error', reject);
 });
-async function pickFolder() {
+async function pickFolder(): Promise<string | null> {
   if (process.platform !== 'darwin') throw statusError('Use the folder path field on this computer.', 501);
   try {
     const {stdout} = await execute('osascript', ['-e', 'POSIX path of (choose folder with prompt "Choose a Screenshot Studio project folder")'], {timeout: 120000});
     return stdout.trim();
   } catch (error) {
-    if (String(error.stderr).includes('-128')) return null;
+    if (String((error as {stderr?: unknown}).stderr).includes('-128')) return null;
     throw statusError('The folder chooser could not open. Enter the folder path instead.');
   }
 }
-function workspaceRoutes({store, uiDirectory, activeProjectId = null, selectFolder = pickFolder}) {
+export function workspaceRoutes({store, uiDirectory, activeProjectId = null, selectFolder = pickFolder}: WorkspaceRouteOptions): WorkspaceHandler {
   return async (request, response, pathname, serveFile) => {
     if (pathname.startsWith('/api/')) {
       try {
@@ -70,7 +90,10 @@ function workspaceRoutes({store, uiDirectory, activeProjectId = null, selectFold
           }
         }
         send(response, {error: 'This workspace action is not available.'}, 404); return true;
-      } catch (error) { send(response, {error: error.message}, error.status || 500); return true; }
+      } catch (error) {
+        const failure = error as {message?: string; status?: number};
+        send(response, {error: failure.message}, failure.status || 500); return true;
+      }
     }
     if (pathname === '/') { response.writeHead(302, {Location: '/studio/'}).end(); return true; }
     if (pathname === '/studio' || pathname.startsWith('/studio/')) {
@@ -93,4 +116,3 @@ function workspaceRoutes({store, uiDirectory, activeProjectId = null, selectFold
     return false;
   };
 }
-module.exports = {workspaceRoutes};

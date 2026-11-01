@@ -1,0 +1,8 @@
+{
+  "$schema": "./studio/schemas/studio.schema.json",
+  "app": "{{name}}",
+  "package": "{{package}}",
+  "locales": ["en-US"],
+  "defaultLocale": "en-US",
+  "supersample": 2
+}
