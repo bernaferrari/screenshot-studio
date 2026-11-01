@@ -2242,8 +2242,18 @@ var recapture_exports = /* @__PURE__ */ __exportAll({
 	bootEmulator: () => bootEmulator,
 	booted: () => booted,
 	recapture: () => recapture,
-	run: () => run$6
+	run: () => run$6,
+	tourEnvironment: () => tourEnvironment
 });
+/** What a capture tour gets from the studio: its capture module on PYTHONPATH, the app's listing, the CLI, Playwright. */
+function tourEnvironment(listing) {
+	return {
+		PYTHONPATH: [STUDIO_DIR, process.env.PYTHONPATH].filter(Boolean).join(node_path.default.delimiter),
+		SCREENSHOT_STUDIO_LISTING: listing,
+		SCREENSHOT_STUDIO: node_path.default.join(STUDIO_DIR, "studio.cjs"),
+		...findPlaywright() ? { PLAYWRIGHT_MODULE: process.env.PLAYWRIGHT_MODULE || findPlaywright() } : {}
+	};
+}
 /** Whether the emulator is attached and has finished booting. */
 function booted(serial) {
 	return adb(serial, "shell", "getprop", "sys.boot_completed").stdout?.trim() === "1";
@@ -2299,7 +2309,8 @@ async function bootEmulator(serial, avd, log) {
 }
 async function recapture(options = {}) {
 	const log = options.log || ((line) => console.log(line));
-	const { config, profiles, repo, defaultLocale, locales: configured } = loadListing(requireListing(options.listing));
+	const listing = requireListing(options.listing);
+	const { config, profiles, repo, defaultLocale, locales: configured } = loadListing(listing);
 	const capture = config.capture;
 	const locales = options.locales?.length ? [...options.locales] : [...configured];
 	const result = {
@@ -2326,11 +2337,7 @@ async function recapture(options = {}) {
 			"pillow",
 			"python3"
 		] : ["python3"];
-		const studioEnv = {
-			PYTHONPATH: [STUDIO_DIR, process.env.PYTHONPATH].filter(Boolean).join(node_path.default.delimiter),
-			SCREENSHOT_STUDIO: node_path.default.join(STUDIO_DIR, "studio.cjs"),
-			...findPlaywright() ? { PLAYWRIGHT_MODULE: process.env.PLAYWRIGHT_MODULE || findPlaywright() } : {}
-		};
+		const studioEnv = tourEnvironment(listing);
 		const env = ios ? {
 			...process.env,
 			...studioEnv,
@@ -4138,6 +4145,40 @@ const COMMANDS = {
 		summary: "Build the app, capture on the emulator or simulator and export",
 		usage: "recapture [locale…] [--boot] [--profile phone] [--serial emulator-5578] [--simulator \"iPhone 17 Pro Max\"] [--no-build] [--no-capture] [--no-export] [--dry-run]",
 		run: async (argv) => (await Promise.resolve().then(() => (init_recapture(), recapture_exports))).run(argv)
+	},
+	tour: {
+		summary: "Run one capture tour by hand (the studio puts its capture module in reach)",
+		usage: "tour [store-listing/capture-emulator.py] [--locale en-US] [--profile phone] [--only 01-home]",
+		run: async (argv) => {
+			const { spawnSync } = await import("node:child_process");
+			const { requireListing } = await Promise.resolve().then(() => (init_project(), project_exports));
+			const { tourEnvironment } = await Promise.resolve().then(() => (init_recapture(), recapture_exports));
+			const listing = requireListing();
+			const script = argv[0] && !argv[0].startsWith("--") ? argv.shift() : ["capture-emulator.py", "capture-simulator.py"].map((f) => node_path.default.join(listing, f)).find((f) => node_fs.default.existsSync(f));
+			if (!script) {
+				console.error("No capture tour in store-listing/. Name one: npx screenshot-studio tour path/to/tour.py");
+				return 1;
+			}
+			const python = spawnSync("sh", ["-c", "command -v uv"], { stdio: "ignore" }).status === 0 ? [
+				"uv",
+				"run",
+				"-q",
+				"--with",
+				"pillow",
+				"python3"
+			] : ["python3"];
+			return spawnSync(python[0], [
+				...python.slice(1),
+				script,
+				...argv
+			], {
+				stdio: "inherit",
+				env: {
+					...process.env,
+					...tourEnvironment(listing)
+				}
+			}).status ?? 1;
+		}
 	},
 	reset: {
 		summary: "Undo a capture that was interrupted (display size, density, demo mode on the emulator)",

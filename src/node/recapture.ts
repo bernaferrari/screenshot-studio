@@ -63,6 +63,16 @@ export interface RecaptureResult {
   error?: string;
 }
 
+/** What a capture tour gets from the studio: its capture module on PYTHONPATH, the app's listing, the CLI, Playwright. */
+export function tourEnvironment(listing: string): NodeJS.ProcessEnv {
+  return {
+    PYTHONPATH: [STUDIO_DIR, process.env.PYTHONPATH].filter(Boolean).join(path.delimiter),
+    SCREENSHOT_STUDIO_LISTING: listing,
+    SCREENSHOT_STUDIO: path.join(STUDIO_DIR, 'studio.cjs'),
+    ...(findPlaywright() ? {PLAYWRIGHT_MODULE: process.env.PLAYWRIGHT_MODULE || findPlaywright()!} : {}),
+  };
+}
+
 export const DEFAULT_SERIAL = 'emulator-5578';
 
 const sdkRoot = () => process.env.ANDROID_HOME || process.env.ANDROID_SDK_ROOT ||
@@ -120,11 +130,7 @@ export async function recapture(options: RecaptureOptions = {}): Promise<Recaptu
     const python = has('uv') ? ['uv', 'run', '-q', '--with', 'pillow', 'python3'] : ['python3'];
     // Tours import the studio's capture module (`from capture import Device`) from PYTHONPATH, and reach the studio's
     // commands (`node $SCREENSHOT_STUDIO fixtures …`) and Playwright through the environment.
-    const studioEnv: NodeJS.ProcessEnv = {
-      PYTHONPATH: [STUDIO_DIR, process.env.PYTHONPATH].filter(Boolean).join(path.delimiter),
-      SCREENSHOT_STUDIO: path.join(STUDIO_DIR, 'studio.cjs'),
-      ...(findPlaywright() ? {PLAYWRIGHT_MODULE: process.env.PLAYWRIGHT_MODULE || findPlaywright()!} : {}),
-    };
+    const studioEnv = tourEnvironment(listing);
     const env: NodeJS.ProcessEnv = ios ? {...process.env, ...studioEnv, ...(simulator ? {CAPTURE_SIMULATOR: simulator} : {})}
       : {...process.env, ...studioEnv, CAPTURE_SERIAL: serial, ANDROID_SERIAL: serial};
     const expand = (word: string) => String(word).replace(/\$\{(\w+)\}/g, (_, name: string) => {

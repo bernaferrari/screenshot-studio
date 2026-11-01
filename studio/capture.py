@@ -2,9 +2,7 @@
 
 An app's capture script keeps only its scene tour:
 
-    import sys
-    from pathlib import Path
-    sys.path.insert(0, str(Path(__file__).resolve().parent / 'studio'))
+    # `npx screenshot-studio recapture` runs this with the studio's capture module on PYTHONPATH.
     from capture import Device, parser
 
     args = parser(__doc__).parse_args()
@@ -48,7 +46,23 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from uitree import Navigator, nodes_from_xml, set_app_locale, write_sidecar  # noqa: E402
 
-LISTING = Path(__file__).resolve().parent.parent
+def find_listing():
+    """The app's store-listing folder: SCREENSHOT_STUDIO_LISTING (recapture sets it), the folder of the tour being
+    run (tours live in store-listing/), or the nearest store-listing/ at or above the working directory."""
+    if os.environ.get('SCREENSHOT_STUDIO_LISTING'):
+        return Path(os.environ['SCREENSHOT_STUDIO_LISTING']).resolve()
+    script = Path(sys.argv[0]).resolve().parent if sys.argv and sys.argv[0] else None
+    if script and (script / 'studio.json').exists():
+        return script
+    for folder in [Path.cwd(), *Path.cwd().parents]:
+        for candidate in (folder, folder / 'store-listing'):
+            if (candidate / 'studio.json').exists():
+                return candidate
+    return None
+
+
+# Found once, when a tour needs it: commands like `reset` run without an app.
+LISTING = None
 SERIAL = os.environ.get('CAPTURE_SERIAL', 'emulator-5578')
 PNG = b'\x89PNG\r\n\x1a\n'
 DEMO = 'com.android.systemui.demo'
@@ -71,7 +85,7 @@ def parser(description=None, profiles=True):
 
 class Device:
     def __init__(self, args, package, activity=None, *, foreground=None, tap_map='tap-map.json', battery=100,
-                 offline=True, animations=True, locale=True, apk=None, uninstall=False, listing=LISTING):
+                 offline=True, animations=True, locale=True, apk=None, uninstall=False, listing=None):
         """args: parsed `parser()` arguments. package: the capture build's application ID; activity its launch
         activity ('.Main' is relative to the package). foreground: the package whose UI must be on screen
         before a dump counts (default `package`). tap_map: file name under <default>/raw (None: plain label
@@ -81,6 +95,9 @@ class Device:
         self.serial = getattr(args, 'serial', None) or SERIAL
         if not self.serial.startswith('emulator-'):
             raise SystemExit('Use a dedicated emulator, not a personal device.')
+        listing = listing or LISTING or find_listing()
+        if not listing:
+            raise SystemExit('No store-listing/studio.json found. Run the tour from the app, or through `npx screenshot-studio recapture`.')
         self.listing = Path(listing)
         config = self.listing / 'studio.json'
         self.studio = json.loads(config.read_text()) if config.exists() else {}

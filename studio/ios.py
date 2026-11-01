@@ -2,9 +2,7 @@
 
 An app's iOS tour (store-listing/capture-simulator.py) keeps only its scenes:
 
-    import sys
-    from pathlib import Path
-    sys.path.insert(0, str(Path(__file__).resolve().parent / 'studio'))
+    # `npx screenshot-studio recapture` runs this with the studio's capture module on PYTHONPATH.
     from ios import Simulator, parser
 
     args = parser(__doc__).parse_args()
@@ -43,7 +41,23 @@ import tempfile
 import time
 from pathlib import Path
 
-LISTING = Path(__file__).resolve().parent.parent
+def find_listing():
+    """The app's store-listing folder: SCREENSHOT_STUDIO_LISTING (recapture sets it), the folder of the tour being
+    run (tours live in store-listing/), or the nearest store-listing/ at or above the working directory."""
+    if os.environ.get('SCREENSHOT_STUDIO_LISTING'):
+        return Path(os.environ['SCREENSHOT_STUDIO_LISTING']).resolve()
+    script = Path(sys.argv[0]).resolve().parent if sys.argv and sys.argv[0] else None
+    if script and (script / 'studio.json').exists():
+        return script
+    for folder in [Path.cwd(), *Path.cwd().parents]:
+        for candidate in (folder, folder / 'store-listing'):
+            if (candidate / 'studio.json').exists():
+                return candidate
+    return None
+
+
+# Found once, when a tour needs it: commands like `reset` run without an app.
+LISTING = None
 SIMULATOR = os.environ.get('CAPTURE_SIMULATOR')
 # 9:41 on 9 January (an iPad shows the date too; the weekday is the simulator's own). simctl reads an ISO time as UTC and shows it in the simulator's
 # time zone, which is the Mac's, so 9:41 local is converted; it shows as 9:41 or 09:41 as the simulator's region formats it.
@@ -120,10 +134,13 @@ def apple_language(locale):
 
 
 class Simulator:
-    def __init__(self, args, bundle, *, app=None, locale=True, content_size='large', listing=LISTING):
+    def __init__(self, args, bundle, *, app=None, locale=True, content_size='large', listing=None):
         """args: parsed `parser()` arguments. bundle: the app's bundle identifier. app: an .app to install on each
         simulator first. locale: launch in the --locale language (False leaves the simulator's). content_size: the
         text size while capturing (None leaves it)."""
+        listing = listing or LISTING or find_listing()
+        if not listing:
+            raise SystemExit('No store-listing/studio.json found. Run the tour from the app, or through `npx screenshot-studio recapture`.')
         self.listing = Path(listing)
         config = self.listing / 'studio.json'
         self.studio = json.loads(config.read_text()) if config.exists() else {}

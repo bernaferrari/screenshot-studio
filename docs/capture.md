@@ -7,9 +7,6 @@ Captures come from the real app on an Android emulator. An app writes only the t
 `store-listing/capture-emulator.py`:
 
 ```python
-import sys
-from pathlib import Path
-sys.path.insert(0, str(Path(__file__).resolve().parent / 'studio'))
 from capture import Device, parser
 
 args = parser(__doc__).parse_args()            # --serial, --profile, --locale, --only
@@ -21,6 +18,8 @@ with Device(args, 'com.example.storecapture', '.MainActivity') as d:
         d.tap('Settings')                      # by visible text or description
         d.shot('02-settings')
 ```
+
+`recapture` runs the tour with the studio's `capture` module on `PYTHONPATH` and the app's listing in `SCREENSHOT_STUDIO_LISTING`. To run one tour by hand, use `npx screenshot-studio tour [store-listing/capture-emulator.py] [--locale de-DE] [--profile phone] [--only 01-home]`.
 
 Tap by what's on screen, not by coordinates: layouts move between phone and tablet, and the studio replays the taps in every language (below).
 
@@ -149,9 +148,6 @@ Each iOS profile in `profiles.json` has `"platform": "ios"`, a capture size and 
 `store-listing/capture-simulator.py`:
 
 ```python
-import sys
-from pathlib import Path
-sys.path.insert(0, str(Path(__file__).resolve().parent / 'studio'))
 from ios import Simulator, parser
 
 args = parser(__doc__).parse_args()                  # --simulator, --profile, --locale, --only, --keep

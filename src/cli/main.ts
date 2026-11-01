@@ -21,6 +21,17 @@ const COMMANDS: Record<string, Command> = {
     run: async argv => (await import('../node/export')).run(argv)},
   recapture: {summary: 'Build the app, capture on the emulator or simulator and export', usage: 'recapture [locale…] [--boot] [--profile phone] [--serial emulator-5578] [--simulator "iPhone 17 Pro Max"] [--no-build] [--no-capture] [--no-export] [--dry-run]',
     run: async argv => (await import('../node/recapture')).run(argv)},
+  tour: {summary: 'Run one capture tour by hand (the studio puts its capture module in reach)', usage: 'tour [store-listing/capture-emulator.py] [--locale en-US] [--profile phone] [--only 01-home]',
+    run: async argv => {
+      const {spawnSync} = await import('node:child_process');
+      const {requireListing} = await import('../node/project');
+      const {tourEnvironment} = await import('../node/recapture');
+      const listing = requireListing();
+      const script = argv[0] && !argv[0].startsWith('--') ? argv.shift()! : ['capture-emulator.py', 'capture-simulator.py'].map(f => path.join(listing, f)).find(f => fs.existsSync(f));
+      if (!script) { console.error('No capture tour in store-listing/. Name one: npx screenshot-studio tour path/to/tour.py'); return 1; }
+      const python = spawnSync('sh', ['-c', 'command -v uv'], {stdio: 'ignore'}).status === 0 ? ['uv', 'run', '-q', '--with', 'pillow', 'python3'] : ['python3'];
+      return spawnSync(python[0], [...python.slice(1), script, ...argv], {stdio: 'inherit', env: {...process.env, ...tourEnvironment(listing)}}).status ?? 1;
+    }},
   reset: {summary: 'Undo a capture that was interrupted (display size, density, demo mode on the emulator)', usage: 'reset [--serial emulator-5578]',
     run: async argv => {
       const {spawnSync} = await import('node:child_process');
