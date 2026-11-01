@@ -1,0 +1,65 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Groups, a clip, alphas, a stroke and both gradient kinds. -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:aapt="http://schemas.android.com/aapt"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="54"
+    android:viewportHeight="54">
+    <path
+        android:fillColor="#3DDC84"
+        android:pathData="M0,0h54v54h-54z" />
+    <group
+        android:pivotX="27"
+        android:pivotY="27"
+        android:rotation="45"
+        android:scaleX="0.5"
+        android:scaleY="0.5">
+        <clip-path android:pathData="M9,9h36v36h-36z" />
+        <path
+            android:fillAlpha="0.5"
+            android:fillColor="#80FF0000"
+            android:fillType="evenOdd"
+            android:pathData="M0,0h54v54h-54z M18,18h18v18h-18z" />
+        <group android:translateX="2" android:translateY="-2">
+            <path
+                android:pathData="M12,12L42,42"
+                android:strokeColor="#FFF"
+                android:strokeAlpha="0.75"
+                android:strokeLineCap="round"
+                android:strokeLineJoin="round"
+                android:strokeMiterLimit="4"
+                android:strokeWidth="3" />
+        </group>
+    </group>
+    <path
+        android:pathData="M27,10a17,17 0,1 1,0 34a17,17 0,1 1,0 -34z"
+        android:strokeWidth="2">
+        <aapt:attr name="android:fillColor">
+            <gradient
+                android:endX="44"
+                android:endY="44"
+                android:startX="10"
+                android:startY="10"
+                android:type="linear">
+                <item android:color="#FF1E88E5" android:offset="0" />
+                <item android:color="#001E88E5" android:offset="1" />
+            </gradient>
+        </aapt:attr>
+        <aapt:attr name="android:strokeColor">
+            <gradient
+                android:centerX="27"
+                android:centerY="27"
+                android:gradientRadius="17"
+                android:type="radial">
+                <item android:color="#FFFFFF" android:offset="0" />
+                <item android:color="#000000" android:offset="1" />
+            </gradient>
+        </aapt:attr>
+    </path>
+    <path
+        android:fillColor="@android:color/transparent"
+        android:pathData="M1,1h2v2h-2z"
+        android:strokeColor="#000"
+        android:strokeWidth="0" />
+</vector>

@@ -1,0 +1,19 @@
+<animated-vector xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:aapt="http://schemas.android.com/aapt">
+    <aapt:attr name="android:drawable">
+        <vector
+            android:width="24dp"
+            android:height="24dp"
+            android:viewportWidth="24"
+            android:viewportHeight="24">
+            <path android:fillColor="#000" android:pathData="M2,4L3,3Z" />
+            <clip-path android:pathData="M0,0h24v24h-24z" />
+            <path android:fillColor="#000" android:pathData="M12,4.5a7.5,7.5 0,1 1,0 15a7.5,7.5 0,1 1,0 -15z" />
+        </vector>
+    </aapt:attr>
+    <target android:name="strike">
+        <aapt:attr name="android:animation">
+            <objectAnimator android:duration="500" android:propertyName="pathData" android:valueType="pathType" />
+        </aapt:attr>
+    </target>
+</animated-vector>

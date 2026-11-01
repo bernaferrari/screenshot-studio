@@ -1,0 +1,13 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="18 18 72 72"><defs><clipPath id="icon-shape"><circle cx="54" cy="54" r="36"/></clipPath></defs><g clip-path="url(#icon-shape)">
+  <defs>
+    <linearGradient id="background-ground" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#1e88e5"/>
+      <stop offset="1" stop-color="#0d47a1"/>
+    </linearGradient>
+  </defs>
+  <rect width="108" height="108" fill="url(#background-ground)"/>
+
+  <defs><circle id="foreground-dot" cx="54" cy="54" r="20"/></defs>
+  <use href="#foreground-dot" fill="#fff"/>
+  <image href="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAIAAAACCAIAAAD91JpzAAAAEElEQVR4nGP4f4IBiBggFAA1zgcdmk6h0gAAAABJRU5ErkJggg==" x="46" y="46" width="16" height="16"/>
+</g></svg>

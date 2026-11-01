@@ -1,0 +1,14 @@
+{
+  "icons": [
+    {
+      "android": {"res": "app/src/main/res", "legacy": true},
+      "files": [
+        {"path": "web/favicon.svg", "shape": "circle"},
+        {"path": "web/mark.svg", "shape": "mark", "scale": 0.5},
+        {"path": "web/icon.png", "size": 64, "shape": "square"},
+        {"path": "web/favicon.ico", "shape": "rounded"}
+      ]
+    },
+    {"layers": "beta", "monochrome": false, "android": {"res": "app/src/beta/res", "name": "ic_beta", "type": "drawable", "round": false}}
+  ]
+}
