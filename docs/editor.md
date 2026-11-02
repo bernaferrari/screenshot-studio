@@ -21,7 +21,7 @@ Inside an app it opens `http://127.0.0.1:8790/store-listing/studio/`; anywhere e
 
 The project list lives in `~/.screenshot-studio/projects.json`, shared by every studio server. Use `--registry /path/projects.json` (or `SCREENSHOT_STUDIO_PROJECTS`) for a separate list, and `--add /path/to/app` to connect folders from the command line.
 
-Each project's header has its numbers at a glance: cards and galleries, languages with a complete asset set, captures and exports present (and when the last export ran), and how much is left to fix. A language's **complete asset set** means its copy is filled in and its captures, layout maps and exports are all present. It doesn't mean they're fresh or pass a strict export. Below the header are the project's three sections: **Gallery**, **Languages** and **Review**.
+Each project's header has its numbers at a glance: cards and galleries, languages with a complete asset set, captures and exports present (and when the last export ran), and how much is left to fix. A language's **complete asset set** means its copy is filled in and its captures and exports are all present, and layout maps too where a callout needs one. It doesn't mean they're fresh or pass a strict export. Below the header are the project's three sections: **Gallery**, **Languages** and **Review**.
 
 **Live.** The editor follows the project's files. When `theme.css`, `theme.js`, `gallery.json`, a `copy.json` or a capture changes on disk (you saved in your editor, an agent rewrote the theme, a recapture finished), the affected previews render again in place: the new render loads behind the old one and replaces it when it's ready, so scroll position and zoom stay put. The **Live** badge in the header says whether the editor is following.
 
@@ -35,7 +35,11 @@ One gallery in one language, live from the source files or as exported. **Joined
 
 **Inspect a card** by clicking it. The inspector shows the card's words in the current language, editable beside the reference (**Save words** or Cmd/Ctrl+Enter writes that language's `copy.json`), what the live render and the last export noticed about it, its captures and callouts, its layout words and output file, and its `gallery.json` entry. ← and → move between cards, Esc closes it. **Open in viewer** shows the card full size.
 
-**Store preview** shows the gallery as a Google Play store page: the app's icon and name, the cards at the store's thumbnail size on a phone-width page (tablet galleries on a tablet-width one), and the short description from `<locale>/listing.json`. Judge legibility here: if a headline is hard to read at this size, it's hard to read in the store.
+**Store preview** shows the gallery as a Google Play store page: the app's icon and name, the cards at the store's thumbnail size on a phone-width page (tablet galleries on a tablet-width one), and with its `developer` under the name and its short description, from `<locale>/listing.json`. Judge legibility here: if a headline is hard to read at this size, it's hard to read in the store.
+
+<p align="center">
+  <img src="images/editor-store.jpg" width="420" alt="The store preview: the app's icon, name and developer, the Install button, and its three cards at Play's thumbnail size">
+</p>
 
 **Callouts.** Pick a callout by dragging over the reference capture, or switch to **Element** to pick a UI element from the capture's layout map: hover or search by text, label, resource ID or path, and **Parent element** to widen the pick. An element callout snaps to the element's exact bounds and follows it into every language; a missing or ambiguous element is flagged and fails a strict export. Set magnification and corner radius, type exact coordinates, copy the JSON, or save it to `gallery.json`. Check localized callouts by eye even when they matched.
 
@@ -44,6 +48,10 @@ One gallery in one language, live from the source files or as exported. **Joined
 Every language with what it still needs: copy fields (unsaved words included), captures, layout maps and exports. Filter to **Needs work** or **Complete**, or search. **Continue translation** opens the first unfinished language.
 
 **Edit copy** opens a language's words: the reference beside editable fields, with character counts and a visible note wherever a field falls back to the reference, and the saved card previewed alongside. Search by card or phrase, or filter to missing fields. **Save copy** (or Cmd/Ctrl+Enter) writes that language's `copy.json`. Unsaved words are kept in the browser tab across views, projects and reloads; if the file changes on disk under them, you choose which to keep.
+
+<p align="center">
+  <img src="images/editor-languages.jpg" width="100%" alt="The languages view: English, German and Chinese, each complete, with copy fields, captures and exports">
+</p>
 
 ## Review
 

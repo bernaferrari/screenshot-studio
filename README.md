@@ -37,20 +37,11 @@ Then: *"Make a Play Store screenshot set for this app from the screenshots in ./
 ## Live as it changes
 
 <p align="center">
-  <img src="docs/images/demo.gif" width="100%" alt="The editor re-rendering the demo's three Play cards live as the theme changes on disk: aurora, porcelain, signal, mono">
+  <img src="docs/images/demo.gif" width="100%" alt="The editor re-rendering the demo's three Play cards live as the theme changes on disk: aurora, porcelain, paper, mono">
 </p>
 
-The editor follows your files. When you (or an agent) save `theme.css`, the cards re-render in place. Click a card to inspect and reword it, see the set at Play's thumbnail size, and work through one **Review** list of everything left to fix.
+The editor follows your files. When you (or an agent) save `theme.css`, the cards re-render in place. Click a card to inspect and reword it, see the set on a Google Play page at thumbnail size, track every language, and work through one **Review** list of everything left to fix.
 
-<p align="center">
-  <img src="docs/images/editor-store.jpg" width="100%" alt="The editor's store preview: the cards on a Google Play page, with every language complete and nothing to fix">
-</p>
-
-Every language at a glance, with what each still needs:
-
-<p align="center">
-  <img src="docs/images/editor-languages.jpg" width="100%" alt="The editor's languages view: English, German and Chinese, each with its words, captures and exports complete">
-</p>
 
 ## Six looks to start from
 

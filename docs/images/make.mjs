@@ -1,6 +1,6 @@
 // The README's art. From the real exported cards of the apps that use the studio: hero.jpg, before-after.jpg,
-// themes.jpg and readme-art.jpg. With --editor, from the editor open on a fresh `demo` project: editor-store.jpg, editor-languages.jpg
-// and demo.gif, the cards re-rendering live as the theme changes on disk (ffmpeg makes the GIF).
+// themes.jpg and readme-art.jpg. With --editor, from the editor open on a fresh `demo` project: editor-store.jpg and
+// editor-languages.jpg (for docs/editor.md) and demo.gif, the cards re-rendering live as the theme changes on disk (ffmpeg makes the GIF).
 //   node docs/images/make.mjs [--editor]        (APPS=~/Documents/android: the apps whose cards it shows)
 // Run `npm run build` first. The editor runs on a temporary home and project list; yours are left alone.
 import fs from 'node:fs';
@@ -40,11 +40,11 @@ function hero() {
   const W = 2400, width = 470;
   const fan = cards.map(([app, file], i) => {
     const d = i - 2;
-    const style = `left:${W / 2 + d * 520 - width / 2}px;top:${468 + d * d * 26}px;width:${width}px;transform:rotate(${d * 2}deg);z-index:${10 - Math.abs(d)}`;
+    const style = `left:${W / 2 + d * 500 - width / 2}px;top:${468 + d * d * 26}px;width:${width}px;transform:rotate(${d * 2}deg);z-index:${10 - Math.abs(d)}`;
     return `<img class="card" style="${style}" src="${image(path.join(listing(app), file))}">`;
   }).join('');
   return [`<h1 style="position:absolute;top:84px;width:100%;text-align:center;font-size:156px;font-weight:800;letter-spacing:-.04em">Screenshot Studio</h1>
-<p style="position:absolute;top:286px;width:100%;text-align:center;font-size:56px;color:#5b5f73;letter-spacing:-.01em">Real app screens in. Store and README art out.</p>${fan}`, W, 1180];
+<p style="position:absolute;top:286px;width:100%;text-align:center;font-size:56px;color:#5b5f73;letter-spacing:-.01em">Real app screens in. Store and README art out.</p>${fan}`, W, 1186];
 }
 
 /** Plain captures beside the finished cards, at one height; under them the same card in three more languages. */
@@ -65,7 +65,7 @@ ${raws.map(raw).join('')}${cards.map(card).join('')}
 <svg style="position:absolute;left:1046px;top:470px" width="110" height="60" viewBox="0 0 110 60"><path d="M6 30H96M74 8l26 22-26 22" fill="none" stroke="#4150d0" stroke-width="9" stroke-linecap="round" stroke-linejoin="round"/></svg>
 <p style="position:absolute;left:80px;top:930px;width:1060px;font-size:60px;font-weight:780;letter-spacing:-.03em;line-height:1.08">The same set in every language,<br><span style="color:#4150d0">the app's own screens too.</span></p>
 <p style="position:absolute;left:80px;top:1110px;width:940px;font-size:34px;line-height:1.35;color:#5b5f73">Captured in each language, laid out by one theme, every card checked: copy that doesn't fit, devices off the card, store limits.</p>
-${langs.map(lang).join('')}`, 2400, 1300];
+${langs.map(lang).join('')}`, 2400, 1250];
 }
 
 /** The demo's text card in each theme, side by side, labelled, all cut by the stage at one line. */
@@ -148,7 +148,7 @@ async function editor(browser) {
     await page.mouse.move(1270, 1230);
     await page.waitForTimeout(3000);
     const start = (Date.now() - t0) / 1000;
-    for (const theme of ['porcelain', 'signal', 'mono', 'aurora']) { await page.waitForTimeout(2600); swap(theme); }
+    for (const theme of ['porcelain', 'paper', 'mono', 'aurora']) { await page.waitForTimeout(2600); swap(theme); }
     await page.waitForTimeout(2600);
     const end = (Date.now() - t0) / 1000;
     await context.close();
