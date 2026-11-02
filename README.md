@@ -1,13 +1,11 @@
 <p align="center">
-  <img src="docs/images/hero.jpg" width="100%" alt="Screenshot Studio: Play cards from seven apps, each in its own style">
+  <img src="docs/images/hero.jpg" width="100%" alt="Screenshot Studio: Play cards from five apps, each in its own style">
 </p>
-
-<p align="center"><strong>Real app screens in. Store and README art out.</strong></p>
 
 <p align="center">Screenshot Studio turns real screenshots of your app into Google Play and App Store screenshots, README images and app icons, in every language. It checks every card the way a reviewer would, and it's built so Claude and other agents can do the whole job for you.</p>
 
 <p align="center">
-  <img src="docs/images/before-after.jpg" width="100%" alt="Before: three plain screenshots of ChangeDetection. After: the finished Google Play cards, and the same card in German, Chinese, Hindi, Portuguese, Bengali and Spanish, with the app's own screens in each language">
+  <img src="docs/images/before-after.jpg" width="100%" alt="Before: three plain screenshots of ChangeDetection. After: the finished Google Play cards, and the same card in German, Chinese, Hindi, Portuguese, Bengali and Spanish, captured in each language">
 </p>
 
 ## Try it in a minute
@@ -39,22 +37,27 @@ Then: *"Make a Play Store screenshot set for this app from the screenshots in ./
 ## Live as it changes
 
 <p align="center">
-  <img src="docs/images/demo.gif" width="100%" alt="The editor re-rendering three Play cards live as the theme changes on disk: aurora, porcelain, signal, mono">
+  <img src="docs/images/demo.gif" width="100%" alt="The editor re-rendering the demo's three Play cards live as the theme changes on disk: aurora, porcelain, signal, mono">
 </p>
 
 The editor follows your files. When you (or an agent) save `theme.css`, the cards re-render in place. Click a card to inspect and reword it, see the set at Play's thumbnail size, and work through one **Review** list of everything left to fix.
 
 <p align="center">
-  <img src="docs/images/editor-review.jpg" width="49%" alt="Review: one list of everything to fix, with the file, the problem and how to fix it">
-  <img src="docs/images/editor-store.jpg" width="49%" alt="Store preview: the cards on a Google Play page at thumbnail size">
+  <img src="docs/images/editor-store.jpg" width="100%" alt="The editor's store preview: the cards on a Google Play page, with every language complete and nothing to fix">
+</p>
+
+Every language at a glance, with what each still needs:
+
+<p align="center">
+  <img src="docs/images/editor-languages.jpg" width="100%" alt="The editor's languages view: English, German and Chinese, each with its words, captures and exports complete">
 </p>
 
 ## Six looks to start from
 
-Every theme recolors from three variables (`--paper`, `--ink`, `--accent`). `npx screenshot-studio themes` lists them.
+The same card in each of the six themes. Every theme recolors from three variables (`--paper`, `--ink`, `--accent`); try one on the demo with `npx screenshot-studio demo --theme paper`.
 
 <p align="center">
-  <img src="docs/images/themes.jpg" width="100%" alt="The six starter themes: aurora, mono, panels, paper, porcelain and signal, each on the same five cards">
+  <img src="docs/images/themes.jpg" width="100%" alt="One card in each of the six themes: aurora, porcelain, signal, paper, panels and mono">
 </p>
 
 ## Checked like a reviewer would

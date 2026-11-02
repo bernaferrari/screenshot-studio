@@ -16,7 +16,7 @@ Working on the studio itself. Agents changing it: read `AGENTS.md` too.
 | `themes/`, `templates/` | What `init` copies into a new app |
 | `skills/store-screenshots/` | The skill `init` installs in an app ([Agents](agents.md)) |
 | `studio/` | **Built output**: what the package ships and serves to each app. Never edit it by hand. |
-| `docs/` | These guides; `docs/images/make.cjs` rebuilds the README images |
+| `docs/` | These guides; `docs/images/make.mjs` rebuilds the README images |
 
 ## Build and test
 
@@ -54,7 +54,7 @@ It is built from the official shadcn/ui components (`ui/src/components/ui/`, set
 ## README images
 
 ```sh
-node docs/images/make.cjs --editor
+node docs/images/make.mjs --editor
 ```
 
-Composes the README's images from the apps' own exports (`--apps`, the folder holding the apps). `--editor` also screenshots the editor, on a server with a temporary project list.
+Composes the README's images from the apps' own exports (`APPS=…`, the folder holding the apps; `~/Documents/android` by default). `--editor` also screenshots the editor and records `demo.gif` on a fresh `demo` project, with a temporary home and project list (ffmpeg makes the GIF).
