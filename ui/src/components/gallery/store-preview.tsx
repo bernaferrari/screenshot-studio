@@ -115,9 +115,12 @@ export function StorePreview({
           </span>
           <div className="min-w-0">
             <p className="truncate text-[22px] leading-7 font-medium">{name}</p>
-            <p className="text-sm text-[#01875f] dark:text-[#6dd58c]">
-              {language(locale)}
-            </p>
+            {/* Where Play shows the developer: listing.json "developer", when there is one. */}
+            {listing?.developer && (
+              <p className="truncate text-sm text-[#01875f] dark:text-[#6dd58c]">
+                {String(listing.developer)}
+              </p>
+            )}
           </div>
         </div>
         <div className="px-6 pb-5" aria-hidden>

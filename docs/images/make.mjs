@@ -68,7 +68,7 @@ ${raws.map(raw).join('')}${cards.map(card).join('')}
 ${langs.map(lang).join('')}`, 2400, 1300];
 }
 
-/** The demo's text card in each theme, side by side, labelled, fading out at one line at the foot. */
+/** The demo's text card in each theme, side by side, labelled, all cut by the stage at one line. */
 function themes() {
   const names = ['aurora', 'porcelain', 'signal', 'paper', 'panels', 'mono'];
   const work = fs.mkdtempSync(path.join(os.tmpdir(), 'readme-themes-'));
@@ -79,8 +79,9 @@ function themes() {
   });
   fs.rmSync(work, {recursive: true, force: true});
   const html = names.map((name, i) => `<p style="position:absolute;left:${48 + i * 392}px;top:44px;font-size:36px;font-weight:650;letter-spacing:-.01em">${name}</p>
-<div style="position:absolute;left:${48 + i * 392}px;top:112px;width:360px;height:500px;overflow:hidden;border-radius:24px 24px 0 0;-webkit-mask-image:linear-gradient(#000 62%,transparent)"><img src="${cards[i]}" style="width:360px;display:block"></div>`).join('');
-  return [html, 2400, 640];
+<img class="card" src="${cards[i]}" style="left:${48 + i * 392}px;top:112px;width:360px;border-radius:24px">`).join('');
+  // Just under the first block of the app's screen, the same line on every card.
+  return [html, 2400, 552];
 }
 
 /** README art from four apps, two by two: each app's own README image, whole. */
@@ -112,16 +113,18 @@ async function editor(browser) {
     await still.getByRole('button', {name: /Store preview/}).click();
     await still.waitForTimeout(3000);
     const install = (await still.getByText('Install', {exact: true}).first().boundingBox());
-    // The phone from its top, a little air at the sides, running off the bottom through the cards.
-    const phone = {x: install.x - 90, y: install.y - 180, width: install.width + 180};
-    await still.screenshot({path: path.join(out, 'editor-store.jpg'), type: 'jpeg', quality: 85, clip: {...phone, height: 500}});
+    // From the app's name down to its cards: what a shopper sees first.
+    const strip = await still.locator('.store-carousel').boundingBox();
+    const top = install.y - 106;
+    await still.screenshot({path: path.join(out, 'editor-store.jpg'), type: 'jpeg', quality: 85,
+      clip: {x: strip.x, y: top, width: strip.width, height: strip.y + strip.height - top}});
     await still.keyboard.press('Escape');
     await still.getByText('Languages').first().click();
     await still.waitForTimeout(3000);
     const rows = still.locator('.language-row');
     const first = await rows.first().boundingBox(), last = await rows.last().boundingBox();
     await still.screenshot({path: path.join(out, 'editor-languages.jpg'), type: 'jpeg', quality: 85,
-      clip: {x: first.x - 24, y: first.y - 24, width: first.width + 48, height: last.y + last.height - first.y + 48}});
+      clip: {x: first.x - 24, y: first.y - 14, width: first.width + 48, height: last.y + last.height - first.y + 38}});
     await still.close();
     console.log('docs/images/editor-store.jpg\ndocs/images/editor-languages.jpg');
 
@@ -151,8 +154,8 @@ async function editor(browser) {
     await context.close();
     const video = fs.readdirSync(home).find(file => file.endsWith('.webm'));
     execFileSync('ffmpeg', ['-y', '-loglevel', 'error', '-ss', String(start), '-to', String(end), '-i', path.join(home, video), '-vf',
-      // The gallery's header and its card row, edge to edge, at their own size so they stay sharp.
-      'crop=1100:740:96:422,fps=8,split[a][b];[a]palettegen=max_colors=112:stats_mode=diff[p];[b][p]paletteuse=dither=bayer:bayer_scale=4:diff_mode=rectangle',
+      // The card row with one 10px gutter on every edge, at its own size so it stays sharp.
+      'crop=1100:660:96:500,fps=8,split[a][b];[a]palettegen=max_colors=112:stats_mode=diff[p];[b][p]paletteuse=dither=bayer:bayer_scale=4:diff_mode=rectangle',
       path.join(out, 'demo.gif')]);
     console.log('docs/images/demo.gif');
   } finally {

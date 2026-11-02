@@ -93,15 +93,17 @@ The same studio makes the store listings and READMEs of [SDK Monitor](https://gi
 | Command | Does |
 |---|---|
 | `demo` | A finished example from real captures, exported and opened in the editor (`--theme`) |
-| `init` | Set up an app: from screenshots (`--screenshots`), for capture (`--package`), Android or iOS (`--platform`), with a theme |
+| `init` | Set up an app from screenshots, or for capture on Android or iOS, with a theme |
 | `studio` | The editor |
 | `check` | Check every file, fast; run it after each edit |
-| `export` | Render and check every card (`--locale`, `--kind`, `--card`, `--strict`, `--fastlane`, `--prune`, `--jobs`, `--json`) |
-| `recapture` | Build, capture on the emulator or simulator, export (`--boot`) |
+| `export` | Render and check every card; one language, gallery or card; fastlane folders |
+| `recapture` | Build, capture on the emulator or simulator, and export |
 | `locales` | Language coverage; `--init de-DE` adds one |
 | `icons` | Every app icon from one drawing |
 | `mcp` | The MCP server for agents |
 | `themes`, `reset` | List themes; undo an interrupted capture |
+
+Every command takes `--help` for its options.
 
 ## Documentation
 
@@ -122,7 +124,7 @@ The same studio makes the store listings and READMEs of [SDK Monitor](https://gi
 - **Real screens only.** No painted UI or made-up numbers; sample data is fictional and lives in a capture build.
 - **Everything regenerates.** Words, layout and look are files in your repository; images are output.
 - **Each app keeps its look.** The studio is shared; the theme is yours.
-- **Nothing to vendor.** Apps keep only their words, look and captures; the studio comes from the package. Pin it with `npx screenshot-studio@0.0.2` if you like.
+- **Nothing to vendor.** Apps keep only their words, look and captures; the studio comes from the package. Pin a version (`npx screenshot-studio@0.0.2`) if you like.
 
 ## License
 
