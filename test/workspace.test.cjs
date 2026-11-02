@@ -90,11 +90,12 @@ test("coverage resolves inherited galleries and counts only actual locale files"
       l.next,
     ]),
     [
-      [2, 1, 1, 2, "review"],
+      [2, 1, 0, 2, "review"],
       [1, 0, 0, 0, "copy"],
     ],
   );
   assert.equal(project.totals.expectedCaptures, 2); // One unique capture in each language.
+  assert.equal(project.totals.expectedLayouts, 0); // No callouts, so no layout map is needed.
   assert.equal(project.totals.expectedExports, 4);
   assert.equal(project.previews.length, 2);
 });
@@ -362,4 +363,14 @@ test("the review route joins the file check with the last export's notes and war
   assert.equal(missing.level, "error");
   assert.equal(missing.path, "phone[0].raw");
   assert.deepEqual(missing.card, { kind: "phone", index: 0, feature: "home" });
+});
+
+test("a language needs layout maps only for the captures its callouts lift from", async (t) => {
+  const f = fixture(t), repo = f.app("Callouts"), listing = path.join(repo, "store-listing");
+  f.write(path.join(listing, "gallery.json"), {phone: [{feature: "home", raw: "phone/home.png", callouts: [{x: 0, y: 0, w: 10, h: 10}]}]});
+  fs.rmSync(path.join(listing, "en-US/raw/phone/home.nodes.json"));
+  await f.store.add([repo]);
+  const [project] = await f.store.list();
+  const english = project.locales.find((l) => l.locale === "en-US");
+  assert.deepEqual([english.layouts, english.expectedLayouts, english.next, english.complete], [0, 1, "layout", false]);
 });

@@ -127,7 +127,7 @@ export function ProjectHeader({
               }
               className="mt-0.5 block max-w-full truncate rounded font-mono text-xs text-muted-foreground outline-none hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring"
             >
-              {summary.root}
+              {summary.displayRoot}
             </button>
           )}
         </div>

@@ -198,7 +198,8 @@ function LanguageRow({
   const counts: [string, number, number][] = saved
     ? [
         ["Captures", saved.captures, saved.expectedCaptures],
-        ["Layout maps", saved.layouts, saved.expectedCaptures],
+        // Only captures with callouts need a layout map.
+        ...(saved.expectedLayouts ? [["Layout maps", saved.layouts, saved.expectedLayouts] as [string, number, number]] : []),
         ["Exports", saved.exports, saved.expectedExports],
       ]
     : [];

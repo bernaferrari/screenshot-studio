@@ -53,6 +53,95 @@ let node_util = require("node:util");
 let node_readline = require("node:readline");
 node_readline = __toESM(node_readline, 1);
 let node_url = require("node:url");
+// src/core/validate.ts
+/** Validate `value` against `schema`; an empty list means valid. */
+function validate(value, schema, root = schema, path = "") {
+	if (schema.$ref) {
+		const name = schema.$ref.replace(/^#\/\$defs\//, "");
+		const target = root.$defs?.[name];
+		if (!target) return [{
+			path,
+			message: `unknown schema reference ${schema.$ref}`
+		}];
+		return validate(value, target, root, path);
+	}
+	const errors = [];
+	const add = (message, at = path) => errors.push({
+		path: at || "(top level)",
+		message
+	});
+	if (schema.allOf) for (const part of schema.allOf) errors.push(...validate(value, part, root, path));
+	if (schema.anyOf) {
+		const attempts = schema.anyOf.map((option) => validate(value, option, root, path));
+		if (!attempts.some((found) => found.length === 0)) {
+			const sameType = schema.anyOf.map((option, i) => ({
+				option,
+				i
+			})).filter(({ option }) => {
+				const resolved = option.$ref ? root.$defs?.[option.$ref.replace(/^#\/\$defs\//, "")] ?? option : option;
+				return (resolved.type ? Array.isArray(resolved.type) ? resolved.type : [resolved.type] : []).some((type) => matchesType(value, type));
+			});
+			if (sameType.length === 1) return [...errors, ...attempts[sameType[0].i]];
+			const consts = schema.anyOf.filter((option) => "const" in option).map((option) => show(option.const));
+			add(`${show(value)} isn't an allowed value${consts.length ? ` (allowed values include ${consts.join(", ")})` : ""}`);
+			return errors;
+		}
+	}
+	if ("const" in schema && value !== schema.const) add(`must be ${show(schema.const)}`);
+	if (schema.enum && !schema.enum.includes(value)) add(`must be one of ${schema.enum.map(show).join(", ")}; got ${show(value)}`);
+	if (schema.type) {
+		const types = Array.isArray(schema.type) ? schema.type : [schema.type];
+		if (!types.some((type) => matchesType(value, type))) {
+			add(`must be ${types.join(" or ")}, not ${typeOf(value)}`);
+			return errors;
+		}
+	}
+	if (typeof value === "string" && schema.pattern && !new RegExp(schema.pattern).test(value)) add(`${show(value)} doesn't match the expected format (${schema.pattern})`);
+	if (typeof value === "number") {
+		if (schema.minimum !== void 0 && value < schema.minimum) add(`must be at least ${schema.minimum}`);
+		if (schema.maximum !== void 0 && value > schema.maximum) add(`must be at most ${schema.maximum}`);
+		if (schema.exclusiveMinimum !== void 0 && value <= schema.exclusiveMinimum) add(`must be more than ${schema.exclusiveMinimum}`);
+	}
+	if (Array.isArray(value)) {
+		if (schema.minItems !== void 0 && value.length < schema.minItems) add(`needs at least ${schema.minItems} item(s)`);
+		if (schema.items) value.forEach((item, i) => errors.push(...validate(item, schema.items, root, join(path, i))));
+	}
+	if (typeOf(value) === "object") {
+		const object = value;
+		for (const key of schema.required || []) if (!(key in object)) add(`is missing "${key}"`);
+		for (const [key, item] of Object.entries(object)) {
+			const own = schema.properties?.[key];
+			if (own) errors.push(...validate(item, own, root, join(path, key)));
+			else if (schema.additionalProperties === false) {
+				const near = Object.keys(schema.properties || {}).find((name) => name.toLowerCase() === key.toLowerCase() || levenshtein(name, key) <= 2);
+				add(`unknown setting "${key}"${near ? `; did you mean "${near}"?` : ""}`, join(path, key));
+			} else if (typeof schema.additionalProperties === "object") errors.push(...validate(item, schema.additionalProperties, root, join(path, key)));
+		}
+	}
+	return errors;
+}
+function levenshtein(a, b) {
+	const row = Array.from({ length: b.length + 1 }, (_, i) => i);
+	for (let i = 1; i <= a.length; i++) {
+		let previous = row[0]++;
+		for (let j = 1; j <= b.length; j++) {
+			const current = row[j];
+			row[j] = Math.min(row[j] + 1, row[j - 1] + 1, previous + (a[i - 1] === b[j - 1] ? 0 : 1));
+			previous = current;
+		}
+	}
+	return row[b.length];
+}
+var typeOf, matchesType, join, show;
+var init_validate = __esmMin((() => {
+	typeOf = (value) => value === null ? "null" : Array.isArray(value) ? "array" : Number.isInteger(value) ? "integer" : typeof value;
+	matchesType = (value, type) => {
+		const actual = typeOf(value);
+		return actual === type || type === "number" && actual === "integer";
+	};
+	join = (base, key) => typeof key === "number" ? `${base}[${key}]` : /^[A-Za-z_$][\w$]*$/.test(key) ? base ? `${base}.${key}` : key : `${base}[${JSON.stringify(key)}]`;
+	show = (value) => JSON.stringify(value)?.slice(0, 60) ?? String(value);
+}));
 // src/core/gallery.ts
 var gallery_exports = /* @__PURE__ */ __exportAll({
 	cardsFor: () => cardsFor,
@@ -251,8 +340,285 @@ var init_project = __esmMin((() => {
 	readCopy = (listing, locale) => readJson(node_path.default.join(listing, locale, "copy.json"), {});
 	STUDIO_DIR = __dirname;
 }));
+// src/core/stores.ts
+/** Which store a listing is for: the App Store when its capture or galleries are iOS, Google Play otherwise. */
+function storeFor(config, profiles) {
+	return config.capture?.platform === "ios" || Object.values(profiles).some((profile) => profile.platform === "ios") ? "App Store" : "Google Play";
+}
+/** Whether a gallery's cards upload to the store: fastlane's screenshot folders when set, else Play's phone and tablets and the iOS galleries. */
+function isStoreGallery(kind, profile, config) {
+	if (profile.defaultLocaleOnly) return false;
+	if (config.fastlane?.screenshots) return kind in config.fastlane.screenshots;
+	return profile.platform === "ios" || [
+		"phone",
+		"tablet7",
+		"tablet10"
+	].includes(kind);
+}
+/** Fields of listing.json over the store's limits. `appName` counts as the title. */
+function listingProblems(words, store) {
+	const problems = [];
+	for (const [field, max] of Object.entries(LIMITS[store])) {
+		const value = field === "title" ? words.title ?? words.appName : words[field];
+		const length = typeof value === "string" ? [...value].length : 0;
+		if (length > max) problems.push({
+			field,
+			length,
+			max,
+			message: `${field} has ${length} characters; ${store} allows ${max}`
+		});
+	}
+	return problems;
+}
+var LIMITS, SCREENSHOT_LIMIT;
+var init_stores = __esmMin((() => {
+	LIMITS = {
+		"Google Play": {
+			title: 30,
+			shortDescription: 80,
+			fullDescription: 4e3
+		},
+		"App Store": {
+			title: 30,
+			subtitle: 30,
+			promotionalText: 170,
+			keywords: 100,
+			description: 4e3,
+			whatsNew: 4e3
+		}
+	};
+	SCREENSHOT_LIMIT = {
+		"Google Play": 8,
+		"App Store": 10
+	};
+}));
+// src/node/check.ts
+/**
+* Check an app's listing without rendering anything: every file against its schema, then what schemas can't see
+* (captures that are missing or have the wrong shape, cards without words, words no card uses, store text over
+* Play's limits). Fast enough to run after every edit; `export` then checks the rendered result.
+*   npx screenshot-studio check [--json]
+*/
+var check_exports = /* @__PURE__ */ __exportAll({
+	checkListing: () => checkListing,
+	formatIssues: () => formatIssues,
+	imageSize: () => imageSize,
+	run: () => run$10
+});
+/** Width and height of a PNG or JPEG, read from its header. */
+function imageSize(file) {
+	const fd = node_fs.default.openSync(file, "r");
+	try {
+		const head = Buffer.alloc(65536);
+		const length = node_fs.default.readSync(fd, head, 0, head.length, 0);
+		if (head.readUInt32BE(0) === 2303741511) return {
+			width: head.readUInt32BE(16),
+			height: head.readUInt32BE(20)
+		};
+		if (head[0] === 255 && head[1] === 216) for (let i = 2; i + 9 < length;) {
+			if (head[i] !== 255) {
+				i++;
+				continue;
+			}
+			const marker = head[i + 1];
+			if (marker >= 192 && marker <= 207 && ![
+				196,
+				200,
+				204
+			].includes(marker)) return {
+				height: head.readUInt16BE(i + 5),
+				width: head.readUInt16BE(i + 7)
+			};
+			i += 2 + head.readUInt16BE(i + 2);
+		}
+		return null;
+	} finally {
+		node_fs.default.closeSync(fd);
+	}
+}
+function checkListing(listingDir) {
+	const listing = requireListing(listingDir);
+	const schemas = node_path.default.join(STUDIO_DIR, "schemas");
+	const issues = [];
+	const error = (file, message, extra = {}) => issues.push({
+		level: "error",
+		file,
+		message,
+		...extra
+	});
+	const warn = (file, message, extra = {}) => issues.push({
+		level: "warning",
+		file,
+		message,
+		...extra
+	});
+	const counted = {
+		galleries: 0,
+		cards: 0,
+		captures: 0,
+		locales: 0
+	};
+	const load = (file, schema, fallback) => {
+		const full = node_path.default.join(listing, file);
+		if (!node_fs.default.existsSync(full)) {
+			if (fallback !== void 0) return fallback;
+			error(file, "is missing", { fix: "Run `npx screenshot-studio init` to create a starter listing." });
+			return null;
+		}
+		let value;
+		try {
+			value = readJson(full);
+		} catch (e) {
+			error(file, e.message);
+			return null;
+		}
+		const definition = readJson(node_path.default.join(schemas, `${schema}.schema.json`), null);
+		if (definition) for (const problem of validate(value, definition)) error(file, problem.message, { path: problem.path });
+		return value;
+	};
+	const config = load("studio.json", "studio");
+	const profiles = load("profiles.json", "profiles");
+	const galleries = load("gallery.json", "gallery");
+	if (!config || !profiles || !galleries) return {
+		ok: false,
+		issues,
+		counted
+	};
+	const defaultLocale = config.defaultLocale || "en-US";
+	const store = storeFor(config, profiles);
+	const locales = config.locales || [defaultLocale];
+	counted.locales = locales.length;
+	if (!locales.includes(defaultLocale)) error("studio.json", `defaultLocale ${defaultLocale} isn't in locales`, {
+		path: "locales",
+		fix: `Add "${defaultLocale}" to locales.`
+	});
+	for (const file of ["theme.css"]) if (!node_fs.default.existsSync(node_path.default.join(listing, file))) warn(file, "is missing; cards render unstyled");
+	const ratios = Object.values(profiles).filter((p) => p.captureWidth && p.captureHeight).flatMap((p) => [p.captureWidth / p.captureHeight, p.captureHeight / p.captureWidth]);
+	const defaultCopy = load(`${defaultLocale}/copy.json`, "copy", {}) || {};
+	const used = /* @__PURE__ */ new Set();
+	const checkedRaws = /* @__PURE__ */ new Set();
+	for (const kind of Object.keys(galleries)) {
+		if (!profiles[kind]) {
+			error("gallery.json", `gallery "${kind}" has no profile`, {
+				path: kind,
+				fix: `Add "${kind}" to profiles.json with its width and height.`
+			});
+			continue;
+		}
+		let cards;
+		try {
+			cards = cardsFor(galleries, kind);
+		} catch (e) {
+			error("gallery.json", e.message, { path: kind });
+			continue;
+		}
+		counted.galleries++;
+		if (isStoreGallery(kind, profiles[kind], config) && cards.length > SCREENSHOT_LIMIT[store]) warn("gallery.json", `"${kind}" has ${cards.length} cards; ${store} takes at most ${SCREENSHOT_LIMIT[store]} per device type`, {
+			path: kind,
+			code: "store-limit",
+			fix: `Keep the best ${SCREENSHOT_LIMIT[store]}: lead with the screen that sells the app, and cut the rest from gallery.json.`
+		});
+		cards.forEach((card, i) => {
+			counted.cards++;
+			const at = `${kind}[${i}]`;
+			used.add(card.feature).add(`${kind}/${card.feature}`);
+			const devices = devicesFor(card);
+			for (const [d, device] of devices.entries()) {
+				const raw = node_path.default.join(listing, defaultLocale, "raw", device.raw);
+				if (checkedRaws.has(raw)) continue;
+				checkedRaws.add(raw);
+				counted.captures++;
+				if (!node_fs.default.existsSync(raw)) {
+					error("gallery.json", `capture ${defaultLocale}/raw/${device.raw} doesn't exist`, {
+						path: devices.length > 1 ? `${at}.devices[${d}].raw` : `${at}.raw`,
+						fix: "Capture it (`npx screenshot-studio recapture`), add the file, or fix the path."
+					});
+					continue;
+				}
+				const size = imageSize(raw);
+				if (size && ratios.length && !ratios.some((r) => Math.abs(size.width / size.height - r) < .001)) error("gallery.json", `${device.raw} is ${size.width}×${size.height}, which isn't the shape of any capture size in profiles.json`, {
+					path: `${at}.raw`,
+					fix: "Recapture it at a configured size, or add a profile whose captureWidth × captureHeight has this shape."
+				});
+			}
+			for (const [c, callout] of (card.callouts || []).entries()) {
+				if (!callout.raw && (callout.device || 0) >= devices.length) error("gallery.json", `callout ${c} points at device ${callout.device || 0}, but the card has ${devices.length}`, { path: `${at}.callouts[${c}]` });
+				if (callout.raw && !node_fs.default.existsSync(node_path.default.join(listing, defaultLocale, "raw", callout.raw))) error("gallery.json", `callout capture ${callout.raw} doesn't exist`, { path: `${at}.callouts[${c}].raw` });
+			}
+			const words = card.sharedCopy === false ? defaultCopy[`${kind}/${card.feature}`] : {
+				...defaultCopy[card.feature],
+				...defaultCopy[`${kind}/${card.feature}`]
+			};
+			if (devices.length && !card.identity && !(words && "title" in words) && profiles[kind].frame !== "none") warn(`${defaultLocale}/copy.json`, `card "${card.feature}" (${kind}) has no headline`, { fix: `Add {"${card.feature}": {"title": "…", "body": "…"}}.` });
+		});
+	}
+	const PLACEHOLDER = /^Your headline|One short (supporting )?line|Why it matters, briefly|One line about what \*your app\*|^One clear\n|^The core\n|Up to (80|4,?000) characters/;
+	for (const [key, entry] of Object.entries(defaultCopy)) for (const [field, value] of Object.entries(entry || {})) if (typeof value === "string" && PLACEHOLDER.test(value)) warn(`${defaultLocale}/copy.json`, `is still the starter placeholder`, {
+		path: `${key}.${field}`,
+		code: "placeholder",
+		fix: field === "title" ? "Write a benefit headline for this screen: what it does for the person, in a few words." : "Write one short line that backs the headline up."
+	});
+	for (const locale of locales) {
+		const words = readJson(node_path.default.join(listing, locale, "listing.json"), null);
+		for (const [field, value] of Object.entries(words || {})) if (typeof value === "string" && PLACEHOLDER.test(value)) warn(`${locale}/listing.json`, `is still the starter placeholder`, {
+			path: field,
+			code: "placeholder",
+			fix: "Write the store text."
+		});
+	}
+	for (const key of Object.keys(defaultCopy)) if (!used.has(key)) warn(`${defaultLocale}/copy.json`, `"${key}" isn't used by any card`, {
+		path: key,
+		fix: "Remove it, or fix the card's feature name."
+	});
+	for (const locale of locales) {
+		if (locale !== defaultLocale) {
+			const file = `${locale}/copy.json`;
+			if (!node_fs.default.existsSync(node_path.default.join(listing, file))) warn(file, "is missing; this language shows the default words", { fix: `Run \`npx screenshot-studio locales --init ${locale}\`.` });
+			else load(file, "copy");
+		}
+		const words = readJson(node_path.default.join(listing, locale, "listing.json"), null);
+		for (const problem of words ? listingProblems(words, store) : []) error(`${locale}/listing.json`, problem.message, { path: problem.field });
+	}
+	return {
+		ok: !issues.some((issue) => issue.level === "error"),
+		issues,
+		counted
+	};
+}
+function formatIssues(result) {
+	const { counted, issues } = result;
+	const lines = issues.map((issue) => `${issue.level === "error" ? "✗" : "!"} ${issue.file}${issue.path ? ` ${issue.path}` : ""}: ${issue.message}${issue.fix ? `\n    → ${issue.fix}` : ""}`);
+	const errors = issues.filter((i) => i.level === "error").length, warnings = issues.length - errors;
+	lines.push(`${lines.length ? "\n" : ""}${counted.galleries} galleries, ${counted.cards} cards, ${counted.captures} captures, ${counted.locales} language(s): ` + (issues.length ? `${errors} error(s), ${warnings} warning(s)` : "all good"));
+	return lines.join("\n");
+}
+/** `check [--json]` */
+async function run$10(argv) {
+	const at = argv.indexOf("--listing");
+	const result = checkListing(at >= 0 ? argv[at + 1] : void 0);
+	console.log(argv.includes("--json") ? JSON.stringify(result, null, 2) : formatIssues(result));
+	return result.ok ? 0 : 1;
+}
+var init_check = __esmMin((() => {
+	init_validate();
+	init_gallery();
+	init_project();
+	init_stores();
+}));
 // src/node/workspace/store.ts
 /** Local project registration and coverage. It never modifies a connected project's files. */
+/** A path under the home folder as ~/…, the way people read their own folders. */
+function displayPath(file) {
+	const home = node_os.default.homedir();
+	for (const root of [home, (() => {
+		try {
+			return node_fs.default.realpathSync(home);
+		} catch {
+			return home;
+		}
+	})()]) if (inside(root, file)) return node_path.default.join("~", node_path.default.relative(root, file));
+	return file;
+}
 function folder(input) {
 	if (typeof input !== "string" || !input.trim()) throw statusError("Choose a project folder.");
 	let expanded = input.trim().replace(/^~(?=$|[\\/])/, node_os.default.homedir());
@@ -423,6 +789,7 @@ function createWorkspaceStore({ registryFile = process.env.SCREENSHOT_STUDIO_PRO
 		const base = {
 			...project,
 			name: project.name || node_path.default.basename(project.root),
+			displayRoot: displayPath(project.root),
 			editorURL: `/p/${project.id}/store-listing/studio/`,
 			overviewURL: `/studio/?project=${project.id}`,
 			previews: []
@@ -459,6 +826,7 @@ function createWorkspaceStore({ registryFile = process.env.SCREENSHOT_STUDIO_PRO
 			})));
 			const raws = /* @__PURE__ */ new Set(), outputs = [], galleries = [];
 			const requiredRaws = (card) => [...devicesFor(card).map((d) => d.raw), ...(card.callouts || []).map((c) => c.raw).filter((raw) => Boolean(raw))];
+			const mappedRaws = (card) => (card.callouts || []).map((c) => c.raw || devicesFor(card)[c.device || 0]?.raw).filter((raw) => Boolean(raw));
 			for (const kind of Object.keys(layout)) {
 				if (!profiles[kind]) throw Error(`profiles.json is missing ${kind}.`);
 				const cards = cardsFor(layout, kind);
@@ -477,7 +845,8 @@ function createWorkspaceStore({ registryFile = process.env.SCREENSHOT_STUDIO_PRO
 						width: profiles[kind].width,
 						height: profiles[kind].height,
 						defaultLocaleOnly: profiles[kind].defaultLocaleOnly,
-						raws: requiredRaws(card)
+						raws: requiredRaws(card),
+						mapped: mappedRaws(card)
 					});
 					requiredRaws(card).forEach((raw) => raws.add(raw));
 				}
@@ -488,6 +857,7 @@ function createWorkspaceStore({ registryFile = process.env.SCREENSHOT_STUDIO_PRO
 				captures: 0,
 				expectedCaptures: 0,
 				layouts: 0,
+				expectedLayouts: 0,
 				exports: 0,
 				expectedExports: 0
 			};
@@ -508,7 +878,8 @@ function createWorkspaceStore({ registryFile = process.env.SCREENSHOT_STUDIO_PRO
 					const file = fileIn(locale, "raw", raw);
 					return file && exists(file);
 				}).length;
-				const layouts = [...raws].filter((raw) => {
+				const mapped = new Set(requiredOutputs.flatMap((o) => o.mapped));
+				const layouts = [...mapped].filter((raw) => {
 					const file = fileIn(locale, "raw", nodesFile(raw));
 					return file && exists(file);
 				}).length;
@@ -524,8 +895,8 @@ function createWorkspaceStore({ registryFile = process.env.SCREENSHOT_STUDIO_PRO
 						url: assetURL(project.id, node_path.default.relative(project.root, file))
 					});
 				}
-				const complete = requiredOutputs.length > 0 && translated === fields.length && captures === raws.size && layouts === raws.size && exported === requiredOutputs.length;
-				const next = translated < fields.length ? "copy" : captures < raws.size ? "capture" : layouts < raws.size ? "layout" : exported < requiredOutputs.length ? "export" : requiredOutputs.length ? "review" : "cards";
+				const complete = requiredOutputs.length > 0 && translated === fields.length && captures === raws.size && layouts === mapped.size && exported === requiredOutputs.length;
+				const next = translated < fields.length ? "copy" : captures < raws.size ? "capture" : layouts < mapped.size ? "layout" : exported < requiredOutputs.length ? "export" : requiredOutputs.length ? "review" : "cards";
 				locales.push({
 					locale,
 					translated,
@@ -533,6 +904,7 @@ function createWorkspaceStore({ registryFile = process.env.SCREENSHOT_STUDIO_PRO
 					captures,
 					expectedCaptures: raws.size,
 					layouts,
+					expectedLayouts: mapped.size,
 					exports: exported,
 					expectedExports: requiredOutputs.length,
 					complete,
@@ -543,6 +915,7 @@ function createWorkspaceStore({ registryFile = process.env.SCREENSHOT_STUDIO_PRO
 				totals.captures += captures;
 				totals.expectedCaptures += raws.size;
 				totals.layouts += layouts;
+				totals.expectedLayouts += mapped.size;
 				totals.exports += exported;
 				totals.expectedExports += requiredOutputs.length;
 			}
@@ -789,339 +1162,6 @@ var init_events = __esmMin((() => {
 	IMAGE = /\.(png|jpe?g|webp)$/i;
 	LOCALE$1 = /^[a-z]{2,3}(-[A-Za-z0-9]{2,8})*$/;
 	watches = /* @__PURE__ */ new Map();
-}));
-// src/core/validate.ts
-/** Validate `value` against `schema`; an empty list means valid. */
-function validate(value, schema, root = schema, path = "") {
-	if (schema.$ref) {
-		const name = schema.$ref.replace(/^#\/\$defs\//, "");
-		const target = root.$defs?.[name];
-		if (!target) return [{
-			path,
-			message: `unknown schema reference ${schema.$ref}`
-		}];
-		return validate(value, target, root, path);
-	}
-	const errors = [];
-	const add = (message, at = path) => errors.push({
-		path: at || "(top level)",
-		message
-	});
-	if (schema.allOf) for (const part of schema.allOf) errors.push(...validate(value, part, root, path));
-	if (schema.anyOf) {
-		const attempts = schema.anyOf.map((option) => validate(value, option, root, path));
-		if (!attempts.some((found) => found.length === 0)) {
-			const sameType = schema.anyOf.map((option, i) => ({
-				option,
-				i
-			})).filter(({ option }) => {
-				const resolved = option.$ref ? root.$defs?.[option.$ref.replace(/^#\/\$defs\//, "")] ?? option : option;
-				return (resolved.type ? Array.isArray(resolved.type) ? resolved.type : [resolved.type] : []).some((type) => matchesType(value, type));
-			});
-			if (sameType.length === 1) return [...errors, ...attempts[sameType[0].i]];
-			const consts = schema.anyOf.filter((option) => "const" in option).map((option) => show(option.const));
-			add(`${show(value)} isn't an allowed value${consts.length ? ` (allowed values include ${consts.join(", ")})` : ""}`);
-			return errors;
-		}
-	}
-	if ("const" in schema && value !== schema.const) add(`must be ${show(schema.const)}`);
-	if (schema.enum && !schema.enum.includes(value)) add(`must be one of ${schema.enum.map(show).join(", ")}; got ${show(value)}`);
-	if (schema.type) {
-		const types = Array.isArray(schema.type) ? schema.type : [schema.type];
-		if (!types.some((type) => matchesType(value, type))) {
-			add(`must be ${types.join(" or ")}, not ${typeOf(value)}`);
-			return errors;
-		}
-	}
-	if (typeof value === "string" && schema.pattern && !new RegExp(schema.pattern).test(value)) add(`${show(value)} doesn't match the expected format (${schema.pattern})`);
-	if (typeof value === "number") {
-		if (schema.minimum !== void 0 && value < schema.minimum) add(`must be at least ${schema.minimum}`);
-		if (schema.maximum !== void 0 && value > schema.maximum) add(`must be at most ${schema.maximum}`);
-		if (schema.exclusiveMinimum !== void 0 && value <= schema.exclusiveMinimum) add(`must be more than ${schema.exclusiveMinimum}`);
-	}
-	if (Array.isArray(value)) {
-		if (schema.minItems !== void 0 && value.length < schema.minItems) add(`needs at least ${schema.minItems} item(s)`);
-		if (schema.items) value.forEach((item, i) => errors.push(...validate(item, schema.items, root, join(path, i))));
-	}
-	if (typeOf(value) === "object") {
-		const object = value;
-		for (const key of schema.required || []) if (!(key in object)) add(`is missing "${key}"`);
-		for (const [key, item] of Object.entries(object)) {
-			const own = schema.properties?.[key];
-			if (own) errors.push(...validate(item, own, root, join(path, key)));
-			else if (schema.additionalProperties === false) {
-				const near = Object.keys(schema.properties || {}).find((name) => name.toLowerCase() === key.toLowerCase() || levenshtein(name, key) <= 2);
-				add(`unknown setting "${key}"${near ? `; did you mean "${near}"?` : ""}`, join(path, key));
-			} else if (typeof schema.additionalProperties === "object") errors.push(...validate(item, schema.additionalProperties, root, join(path, key)));
-		}
-	}
-	return errors;
-}
-function levenshtein(a, b) {
-	const row = Array.from({ length: b.length + 1 }, (_, i) => i);
-	for (let i = 1; i <= a.length; i++) {
-		let previous = row[0]++;
-		for (let j = 1; j <= b.length; j++) {
-			const current = row[j];
-			row[j] = Math.min(row[j] + 1, row[j - 1] + 1, previous + (a[i - 1] === b[j - 1] ? 0 : 1));
-			previous = current;
-		}
-	}
-	return row[b.length];
-}
-var typeOf, matchesType, join, show;
-var init_validate = __esmMin((() => {
-	typeOf = (value) => value === null ? "null" : Array.isArray(value) ? "array" : Number.isInteger(value) ? "integer" : typeof value;
-	matchesType = (value, type) => {
-		const actual = typeOf(value);
-		return actual === type || type === "number" && actual === "integer";
-	};
-	join = (base, key) => typeof key === "number" ? `${base}[${key}]` : /^[A-Za-z_$][\w$]*$/.test(key) ? base ? `${base}.${key}` : key : `${base}[${JSON.stringify(key)}]`;
-	show = (value) => JSON.stringify(value)?.slice(0, 60) ?? String(value);
-}));
-// src/core/stores.ts
-/** Which store a listing is for: the App Store when its capture or galleries are iOS, Google Play otherwise. */
-function storeFor(config, profiles) {
-	return config.capture?.platform === "ios" || Object.values(profiles).some((profile) => profile.platform === "ios") ? "App Store" : "Google Play";
-}
-/** Fields of listing.json over the store's limits. `appName` counts as the title. */
-function listingProblems(words, store) {
-	const problems = [];
-	for (const [field, max] of Object.entries(LIMITS[store])) {
-		const value = field === "title" ? words.title ?? words.appName : words[field];
-		const length = typeof value === "string" ? [...value].length : 0;
-		if (length > max) problems.push({
-			field,
-			length,
-			max,
-			message: `${field} has ${length} characters; ${store} allows ${max}`
-		});
-	}
-	return problems;
-}
-var LIMITS;
-var init_stores = __esmMin((() => {
-	LIMITS = {
-		"Google Play": {
-			title: 30,
-			shortDescription: 80,
-			fullDescription: 4e3
-		},
-		"App Store": {
-			title: 30,
-			subtitle: 30,
-			promotionalText: 170,
-			keywords: 100,
-			description: 4e3,
-			whatsNew: 4e3
-		}
-	};
-}));
-// src/node/check.ts
-/**
-* Check an app's listing without rendering anything: every file against its schema, then what schemas can't see
-* (captures that are missing or have the wrong shape, cards without words, words no card uses, store text over
-* Play's limits). Fast enough to run after every edit; `export` then checks the rendered result.
-*   npx screenshot-studio check [--json]
-*/
-var check_exports = /* @__PURE__ */ __exportAll({
-	checkListing: () => checkListing,
-	formatIssues: () => formatIssues,
-	imageSize: () => imageSize,
-	run: () => run$10
-});
-/** Width and height of a PNG or JPEG, read from its header. */
-function imageSize(file) {
-	const fd = node_fs.default.openSync(file, "r");
-	try {
-		const head = Buffer.alloc(65536);
-		const length = node_fs.default.readSync(fd, head, 0, head.length, 0);
-		if (head.readUInt32BE(0) === 2303741511) return {
-			width: head.readUInt32BE(16),
-			height: head.readUInt32BE(20)
-		};
-		if (head[0] === 255 && head[1] === 216) for (let i = 2; i + 9 < length;) {
-			if (head[i] !== 255) {
-				i++;
-				continue;
-			}
-			const marker = head[i + 1];
-			if (marker >= 192 && marker <= 207 && ![
-				196,
-				200,
-				204
-			].includes(marker)) return {
-				height: head.readUInt16BE(i + 5),
-				width: head.readUInt16BE(i + 7)
-			};
-			i += 2 + head.readUInt16BE(i + 2);
-		}
-		return null;
-	} finally {
-		node_fs.default.closeSync(fd);
-	}
-}
-function checkListing(listingDir) {
-	const listing = requireListing(listingDir);
-	const schemas = node_path.default.join(STUDIO_DIR, "schemas");
-	const issues = [];
-	const error = (file, message, extra = {}) => issues.push({
-		level: "error",
-		file,
-		message,
-		...extra
-	});
-	const warn = (file, message, extra = {}) => issues.push({
-		level: "warning",
-		file,
-		message,
-		...extra
-	});
-	const counted = {
-		galleries: 0,
-		cards: 0,
-		captures: 0,
-		locales: 0
-	};
-	const load = (file, schema, fallback) => {
-		const full = node_path.default.join(listing, file);
-		if (!node_fs.default.existsSync(full)) {
-			if (fallback !== void 0) return fallback;
-			error(file, "is missing", { fix: "Run `npx screenshot-studio init` to create a starter listing." });
-			return null;
-		}
-		let value;
-		try {
-			value = readJson(full);
-		} catch (e) {
-			error(file, e.message);
-			return null;
-		}
-		const definition = readJson(node_path.default.join(schemas, `${schema}.schema.json`), null);
-		if (definition) for (const problem of validate(value, definition)) error(file, problem.message, { path: problem.path });
-		return value;
-	};
-	const config = load("studio.json", "studio");
-	const profiles = load("profiles.json", "profiles");
-	const galleries = load("gallery.json", "gallery");
-	if (!config || !profiles || !galleries) return {
-		ok: false,
-		issues,
-		counted
-	};
-	const defaultLocale = config.defaultLocale || "en-US";
-	const store = storeFor(config, profiles);
-	const locales = config.locales || [defaultLocale];
-	counted.locales = locales.length;
-	if (!locales.includes(defaultLocale)) error("studio.json", `defaultLocale ${defaultLocale} isn't in locales`, {
-		path: "locales",
-		fix: `Add "${defaultLocale}" to locales.`
-	});
-	for (const file of ["theme.css"]) if (!node_fs.default.existsSync(node_path.default.join(listing, file))) warn(file, "is missing; cards render unstyled");
-	const ratios = Object.values(profiles).filter((p) => p.captureWidth && p.captureHeight).flatMap((p) => [p.captureWidth / p.captureHeight, p.captureHeight / p.captureWidth]);
-	const defaultCopy = load(`${defaultLocale}/copy.json`, "copy", {}) || {};
-	const used = /* @__PURE__ */ new Set();
-	const checkedRaws = /* @__PURE__ */ new Set();
-	for (const kind of Object.keys(galleries)) {
-		if (!profiles[kind]) {
-			error("gallery.json", `gallery "${kind}" has no profile`, {
-				path: kind,
-				fix: `Add "${kind}" to profiles.json with its width and height.`
-			});
-			continue;
-		}
-		let cards;
-		try {
-			cards = cardsFor(galleries, kind);
-		} catch (e) {
-			error("gallery.json", e.message, { path: kind });
-			continue;
-		}
-		counted.galleries++;
-		cards.forEach((card, i) => {
-			counted.cards++;
-			const at = `${kind}[${i}]`;
-			used.add(card.feature).add(`${kind}/${card.feature}`);
-			const devices = devicesFor(card);
-			for (const [d, device] of devices.entries()) {
-				const raw = node_path.default.join(listing, defaultLocale, "raw", device.raw);
-				if (checkedRaws.has(raw)) continue;
-				checkedRaws.add(raw);
-				counted.captures++;
-				if (!node_fs.default.existsSync(raw)) {
-					error("gallery.json", `capture ${defaultLocale}/raw/${device.raw} doesn't exist`, {
-						path: devices.length > 1 ? `${at}.devices[${d}].raw` : `${at}.raw`,
-						fix: "Capture it (`npx screenshot-studio recapture`), add the file, or fix the path."
-					});
-					continue;
-				}
-				const size = imageSize(raw);
-				if (size && ratios.length && !ratios.some((r) => Math.abs(size.width / size.height - r) < .001)) error("gallery.json", `${device.raw} is ${size.width}×${size.height}, which isn't the shape of any capture size in profiles.json`, {
-					path: `${at}.raw`,
-					fix: "Recapture it at a configured size, or add a profile whose captureWidth × captureHeight has this shape."
-				});
-			}
-			for (const [c, callout] of (card.callouts || []).entries()) {
-				if (!callout.raw && (callout.device || 0) >= devices.length) error("gallery.json", `callout ${c} points at device ${callout.device || 0}, but the card has ${devices.length}`, { path: `${at}.callouts[${c}]` });
-				if (callout.raw && !node_fs.default.existsSync(node_path.default.join(listing, defaultLocale, "raw", callout.raw))) error("gallery.json", `callout capture ${callout.raw} doesn't exist`, { path: `${at}.callouts[${c}].raw` });
-			}
-			const words = card.sharedCopy === false ? defaultCopy[`${kind}/${card.feature}`] : {
-				...defaultCopy[card.feature],
-				...defaultCopy[`${kind}/${card.feature}`]
-			};
-			if (devices.length && !card.identity && !(words && "title" in words) && profiles[kind].frame !== "none") warn(`${defaultLocale}/copy.json`, `card "${card.feature}" (${kind}) has no headline`, { fix: `Add {"${card.feature}": {"title": "…", "body": "…"}}.` });
-		});
-	}
-	const PLACEHOLDER = /^Your headline|One short (supporting )?line|Why it matters, briefly|One line about what \*your app\*|^One clear\n|^The core\n|Up to (80|4,?000) characters/;
-	for (const [key, entry] of Object.entries(defaultCopy)) for (const [field, value] of Object.entries(entry || {})) if (typeof value === "string" && PLACEHOLDER.test(value)) warn(`${defaultLocale}/copy.json`, `is still the starter placeholder`, {
-		path: `${key}.${field}`,
-		fix: "Write a benefit headline for this screen."
-	});
-	for (const locale of locales) {
-		const words = readJson(node_path.default.join(listing, locale, "listing.json"), null);
-		for (const [field, value] of Object.entries(words || {})) if (typeof value === "string" && PLACEHOLDER.test(value)) warn(`${locale}/listing.json`, `is still the starter placeholder`, {
-			path: field,
-			fix: "Write the store text."
-		});
-	}
-	for (const key of Object.keys(defaultCopy)) if (!used.has(key)) warn(`${defaultLocale}/copy.json`, `"${key}" isn't used by any card`, {
-		path: key,
-		fix: "Remove it, or fix the card's feature name."
-	});
-	for (const locale of locales) {
-		if (locale !== defaultLocale) {
-			const file = `${locale}/copy.json`;
-			if (!node_fs.default.existsSync(node_path.default.join(listing, file))) warn(file, "is missing; this language shows the default words", { fix: `Run \`npx screenshot-studio locales --init ${locale}\`.` });
-			else load(file, "copy");
-		}
-		const words = readJson(node_path.default.join(listing, locale, "listing.json"), null);
-		for (const problem of words ? listingProblems(words, store) : []) error(`${locale}/listing.json`, problem.message, { path: problem.field });
-	}
-	return {
-		ok: !issues.some((issue) => issue.level === "error"),
-		issues,
-		counted
-	};
-}
-function formatIssues(result) {
-	const { counted, issues } = result;
-	const lines = issues.map((issue) => `${issue.level === "error" ? "✗" : "!"} ${issue.file}${issue.path ? ` ${issue.path}` : ""}: ${issue.message}${issue.fix ? `\n    → ${issue.fix}` : ""}`);
-	const errors = issues.filter((i) => i.level === "error").length, warnings = issues.length - errors;
-	lines.push(`${lines.length ? "\n" : ""}${counted.galleries} galleries, ${counted.cards} cards, ${counted.captures} captures, ${counted.locales} language(s): ` + (issues.length ? `${errors} error(s), ${warnings} warning(s)` : "all good"));
-	return lines.join("\n");
-}
-/** `check [--json]` */
-async function run$10(argv) {
-	const at = argv.indexOf("--listing");
-	const result = checkListing(at >= 0 ? argv[at + 1] : void 0);
-	console.log(argv.includes("--json") ? JSON.stringify(result, null, 2) : formatIssues(result));
-	return result.ok ? 0 : 1;
-}
-var init_check = __esmMin((() => {
-	init_validate();
-	init_gallery();
-	init_project();
-	init_stores();
 }));
 // src/node/workspace/review.ts
 /**
@@ -1856,6 +1896,10 @@ async function exportListing(options = {}) {
 		} catch {}
 		return result;
 	};
+	const checked = checkListing(listing).issues;
+	const placeholders = checked.filter((issue) => issue.code === "placeholder");
+	if (placeholders.length) warn(`${placeholders.length} field(s) in ${[...new Set(placeholders.map((issue) => issue.file))].join(", ")} still hold the starter placeholder; \`npx screenshot-studio check\` lists them`);
+	for (const issue of checked.filter((issue) => issue.code === "store-limit")) warn(`${issue.file}: ${issue.message}`);
 	const gallery = await Promise.resolve().then(() => (init_gallery(), gallery_exports));
 	let server = null, browser = null, queue = null;
 	try {
@@ -2254,6 +2298,7 @@ async function run$8(argv) {
 }
 var IMAGES, defaultJobs, laneDir, decoded;
 var init_export = __esmMin((() => {
+	init_check();
 	init_project();
 	init_server();
 	init_playwright();
@@ -3172,7 +3217,7 @@ var init_init = __esmMin((() => {
 /**
 * A finished example in one command: real captures of an app in three languages, made into a Google Play set with a
 * theme, exported and opened in the editor.
-*   npx screenshot-studio demo [folder] [--theme signal] [--no-open]
+*   npx screenshot-studio demo [folder] [--theme aurora] [--no-open]
 * Run it again with another --theme to see the same cards in another look; your edits to the words are kept.
 */
 var demo_exports = /* @__PURE__ */ __exportAll({ run: () => run$5 });
@@ -3181,7 +3226,7 @@ async function run$5(argv) {
 		const i = argv.indexOf(`--${name}`);
 		return i >= 0 ? argv[i + 1] : void 0;
 	};
-	const theme = option("theme") || "signal";
+	const theme = option("theme") || "aurora";
 	const folder = node_path.default.resolve(argv.find((word, i) => !word.startsWith("--") && argv[i - 1] !== "--theme") || "screenshot-studio-demo");
 	const listing = node_path.default.join(folder, "store-listing");
 	if (!themes().some((t) => t.name === theme)) {
@@ -4624,7 +4669,7 @@ const COMMANDS = {
 	},
 	demo: {
 		summary: "See it work in a minute: a finished example, exported and opened in the editor",
-		usage: "demo [folder] [--theme signal] [--no-open]",
+		usage: "demo [folder] [--theme aurora] [--no-open]",
 		run: async (argv) => (await Promise.resolve().then(() => (init_demo(), demo_exports))).run(argv)
 	},
 	themes: {

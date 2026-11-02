@@ -63,7 +63,7 @@ export function ProjectPage({
       <div className="flex min-w-0 items-center gap-2 rounded-lg border bg-muted/30 px-3 py-1 text-xs text-muted-foreground">
         <FolderOpen className="size-4 shrink-0" />
         <code className="min-w-0 flex-1 truncate" title={project.root}>
-          {project.root}
+          {project.displayRoot}
         </code>
         <IconButton
           label="Copy project folder"

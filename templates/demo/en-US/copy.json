@@ -1,15 +1,15 @@
 {
   "$schema": "https://unpkg.com/screenshot-studio/studio/schemas/copy.schema.json",
-  "home": {
-    "title": "Know when\na page *changes.*",
-    "body": "Prices, restocks, deadlines. Any website."
-  },
   "page": {
     "title": "See *what*\nchanged.",
     "body": "The whole page, with the change marked."
   },
-  "alert": {
-    "title": "Hear about\nit *first.*",
-    "body": "An alert the moment something changes."
+  "restock": {
+    "title": "Sold out?\n*Back in stock.*",
+    "body": "Watch any product and get told."
+  },
+  "text": {
+    "title": "Read the\n*exact words.*",
+    "body": "Deadline moved? Funding changed? See it."
   }
 }

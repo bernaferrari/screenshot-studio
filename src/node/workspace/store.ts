@@ -49,6 +49,8 @@ export interface LocaleCoverage {
   captures: number;
   expectedCaptures: number;
   layouts: number;
+  /** Captures whose layout map a callout needs, to follow its element into other languages. */
+  expectedLayouts: number;
   exports: number;
   expectedExports: number;
   complete: boolean;
@@ -61,6 +63,7 @@ export interface CoverageTotals {
   captures: number;
   expectedCaptures: number;
   layouts: number;
+  expectedLayouts: number;
   exports: number;
   expectedExports: number;
 }
@@ -73,6 +76,8 @@ export interface GallerySummary {
 }
 interface SummaryBase extends RegistryProject {
   name: string;
+  /** The folder as people read it: under the home folder it starts with ~. */
+  displayRoot: string;
   editorURL: string;
   overviewURL: string;
   previews: Preview[];
@@ -117,6 +122,14 @@ const errorCode = (error: unknown): string | undefined =>
   error && typeof error === 'object' && 'code' in error ? String((error as {code: unknown}).code) : undefined;
 const localePattern = /^[a-z]{2,3}(-[A-Za-z0-9]{2,8})*$/;
 const exists = (file: string): boolean => { try { return fs.statSync(file).isFile(); } catch { return false; } };
+/** A path under the home folder as ~/…, the way people read their own folders. */
+export function displayPath(file: string): string {
+  const home = os.homedir();
+  // Projects are stored by their real path, so compare with the home folder's real path too (/tmp is /private/tmp).
+  for (const root of [home, (() => { try { return fs.realpathSync(home); } catch { return home; } })()])
+    if (inside(root, file)) return path.join('~', path.relative(root, file));
+  return file;
+}
 export const inside = (root: string, file: string): boolean => { const relative = path.relative(root, file); return relative === '' || (!relative.startsWith(`..${path.sep}`) && relative !== '..' && !path.isAbsolute(relative)); };
 export const statusError = (message: string, status = 400): StatusError => Object.assign(new Error(message), {status});
 function folder(input: unknown): string {
@@ -215,7 +228,7 @@ export function createWorkspaceStore({registryFile = process.env.SCREENSHOT_STUD
     });
   }
   async function summarize(project: RegistryProject): Promise<ProjectSummary> {
-    const base: SummaryBase = {...project, name: project.name || path.basename(project.root), editorURL: `/p/${project.id}/store-listing/studio/`, overviewURL: `/studio/?project=${project.id}`, previews: []};
+    const base: SummaryBase = {...project, name: project.name || path.basename(project.root), displayRoot: displayPath(project.root), editorURL: `/p/${project.id}/store-listing/studio/`, overviewURL: `/studio/?project=${project.id}`, previews: []};
     try {
       if (!fs.existsSync(project.root)) return {...base, kind: 'unavailable', problem: 'The project folder is unavailable. Reconnect it or remove it from the overview.'};
       const listing = path.join(project.root, 'store-listing');
@@ -231,18 +244,20 @@ export function createWorkspaceStore({registryFile = process.env.SCREENSHOT_STUD
       const copy = read<Copy>(path.join(listing, reference, 'copy.json'), {});
       // A field left empty in the reference on purpose (README art without a headline) needs no translation.
       const fields = Object.entries(copy).flatMap(([key, values]) => Object.entries(values).filter(([, text]) => typeof text === 'string' && text.trim()).map(([field]) => ({key, field})));
-      const raws = new Set<string>(), outputs: (Omit<Preview, 'url' | 'source'> & {kind: string; file: string; raws: string[]})[] = [], galleries: GallerySummary[] = [];
+      const raws = new Set<string>(), outputs: (Omit<Preview, 'url' | 'source'> & {kind: string; file: string; raws: string[]; mapped: string[]})[] = [], galleries: GallerySummary[] = [];
       const requiredRaws = (card: Card): string[] => [...devicesFor(card).map(d => d.raw), ...(card.callouts || []).map(c => c.raw).filter((raw): raw is string => Boolean(raw))];
+      // Only callouts read layout maps: the capture each one lifts its region from.
+      const mappedRaws = (card: Card): string[] => (card.callouts || []).map(c => c.raw || devicesFor(card)[c.device || 0]?.raw).filter((raw): raw is string => Boolean(raw));
       for (const kind of Object.keys(layout)) {
         if (!profiles[kind]) throw Error(`profiles.json is missing ${kind}.`);
         const cards = cardsFor(layout, kind);
         galleries.push({kind, label: profiles[kind].label || kind, cards: cards.length, width: profiles[kind].width, height: profiles[kind].height});
         for (const [index, card] of cards.entries()) {
-          outputs.push({kind, feature: card.feature, file: outputFile(kind, card, index), width: profiles[kind].width, height: profiles[kind].height, defaultLocaleOnly: profiles[kind].defaultLocaleOnly, raws: requiredRaws(card)});
+          outputs.push({kind, feature: card.feature, file: outputFile(kind, card, index), width: profiles[kind].width, height: profiles[kind].height, defaultLocaleOnly: profiles[kind].defaultLocaleOnly, raws: requiredRaws(card), mapped: mappedRaws(card)});
           requiredRaws(card).forEach(raw => raws.add(raw));
         }
       }
-      const locales: LocaleCoverage[] = [], totals: CoverageTotals = {fields: 0, translated: 0, captures: 0, expectedCaptures: 0, layouts: 0, exports: 0, expectedExports: 0};
+      const locales: LocaleCoverage[] = [], totals: CoverageTotals = {fields: 0, translated: 0, captures: 0, expectedCaptures: 0, layouts: 0, expectedLayouts: 0, exports: 0, expectedExports: 0};
       let lastExport = 0;
       const fileIn = (...parts: string[]): string | null => { const file = path.resolve(listing, ...parts); return inside(project.root, file) ? file : null; };
       for (const locale of languages) {
@@ -251,7 +266,8 @@ export function createWorkspaceStore({registryFile = process.env.SCREENSHOT_STUD
         const own = read<Copy>(path.join(listing, locale, 'copy.json'), {});
         const translated = fields.filter(({key, field}) => { const text = own?.[key]?.[field]; return typeof text === 'string' && text.trim(); }).length;
         const captures = [...raws].filter(raw => { const file = fileIn(locale, 'raw', raw); return file && exists(file); }).length;
-        const layouts = [...raws].filter(raw => { const file = fileIn(locale, 'raw', nodesFile(raw)); return file && exists(file); }).length;
+        const mapped = new Set(requiredOutputs.flatMap(o => o.mapped));
+        const layouts = [...mapped].filter(raw => { const file = fileIn(locale, 'raw', nodesFile(raw)); return file && exists(file); }).length;
         let exported = 0;
         for (const output of requiredOutputs) {
           const file = fileIn(locale, output.file);
@@ -259,11 +275,11 @@ export function createWorkspaceStore({registryFile = process.env.SCREENSHOT_STUD
           exported++; lastExport = Math.max(lastExport, fs.statSync(file).mtimeMs);
           if (locale === reference && base.previews.length < 4 && output.kind !== 'icon' && output.kind !== 'feature') base.previews.push({...output, source: 'export', url: assetURL(project.id, path.relative(project.root, file))});
         }
-        const complete = requiredOutputs.length > 0 && translated === fields.length && captures === raws.size && layouts === raws.size && exported === requiredOutputs.length;
-        const next = translated < fields.length ? 'copy' : captures < raws.size ? 'capture' : layouts < raws.size ? 'layout' : exported < requiredOutputs.length ? 'export' : requiredOutputs.length ? 'review' : 'cards';
-        locales.push({locale, translated, fields: fields.length, captures, expectedCaptures: raws.size, layouts, exports: exported, expectedExports: requiredOutputs.length, complete, next});
+        const complete = requiredOutputs.length > 0 && translated === fields.length && captures === raws.size && layouts === mapped.size && exported === requiredOutputs.length;
+        const next = translated < fields.length ? 'copy' : captures < raws.size ? 'capture' : layouts < mapped.size ? 'layout' : exported < requiredOutputs.length ? 'export' : requiredOutputs.length ? 'review' : 'cards';
+        locales.push({locale, translated, fields: fields.length, captures, expectedCaptures: raws.size, layouts, expectedLayouts: mapped.size, exports: exported, expectedExports: requiredOutputs.length, complete, next});
         totals.fields += fields.length; totals.translated += translated; totals.captures += captures; totals.expectedCaptures += raws.size;
-        totals.layouts += layouts; totals.exports += exported; totals.expectedExports += requiredOutputs.length;
+        totals.layouts += layouts; totals.expectedLayouts += mapped.size; totals.exports += exported; totals.expectedExports += requiredOutputs.length;
       }
       if (!base.previews.length) {
         for (const raw of [...raws].slice(0, 4)) {

@@ -15,6 +15,7 @@ import path from 'node:path';
 import type {Server} from 'node:http';
 import type {Browser, Page} from 'playwright';
 import type {Card, CardReport, Listing, ReadmeStrip} from '../core/types';
+import {checkListing} from './check';
 import {loadListing, readJson, requireListing, type ListingFiles} from './project';
 import {serve} from './server';
 import {launchBrowser} from './playwright';
@@ -243,6 +244,12 @@ export async function exportListing(options: ExportOptions = {}): Promise<Export
     try { fs.writeFileSync(path.join(listing, 'export-report.json'), JSON.stringify({...result, finishedAt: new Date().toISOString(), options: ran}, null, 2) + '\n'); } catch {}
     return result;
   };
+
+  // What no render shows but check knows: starter words still in place, more cards than the store takes.
+  const checked = checkListing(listing).issues;
+  const placeholders = checked.filter(issue => issue.code === 'placeholder');
+  if (placeholders.length) warn(`${placeholders.length} field(s) in ${[...new Set(placeholders.map(issue => issue.file))].join(', ')} still hold the starter placeholder; \`npx screenshot-studio check\` lists them`);
+  for (const issue of checked.filter(issue => issue.code === 'store-limit')) warn(`${issue.file}: ${issue.message}`);
 
   const gallery = await import('../core/gallery');
   let server: Server | null = null, browser: Browser | null = null, queue: RenderQueue | null = null;

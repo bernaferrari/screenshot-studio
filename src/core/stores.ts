@@ -1,5 +1,5 @@
 // The stores' rules for listing text, so check and export hold a listing to the store it's for.
-import type {Listing, Profiles, StudioConfig} from './types';
+import type {Listing, Profile, Profiles, StudioConfig} from './types';
 
 export type Store = 'Google Play' | 'App Store';
 
@@ -16,6 +16,16 @@ export function storeFor(config: StudioConfig, profiles: Profiles): Store {
   const ios = (config.capture as {platform?: string} | undefined)?.platform === 'ios' ||
     Object.values(profiles).some(profile => (profile as {platform?: string}).platform === 'ios');
   return ios ? 'App Store' : 'Google Play';
+}
+
+/** The most screenshots a store takes per device type. */
+export const SCREENSHOT_LIMIT: Record<Store, number> = {'Google Play': 8, 'App Store': 10};
+
+/** Whether a gallery's cards upload to the store: fastlane's screenshot folders when set, else Play's phone and tablets and the iOS galleries. */
+export function isStoreGallery(kind: string, profile: Profile, config: StudioConfig): boolean {
+  if (profile.defaultLocaleOnly) return false;
+  if (config.fastlane?.screenshots) return kind in config.fastlane.screenshots;
+  return profile.platform === 'ios' || ['phone', 'tablet7', 'tablet10'].includes(kind);
 }
 
 export interface TextProblem {field: string; length: number; max: number; message: string}

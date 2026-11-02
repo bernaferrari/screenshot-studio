@@ -420,8 +420,9 @@ export function WorkspaceOverview({
         </TabsContent>
       </Tabs>
       <p className="max-w-3xl text-xs leading-relaxed text-muted-foreground">
-        Complete asset sets have copy, captures, layout maps and exports
-        present. Open a project's Review to see what still needs fixing.
+        Complete asset sets have their words, captures and exports present (and
+        layout maps where callouts need them). Open a project's Review to see
+        what still needs fixing.
       </p>
     </div>
   );

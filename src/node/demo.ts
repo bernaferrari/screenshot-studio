@@ -1,7 +1,7 @@
 /**
  * A finished example in one command: real captures of an app in three languages, made into a Google Play set with a
  * theme, exported and opened in the editor.
- *   npx screenshot-studio demo [folder] [--theme signal] [--no-open]
+ *   npx screenshot-studio demo [folder] [--theme aurora] [--no-open]
  * Run it again with another --theme to see the same cards in another look; your edits to the words are kept.
  */
 import fs from 'node:fs';
@@ -13,7 +13,7 @@ const DEMO = path.resolve(__dirname, '..', 'templates', 'demo');
 
 export async function run(argv: string[]): Promise<number> {
   const option = (name: string) => { const i = argv.indexOf(`--${name}`); return i >= 0 ? argv[i + 1] : undefined; };
-  const theme = option('theme') || 'signal';
+  const theme = option('theme') || 'aurora';
   const folder = path.resolve(argv.find((word, i) => !word.startsWith('--') && argv[i - 1] !== '--theme') || 'screenshot-studio-demo');
   const listing = path.join(folder, 'store-listing');
   if (!themes().some(t => t.name === theme)) { console.error(`No theme "${theme}". Available: ${themes().map(t => t.name).join(', ')}`); return 1; }

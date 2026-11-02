@@ -1,15 +1,15 @@
 {
   "$schema": "https://unpkg.com/screenshot-studio/studio/schemas/copy.schema.json",
-  "home": {
-    "title": "Wissen, wann sich\neine Seite *ändert.*",
-    "body": "Preise, Lagerbestand, Fristen. Jede Website."
-  },
   "page": {
     "title": "Sehen, *was* sich\ngeändert hat.",
     "body": "Die ganze Seite, die Änderung markiert."
   },
-  "alert": {
-    "title": "Als Erster\n*Bescheid wissen.*",
-    "body": "Ein Hinweis, sobald sich etwas ändert."
+  "restock": {
+    "title": "Ausverkauft?\n*Wieder da.*",
+    "body": "Beobachte jedes Produkt und erfahre es sofort."
+  },
+  "text": {
+    "title": "Lies es\n*Wort für Wort.*",
+    "body": "Frist verschoben? Förderung geändert? Sieh es."
   }
 }

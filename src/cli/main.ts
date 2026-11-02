@@ -11,7 +11,7 @@ const COMMANDS: Record<string, Command> = {
   init: {summary: 'Set up Screenshot Studio in an app (or from a folder of screenshots)',
     usage: 'init [app] [--name "My App"] [--package com.example.app] [--theme starter] [--screenshots ./folder] [--locales en-US,de-DE] [--platform ios]',
     run: async argv => (await import('../node/init')).run(argv)},
-  demo: {summary: 'See it work in a minute: a finished example, exported and opened in the editor', usage: 'demo [folder] [--theme signal] [--no-open]',
+  demo: {summary: 'See it work in a minute: a finished example, exported and opened in the editor', usage: 'demo [folder] [--theme aurora] [--no-open]',
     run: async argv => (await import('../node/demo')).run(argv)},
   themes: {summary: 'List the themes init can start from', usage: 'themes',
     run: async () => { const {themes} = await import('../node/init'); for (const t of themes()) console.log(`${t.name.padEnd(14)} ${t.description}`); return 0; }},

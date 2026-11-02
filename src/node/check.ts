@@ -10,7 +10,7 @@ import {validate, type Schema} from '../core/validate';
 import {cardsFor, devicesFor} from '../core/gallery';
 import {readJson, requireListing, STUDIO_DIR} from './project';
 import type {Copy, Galleries, Listing, Profiles, StudioConfig} from '../core/types';
-import {listingProblems, storeFor} from '../core/stores';
+import {isStoreGallery, listingProblems, SCREENSHOT_LIMIT, storeFor} from '../core/stores';
 
 export interface Issue {
   level: 'error' | 'warning';
@@ -21,6 +21,8 @@ export interface Issue {
   message: string;
   /** What to do about it. */
   fix?: string;
+  /** A kind other commands act on: `placeholder` (starter words left in), `store-limit` (more cards than the store takes). */
+  code?: 'placeholder' | 'store-limit';
 }
 
 export interface CheckResult {
@@ -95,6 +97,9 @@ export function checkListing(listingDir?: string): CheckResult {
     let cards;
     try { cards = cardsFor(galleries, kind); } catch (e) { error('gallery.json', (e as Error).message, {path: kind}); continue; }
     counted.galleries++;
+    if (isStoreGallery(kind, profiles[kind], config) && cards.length > SCREENSHOT_LIMIT[store])
+      warn('gallery.json', `"${kind}" has ${cards.length} cards; ${store} takes at most ${SCREENSHOT_LIMIT[store]} per device type`, {path: kind, code: 'store-limit',
+        fix: `Keep the best ${SCREENSHOT_LIMIT[store]}: lead with the screen that sells the app, and cut the rest from gallery.json.`});
     cards.forEach((card, i) => {
       counted.cards++;
       const at = `${kind}[${i}]`;
@@ -128,11 +133,12 @@ export function checkListing(listingDir?: string): CheckResult {
   // Starter placeholders: init writes these so the first export renders; they must never ship.
   const PLACEHOLDER = /^Your headline|One short (supporting )?line|Why it matters, briefly|One line about what \*your app\*|^One clear\n|^The core\n|Up to (80|4,?000) characters/;
   for (const [key, entry] of Object.entries(defaultCopy)) for (const [field, value] of Object.entries(entry || {}))
-    if (typeof value === 'string' && PLACEHOLDER.test(value)) warn(`${defaultLocale}/copy.json`, `is still the starter placeholder`, {path: `${key}.${field}`, fix: 'Write a benefit headline for this screen.'});
+    if (typeof value === 'string' && PLACEHOLDER.test(value)) warn(`${defaultLocale}/copy.json`, `is still the starter placeholder`, {path: `${key}.${field}`, code: 'placeholder',
+      fix: field === 'title' ? 'Write a benefit headline for this screen: what it does for the person, in a few words.' : 'Write one short line that backs the headline up.'});
   for (const locale of locales) {
     const words = readJson<Listing | null>(path.join(listing, locale, 'listing.json'), null);
     for (const [field, value] of Object.entries(words || {}))
-      if (typeof value === 'string' && PLACEHOLDER.test(value)) warn(`${locale}/listing.json`, `is still the starter placeholder`, {path: field, fix: 'Write the store text.'});
+      if (typeof value === 'string' && PLACEHOLDER.test(value)) warn(`${locale}/listing.json`, `is still the starter placeholder`, {path: field, code: 'placeholder', fix: 'Write the store text.'});
   }
   for (const key of Object.keys(defaultCopy)) if (!used.has(key)) warn(`${defaultLocale}/copy.json`, `"${key}" isn't used by any card`, {path: key, fix: 'Remove it, or fix the card\'s feature name.'});
 
