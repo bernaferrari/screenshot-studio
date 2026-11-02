@@ -8,7 +8,7 @@ From then on it is the app's own: edit it freely. `npx screenshot-studio themes`
 | `starter` | A plain light field. The smallest theme, for building your own. |
 | `aurora` | A dark field lit by soft lights in the accent, warm porcelain frames, bold rounded type (Google Sans Flex). |
 | `porcelain` | A peach-to-sky wash with glows and frosted tiles, navy type, one highlight color, white frames (Plus Jakarta Sans). |
-| `paper` | A warm ruled page with a margin rule and a running head, grotesque type, a highlighter (Schibsted Grotesk). |
+| `paper` | A warm ruled page with a running head, grotesque type, a highlighter (Schibsted Grotesk). |
 | `panels` | A rounded, softly lit panel per card, each a turn of the accent's hue, on graph paper (Bricolage Grotesque). |
 | `signal` | A bold field over a deeper block, huge type, key words on a highlighter (Archivo). |
 | `mono` | Near-black and white with one accent, graphite frames, nothing else; works light too (Geist). |
