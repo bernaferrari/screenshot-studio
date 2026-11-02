@@ -25,7 +25,7 @@ tweak lives in those files ([Setting up an app](setup.md)). Pick a starting look
   numbers, and at least one story with a visible change (a price drop, a signal dip and recovery). `.example`
   domains look fake; avoid them.
 - **Light mode by default.** Light screens read better on most canvases. Use dark only where it is the point.
-- **Script it.** Write only the scene tour: `store-listing/capture-emulator.py` on the studio's `Device`
+- **Script it.** Write only the scene tour: `store-listing/capture.tour.mjs`, a list of scenes
   ([Capturing](capture.md)). It sets display size and density for phone (1080×2340 @400–420), 7-inch
   (1200×1920 @320) and 10-inch (1920×1200 @240), System UI demo mode (9:41, full battery and Wi-Fi), gesture
   navigation and the app language, saves `<locale>/raw/<profile>/<name>.png` with a `.nodes.json` layout map, and
@@ -54,18 +54,16 @@ tweak lives in those files ([Setting up an app](setup.md)). Pick a starting look
   last week at the top.
 - **Seed, then relaunch.** View models that read once at start (totals, counts) miss data seeded after launch.
   Let the first start seed (write a marker file, poll it with `run-as`), force-stop, and start again.
-- **Endless animations block uiautomator.** A pulsing hero keeps the UI from going idle, so dumps hang. Open the
-  `Device` with `animations=False` (most apps then show their reduced-motion state); `shot(name, animated=True)`
-  lets the real motion run for one frame.
+- **Endless animations keep the screen moving.** A pulsing hero never settles, so reads and frames vary. Give the
+  tour `animations: false` (most apps then show their reduced-motion state); list a scene in `animated` to let the
+  real motion run for its frame.
 - **Match filter chips above the list.** A label like "Blocked" also appears in rows; restrict taps to the top
-  of the screen (`d.tap('Blocked', within=lambda b: b[1] < d.height * .25)`).
+  of the screen (`d.tap('Blocked', {within: b => b[1] < d.height * .25})`).
 - **Apps that show another computer** (remote desktops, companions) capture against a real host when one is
   available: open fictional content on it from a script kept in the repository, close every window and delete
   the content afterwards, and remove the emulator's pairing from the host. Dismiss the host's desktop
   notifications first and check every frame for names, paths and other people's devices (discovery lists show
   them; turn discovery off in the capture build). Native libraries must match the app's source revision.
-- **Pillow comes from uv.** `recapture` runs tours with `uv run --with pillow` when uv is installed; without it,
-  the system Python needs Pillow.
 - **Look at the 10-inch captures for layout bugs.** Width-limited columns can leave the window background
   bare (black side bars); fix the app, then recapture.
 

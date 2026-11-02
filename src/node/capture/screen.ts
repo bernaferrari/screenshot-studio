@@ -15,7 +15,7 @@ export function agentDevice(): Promise<AgentDeviceClient> {
 }
 
 /** The app's UI tree, without the system bars, each element with its path among its siblings. */
-export async function readTree(serial: string): Promise<{width: number; height: number; nodes: TreeNode[]}> {
+export async function readTree(serial: string): Promise<{width: number; height: number; nodes: TreeNode[]; dialog?: string}> {
   const device = await agentDevice();
   const snapshot = await device.capture.snapshot({platform: 'android', serial, raw: true});
   // What is on screen, as uiautomator lists it: no system bars, nothing the user can't see or that lies off the display.
@@ -42,7 +42,9 @@ export async function readTree(serial: string): Promise<{width: number; height: 
     visit(node.index, here);
   });
   visit(undefined, '');
-  return {width: snapshot.viewport?.width || 0, height: snapshot.viewport?.height || 0, nodes};
+  // A system dialog over the app (an app not responding, one that keeps stopping) would end up in the capture.
+  const dialog = snapshot.nodes.find((node: SnapshotNode) => node.bundleId === 'android' && /isn't responding|keeps stopping|has stopped/.test(node.label || ''))?.label;
+  return {width: snapshot.viewport?.width || 0, height: snapshot.viewport?.height || 0, nodes, ...(dialog && {dialog})};
 }
 
 /** Whether an element matches a label: its whole text, or its description unless textOnly. A string is a regular expression. */
@@ -71,6 +73,13 @@ export class TapMap {
     if (!recording && !text) throw new Error(`No tap map at ${file}: capture the default language first.`);
   }
 
+  /** The next numbered slot for a key: taps with the same key are numbered in order. */
+  private slot(key: string): string {
+    const n = this.seen.get(key) || 0;
+    this.seen.set(key, n + 1);
+    return `${key}#${n}`;
+  }
+
   resolve(key: string, nodes: TreeNode[], matches: (node: TreeNode) => boolean): TreeNode {
     const n = this.seen.get(key) || 0, slot = `${key}#${n}`;
     let node: TreeNode | undefined;
@@ -86,6 +95,16 @@ export class TapMap {
     }
     this.seen.set(key, n + 1);
     return node;
+  }
+
+  /** Record a value under a key (default language), e.g. how far a scroll went. */
+  put(key: string, value: string) { this.paths[this.slot(key)] = value; }
+
+  /** The value recorded under a key, replayed in another language. */
+  take(key: string): string {
+    const slot = this.slot(key), value = this.paths[slot];
+    if (value === undefined) throw new Error(`Nothing recorded for ${slot}: capture this scene in the default language first.`);
+    return value;
   }
 
   json(): string {

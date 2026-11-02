@@ -8,7 +8,7 @@ Made with [Screenshot Studio](https://github.com/bernaferrari/screenshot-studio)
 | Words, per language | `<locale>/copy.json`, `<locale>/listing.json` |
 | The look | `theme.css`, `theme.js` |
 | Image and capture sizes | `profiles.json` |
-| The capture tour | `capture-emulator.py` (build and runs: `studio.json` → `capture`) |
+| The capture tour | `capture.tour.mjs` (build and runs: `studio.json` → `capture`) |
 
 ```sh
 npx screenshot-studio studio --open     # the editor

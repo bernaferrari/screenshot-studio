@@ -39,7 +39,7 @@ store-listing/
   theme.css            the look: type, colors, where devices sit
   theme.js             optional code: background art and extra elements
   assets/              the theme's fonts, if it ships any
-  capture-emulator.py  the scene tour (capture-simulator.py on iOS; see Capturing)
+  capture.tour.mjs     the scene tour (capture-simulator.py on iOS; see Capturing)
   <locale>/copy.json   the words for each card
   <locale>/listing.json  the store text
   <locale>/raw/        captures, each with a .nodes.json layout map

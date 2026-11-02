@@ -112,11 +112,11 @@ export function createTools(defaultListing?: string): Tool[] {
     },
     {
       name: 'emulator_screen',
-      description: 'Look at the capture emulator: a screenshot and every element on screen with its label, ID and bounds; "tap" marks the tappable ones. Use it to write or fix a capture tour (store-listing/capture-emulator.py): each label is what d.tap("…") takes. Emulators only, never a phone.',
+      description: 'Look at the capture emulator: a screenshot and every labelled element with its bounds, read exactly as a capture tour reads it. Use it to write or fix the tour (store-listing/capture.tour.mjs): each label is what d.tap("…") takes. Emulators only, never a phone.',
       inputSchema: {type: 'object', properties: {serial: {type: 'string', description: 'The emulator (default: the capture emulator, emulator-5578).'}}},
       async call(args) {
         const {emulator, readScreen, formatScreen} = await import('./emulator');
-        const screen = readScreen(emulator(typeof args.serial === 'string' ? args.serial : undefined));
+        const screen = await readScreen(emulator(typeof args.serial === 'string' ? args.serial : undefined));
         return [await image(screen.png, 1400), text(formatScreen(screen))];
       },
     },
@@ -130,9 +130,9 @@ export function createTools(defaultListing?: string): Tool[] {
       async call(args) {
         const {emulator, readScreen, formatScreen, tapScreen} = await import('./emulator');
         const serial = emulator(typeof args.serial === 'string' ? args.serial : undefined);
-        const tapped = tapScreen(String(args.target), serial);
+        const tapped = await tapScreen(String(args.target), serial);
         await new Promise(resolve => setTimeout(resolve, 1200));
-        const screen = readScreen(serial);
+        const screen = await readScreen(serial);
         return [await image(screen.png, 1400), text(`tapped ${tapped}\n${formatScreen(screen)}`)];
       },
     },

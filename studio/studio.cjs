@@ -2335,7 +2335,7 @@ var init_emulator$1 = __esmMin((() => {
 		"animator_duration_scale"
 	];
 	DEMO$1 = "com.android.systemui.demo";
-	HELPERS = /com\.(google\.android\.(gms|gsf|apps\.(messaging|photos|wellbeing|youtube\.music|maps))|android\.vending|callstack\.agentdevice\..*)/;
+	HELPERS = /^(.*\.safetycore|.*contactkeys.*|.*\.verifier)$/;
 	sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 	Emulator = class {
 		serial;
@@ -2343,6 +2343,8 @@ var init_emulator$1 = __esmMin((() => {
 		height = 0;
 		density = 0;
 		theme = "light";
+		/** The battery level the status bar shows. */
+		battery = 100;
 		saved = /* @__PURE__ */ new Map();
 		clockSet = false;
 		constructor(serial) {
@@ -2404,13 +2406,34 @@ var init_emulator$1 = __esmMin((() => {
 			this.setting("global", "sysui_demo_allowed", "1");
 			for (const line of this.try("pm", "list", "packages").split(/\s+/)) {
 				const name = line.replace(/^package:/, "");
-				if (HELPERS.test(name) && !name.startsWith("com.callstack.agentdevice")) this.try("pm", "uninstall", "--user", "0", name);
+				if (HELPERS.test(name)) this.try("pm", "uninstall", "--user", "0", name);
 			}
+			this.snapshotHelper();
+			this.try("pkill", "-f", "uiautomator");
 			this.try("cmd", "notification", "snooze", "--for", "3600000", "all");
 			if (options.offline) {
 				this.try("svc", "wifi", "disable");
 				this.try("svc", "data", "disable");
 			}
+		}
+		/**
+		* agent-device reads the screen through a helper app. Its daemon remembers installing it, so when something else
+		* removed it (an older capture tool), it is installed again here from agent-device's own package.
+		*/
+		snapshotHelper() {
+			const pkg = "com.callstack.agentdevice.snapshothelper";
+			if (this.try("pm", "list", "instrumentation").includes(pkg)) return;
+			this.try("pm", "install-existing", "--user", "0", pkg);
+			if (this.try("pm", "list", "instrumentation").includes(pkg)) return;
+			for (let dir = __dirname; dir !== node_path.default.dirname(dir); dir = node_path.default.dirname(dir)) {
+				const dist = node_path.default.join(dir, "node_modules", "agent-device", "android", "snapshot-helper", "dist");
+				const apk = node_fs.default.existsSync(dist) && node_fs.default.readdirSync(dist).find((name) => name.endsWith(".apk"));
+				if (apk) {
+					this.adb("install", "-r", "-t", node_path.default.join(dist, apk));
+					return;
+				}
+			}
+			throw new Error(`agent-device's snapshot helper (${pkg}) is missing from the emulator and its APK was not found: reinstall screenshot-studio.`);
 		}
 		demo(command, extras = {}) {
 			this.try("am", "broadcast", "-a", DEMO$1, "--es", "command", command, ...Object.entries(extras).flatMap(([key, value]) => [
@@ -2420,7 +2443,7 @@ var init_emulator$1 = __esmMin((() => {
 			]));
 		}
 		/** Demo mode: 9:41, a full battery, full Wi-Fi, no mobile signal, SIM, airplane icon or notifications. */
-		statusBar(battery = 100) {
+		statusBar(battery = this.battery) {
 			this.demo("exit");
 			this.demo("enter");
 			this.demo("clock", { hhmm: "0941" });
@@ -2638,10 +2661,12 @@ async function readTree(serial) {
 		visit(node.index, here);
 	});
 	visit(void 0, "");
+	const dialog = snapshot.nodes.find((node) => node.bundleId === "android" && /isn't responding|keeps stopping|has stopped/.test(node.label || ""))?.label;
 	return {
 		width: snapshot.viewport?.width || 0,
 		height: snapshot.viewport?.height || 0,
-		nodes
+		nodes,
+		...dialog && { dialog }
 	};
 }
 /** Whether an element matches a label: its whole text, or its description unless textOnly. A string is a regular expression. */
@@ -2673,6 +2698,12 @@ var init_screen = __esmMin((() => {
 			this.paths = text ? JSON.parse(text) : {};
 			if (!recording && !text) throw new Error(`No tap map at ${file}: capture the default language first.`);
 		}
+		/** The next numbered slot for a key: taps with the same key are numbered in order. */
+		slot(key) {
+			const n = this.seen.get(key) || 0;
+			this.seen.set(key, n + 1);
+			return `${key}#${n}`;
+		}
 		resolve(key, nodes, matches) {
 			const n = this.seen.get(key) || 0, slot = `${key}#${n}`;
 			let node;
@@ -2688,6 +2719,16 @@ var init_screen = __esmMin((() => {
 			}
 			this.seen.set(key, n + 1);
 			return node;
+		}
+		/** Record a value under a key (default language), e.g. how far a scroll went. */
+		put(key, value) {
+			this.paths[this.slot(key)] = value;
+		}
+		/** The value recorded under a key, replayed in another language. */
+		take(key) {
+			const slot = this.slot(key), value = this.paths[slot];
+			if (value === void 0) throw new Error(`Nothing recorded for ${slot}: capture this scene in the default language first.`);
+			return value;
 		}
 		json() {
 			return JSON.stringify(Object.fromEntries(Object.entries(this.paths).sort(([a], [b]) => a.localeCompare(b))), null, 1) + "\n";
@@ -2716,6 +2757,7 @@ async function runTour(file, options) {
 	const problem = missingEmulator(options.serial);
 	if (problem) throw new Error(problem);
 	const emu = new Emulator(options.serial);
+	if (tour.battery !== void 0) emu.battery = tour.battery;
 	if (!emu.isEmulator()) throw new Error(`${options.serial} is not an emulator. Captures run only on emulators, never on a phone.`);
 	const appLocale = tour.appLocale !== false, offline = tour.offline !== false;
 	const recording = options.locale === defaultLocale;
@@ -2733,6 +2775,7 @@ async function runTour(file, options) {
 		theme: "light",
 		serial: options.serial,
 		options: options.options || {},
+		raw: node_path.default.join(options.listing, options.locale, "raw"),
 		async launch({ clear = false, wait = 4e3, activity = tour.activity, extras = {} } = {}) {
 			emu.shell("am", "force-stop", tour.app);
 			if (clear) {
@@ -2772,8 +2815,17 @@ async function runTour(file, options) {
 		async present(label, { textOnly = false } = {}) {
 			return (await readTree(options.serial)).nodes.some(matcher(label, textOnly));
 		},
-		async waitFor(label, { textOnly = false, timeout = 1e4 } = {}) {
-			for (const end = Date.now() + timeout; Date.now() < end; await sleep(500)) if (await d.present(label, { textOnly })) return;
+		async waitFor(label, { textOnly = false, timeout = 1e4, key } = {}) {
+			const slot = `${profile}|${d.theme}|wait ${key || (typeof label === "string" ? label : label.source)}`;
+			const path = taps && !taps.recording ? taps.take(slot) : void 0;
+			const matches = path ? (node) => node.path === path : matcher(label, textOnly);
+			for (const end = Date.now() + timeout; Date.now() < end; await sleep(500)) {
+				const node = (await readTree(options.serial)).nodes.find(matches);
+				if (node) {
+					if (taps?.recording) taps.put(slot, node.path);
+					return;
+				}
+			}
 			throw new Error(`"${label}" never appeared (${options.locale}, ${profile}, ${d.theme}).`);
 		},
 		async back(wait = 1200) {
@@ -2787,6 +2839,54 @@ async function runTour(file, options) {
 				wait
 			});
 		},
+		async drag(distance, wait = 1200) {
+			const start = Math.floor(d.height * .8);
+			await d.swipe(Math.floor(d.width / 2), start, Math.floor(d.width / 2), start - distance, {
+				duration: 1400,
+				wait
+			});
+		},
+		async scrollTo(label, top, { textOnly = false, attempts = 12, key } = {}) {
+			const slop = Math.round(8 * emu.density / 160), target = d.height * top;
+			let scrolled = 0;
+			const move = async (distance) => {
+				if (distance > 0) await d.drag(Math.min(Math.floor(distance), Math.floor(d.height * .55)) + slop);
+				else await d.swipe(d.width / 2, d.height * .3, d.width / 2, d.height * .3 - distance + slop, { duration: 1400 });
+				scrolled += distance > 0 ? Math.min(Math.floor(distance), Math.floor(d.height * .55)) : distance;
+			};
+			const align = async (matches, search) => {
+				let last;
+				for (let i = 0; i < attempts; i++) {
+					const node = (await readTree(options.serial)).nodes.find(matches);
+					if (!node) {
+						if (!search) return null;
+						await move(d.height * .5);
+						continue;
+					}
+					const y = node.b[1];
+					if (Math.abs(y - target) <= 8 || y === last) return node;
+					last = y;
+					await move(y - target);
+				}
+				return null;
+			};
+			const slot = `${profile}|${d.theme}|scroll ${key || (typeof label === "string" ? label : label.source)}`;
+			if (taps && !taps.recording) {
+				const [distance, path] = taps.take(slot).split(" ");
+				for (let left = Number(distance); Math.abs(left) > 8;) {
+					const step = left > 0 ? Math.min(left, Math.floor(d.height * .55)) : left;
+					await move(step);
+					left -= step;
+				}
+				await align((node) => node.path === path, false);
+				return;
+			}
+			const node = await align(matcher(label, textOnly), true);
+			if (!node) throw new Error(`Could not scroll to "${label}" (${options.locale}, ${profile}, ${d.theme}).`);
+			taps?.put(slot, `${scrolled} ${node.path}`);
+		},
+		appFiles: () => emu.try("run-as", tour.app, "ls", "files"),
+		topActivity: () => emu.try("dumpsys", "activity", "activities").split("topResumedActivity=").slice(1).join("").slice(0, 200),
 		async swipe(x1, y1, x2, y2, { duration = 300, wait = 1200 } = {}) {
 			emu.shell("input", "swipe", ...[
 				x1,
@@ -2803,24 +2903,42 @@ async function runTour(file, options) {
 		async night(on) {
 			await emu.night(on);
 			d.theme = emu.theme;
+			emu.statusBar();
 		},
 		async rotate(landscape) {
 			await emu.rotate(landscape);
 		},
+		async resize(width, height, density = emu.density) {
+			await emu.resize(width, height, density);
+			d.width = width;
+			d.height = height;
+		},
 		setClock(hhmm) {
 			emu.setClock(hhmm);
 		},
-		async shot(name, { settle = 1200 } = {}) {
+		async shot(name, { settle = 1200, animated = false, check } = {}) {
 			await sleep(settle);
 			const relative = node_path.default.posix.join(options.locale, "raw", profile, `${name}.png`);
-			if (options.only?.length && !options.only.includes(name)) return relative;
-			const png = emu.screenshot();
+			if (options.only?.length && !options.only.includes(name)) return null;
+			const tree = await readTree(options.serial);
+			if (tree.dialog) throw new Error(`${relative}: a system dialog is on screen: ${tree.dialog}`);
+			if (check && check(tree.nodes) === false) throw new Error(`${relative}: the screen failed its check`);
+			if (tour.check && tour.check(tree.nodes, d) === false) throw new Error(`${relative}: the screen failed the tour's check`);
+			if (animated) {
+				for (const key of SCALES) emu.setting("global", key, "1");
+				await sleep(4500);
+			}
+			let png;
+			try {
+				png = emu.screenshot();
+			} finally {
+				if (animated) for (const key of SCALES) emu.setting("global", key, "0");
+			}
 			const size = {
 				width: png.readUInt32BE(16),
 				height: png.readUInt32BE(20)
 			};
 			if (size.width !== d.width || size.height !== d.height) throw new Error(`${relative} came out ${size.width}×${size.height}, not the ${profile} size ${d.width}×${d.height}: the display did not take the profile's size.`);
-			const tree = await readTree(options.serial);
 			const target = node_path.default.join(options.listing, relative);
 			node_fs.default.mkdirSync(node_path.default.dirname(target), { recursive: true });
 			node_fs.default.writeFileSync(target, png);
@@ -2853,6 +2971,7 @@ async function runTour(file, options) {
 			offline,
 			animations: tour.animations !== false
 		});
+		if (tour.install) emu.install(node_path.default.resolve(options.listing, tour.install), tour.app);
 		if (appLocale) emu.appLocale(tour.app, options.locale);
 		await step(tour.setup);
 		for (const [name, p] of sizes) {
@@ -2864,22 +2983,30 @@ async function runTour(file, options) {
 				await step(tour.run);
 				continue;
 			}
+			const scenesHere = tour.profiles?.[name] || tour.scenes;
 			for (const theme of ["light", "dark"]) {
-				const scenes = tour.scenes[theme];
+				const scenes = scenesHere[theme];
 				if (!scenes) continue;
 				await d.night(theme === "dark");
-				emu.statusBar();
 				await (tour.start ? step(tour.start) : d.launch({ clear: true }));
-				for (const [scene, reach] of Object.entries(scenes)) if (await step(reach) !== false) await d.shot(scene, { settle: tour.settle });
+				for (const [scene, reach] of Object.entries(scenes)) if (await step(reach) !== false) await d.shot(scene, {
+					settle: tour.settle,
+					animated: tour.animated?.includes(scene)
+				});
 			}
 		}
-		await step(tour.teardown);
 	} finally {
+		try {
+			await step(tour.teardown);
+		} catch (error) {
+			log(`teardown: ${error.message}`);
+		}
 		if (taps?.recording) node_fs.default.writeFileSync(mapFile, taps.json());
 		for (const failure of emu.restore({
 			pkg: tour.app,
 			appLocale,
-			offline
+			offline,
+			uninstall: tour.uninstall
 		})) log(`cleanup: ${failure}`);
 	}
 	return written;
@@ -3011,29 +3138,30 @@ var init_ios = __esmMin((() => {
 }));
 // src/node/recapture.ts
 /**
-* Rebuild the capture app, capture on the emulator, and export, as studio.json's "capture" block says:
-*   node store-listing/studio/recapture.cjs [locale…] [--profile phone] [--boot] [--no-build] [--no-capture] [--no-export] [--dry-run]
+* Rebuild the capture app, capture on the emulator or simulator, and export, as studio.json's "capture" block says:
+*   npx screenshot-studio recapture [locale…] [--profile phone] [--boot] [--no-build] [--no-capture] [--no-export] [--dry-run]
 * Without locales every locale in studio.json is exported, and captured where a run asks for it.
 *
 *   "capture": {
 *     "build": "./gradlew :app:assembleStoreCapture",               shell command, run from the repository
 *     "install": [{"apk": "app/build/…/app-storeCapture.apk", "package": "com.example.storecapture"}],
-*     "runs": [{"script": "store-listing/capture-emulator.py",      (the default)
-*               "args": ["--theme", "dark"],                         ${NAME} reads an environment variable
-*               "profiles": ["phone", "tablet7"],                    default: every capture profile; false: no --profile
+*     "runs": [{"options": {"theme": "dark"},                        the tour's d.options; ${NAME} reads an environment variable
+*               "profiles": ["phone", "tablet7"],                    default: every capture profile
 *               "locales": "default"}],                              "all" (default), "default" or a list
 *     "retries": 2,                                                  per capture run
 *     "serial": "emulator-5578",                                     the capture emulator (or CAPTURE_SERIAL)
 *     "avd": "Pixel_9_API_36",                                       what --boot starts when it isn't running
 *     "platform": "ios",                                             capture on iOS simulators instead (below)
-*     "simulator": "iPhone 17 Pro Max",                              iOS: for profiles that name no "simulator"
-*     "export": "cd store-listing && node render.mjs --locale {locale}",  instead of studio/export.cjs, per locale
-*     "after": ["python3 store-listing/prepare.py"]                  shell commands once everything is exported
+*     "simulator": "iPhone 17 Pro Max",                              iOS: for profiles that name none
+*     "export": "cd store-listing && node render.mjs --locale {locale}",  instead of the studio's export, per locale
+*     "after": ["node scripts/refresh-readme.mjs"]                   shell commands once everything is exported
 *   }
 *
-* Each run is `python3 <script> --serial <emulator> --locale <locale> [--profile <profile>] <args>`, through
-* `uv run --with pillow` when uv is installed. The default locale goes first, since it records the tap map
-* other locales replay. --boot starts the capture emulator headless when it isn't running and waits for it.
+* Android runs store-listing/capture.tour.mjs in the studio itself (capture/tour.ts), per run and locale. The default
+* locale goes first, since it records the tap map other locales replay. A listing still on a Python tour
+* (capture-emulator.py, a run's "script") runs `python3 <script> --serial <emulator> --locale <locale> [--profile
+* <profile>] <args>`, through `uv run --with pillow` when uv is installed, until those go away. --boot starts the
+* capture emulator headless when it isn't running and waits for it.
 *
 * iOS ("platform": "ios"): install entries are {"app": "build/…/App.app", "package": "<bundle ID>"}, the default
 * script is store-listing/capture-simulator.py, the capture profiles are profiles.json's "platform": "ios" ones with
@@ -3060,7 +3188,7 @@ function tourEnvironment(listing) {
 }
 /** Whether the emulator is attached and has finished booting. */
 function booted(serial) {
-	return adb$1(serial, "shell", "getprop", "sys.boot_completed").stdout?.trim() === "1";
+	return adb(serial, "shell", "getprop", "sys.boot_completed").stdout?.trim() === "1";
 }
 /** Why the capture emulator can't be used and the ways forward, or null when it has booted. */
 function missingEmulator(serial) {
@@ -3119,7 +3247,7 @@ async function bootEmulator(serial, avd, log) {
 			"night",
 			"no"
 		]
-	]) adb$1(serial, "shell", ...args);
+	]) adb(serial, "shell", ...args);
 	log(`${serial} is ready.`);
 }
 async function recapture(options = {}) {
@@ -3164,7 +3292,7 @@ async function recapture(options = {}) {
 			ANDROID_SERIAL: serial
 		};
 		const expand = (word) => String(word).replace(/\$\{(\w+)\}/g, (_, name) => {
-			if (env[name] === void 0) throw new Error(`Set ${name} for this capture (studio.json capture args use it)`);
+			if (env[name] === void 0) throw new Error(`Set ${name} for this capture (studio.json capture args or options use it)`);
 			return env[name];
 		});
 		const run = (command, args = [], { shell = false, check = true } = {}) => {
@@ -3233,7 +3361,7 @@ async function recapture(options = {}) {
 						locale,
 						profiles: runProfiles,
 						serial,
-						options: spec.options,
+						options: Object.fromEntries(Object.entries(spec.options || {}).map(([key, value]) => [key, typeof value === "string" ? expand(value) : value])),
 						log
 					});
 					break;
@@ -3322,7 +3450,7 @@ async function run$8(argv) {
 	if (result.error) console.error(result.error);
 	return result.ok ? 0 : 1;
 }
-var DEFAULT_SERIAL, sdkRoot, has, adb$1;
+var DEFAULT_SERIAL, sdkRoot, has, adb;
 var init_recapture = __esmMin((() => {
 	init_emulator$1();
 	init_tour();
@@ -3332,7 +3460,7 @@ var init_recapture = __esmMin((() => {
 	DEFAULT_SERIAL = "emulator-5578";
 	sdkRoot = () => process.env.ANDROID_HOME || process.env.ANDROID_SDK_ROOT || [node_path.default.join(node_os.default.homedir(), "Library/Android/sdk"), node_path.default.join(node_os.default.homedir(), "Android/Sdk")].find((dir) => node_fs.default.existsSync(dir)) || "";
 	has = (command) => (0, node_child_process.spawnSync)("sh", ["-c", `command -v ${command}`], { stdio: "ignore" }).status === 0;
-	adb$1 = (serial, ...args) => (0, node_child_process.spawnSync)("adb", [
+	adb = (serial, ...args) => (0, node_child_process.spawnSync)("adb", [
 		"-s",
 		serial,
 		...args
@@ -3800,7 +3928,7 @@ function init(options = {}) {
 		template("profiles.json");
 		template("gallery.json");
 		template("en-US/copy.json");
-		if (pkg && !ios) template("capture-emulator.py");
+		if (pkg && !ios) template("capture.tour.mjs");
 		result.cards = ios ? 5 : 4;
 	}
 	if (ios) template("capture-simulator.py");
@@ -3873,7 +4001,7 @@ async function run$7(argv) {
 		const cd = where === "." ? "" : `cd ${where} && `;
 		console.log(`\nReady: ${result.cards} card(s) with the ${result.theme} theme.\n`);
 		const others = result.locales.slice(1);
-		console.log(option("screenshots") || result.cards ? `Next:\n  1. Write the headlines in store-listing/${result.locales[0]}/copy.json (one per card, *highlight* a key word)${others.length ? `\n  2. Translate them into the empty fields of ${others.map((l) => `${l}/copy.json`).join(", ")}` : ""}\n  ${others.length ? 3 : 2}. ${cd}npx screenshot-studio check, then export (or studio --open for the editor)` : option("platform") === "ios" ? `Next:\n  1. Make the app's Debug build open each screen from a launch argument (-screenshotScene) with sample data (docs/capture.md, iOS)\n  2. Write the tour in store-listing/capture-simulator.py; check capture.build in studio.json\n  3. ${cd}npx screenshot-studio recapture --boot` : `Next:\n  1. Add a capture build that fills the app with sample data (docs/playbook.md, section 1)\n  2. Write the tour in store-listing/capture-emulator.py\n  3. ${cd}npx screenshot-studio recapture --boot`);
+		console.log(option("screenshots") || result.cards ? `Next:\n  1. Write the headlines in store-listing/${result.locales[0]}/copy.json (one per card, *highlight* a key word)${others.length ? `\n  2. Translate them into the empty fields of ${others.map((l) => `${l}/copy.json`).join(", ")}` : ""}\n  ${others.length ? 3 : 2}. ${cd}npx screenshot-studio check, then export (or studio --open for the editor)` : option("platform") === "ios" ? `Next:\n  1. Make the app's Debug build open each screen from a launch argument (-screenshotScene) with sample data (docs/capture.md, iOS)\n  2. Write the tour in store-listing/capture-simulator.py; check capture.build in studio.json\n  3. ${cd}npx screenshot-studio recapture --boot` : `Next:\n  1. Add a capture build that fills the app with sample data (docs/playbook.md, section 1)\n  2. Write the tour in store-listing/capture.tour.mjs (npx screenshot-studio screen shows what to tap)\n  3. ${cd}npx screenshot-studio recapture --boot`);
 		return 0;
 	} catch (error) {
 		console.error(error.message);
@@ -3985,74 +4113,11 @@ var init_demo = __esmMin((() => {
 	init_init();
 	DEMO = node_path.default.resolve(__dirname, "..", "templates", "demo");
 }));
-// src/node/icon/xml.ts
-/** The attributes of one tag's markup, e.g. `<svg viewBox="0 0 108 108">`. */
-function attributes(markup) {
-	const found = {};
-	for (const [, name, double, single] of markup.matchAll(ATTRIBUTE)) found[name] = decode$1(double ?? single);
-	return found;
-}
-/** The document's root element. Throws on markup that doesn't nest. */
-function parseXml(text) {
-	const top = {
-		name: "",
-		attributes: {},
-		children: []
-	};
-	const open = [top];
-	const line = (at) => text.slice(0, at).split("\n").length;
-	for (let at = text.indexOf("<"); at >= 0; at = text.indexOf("<", MARKUP.lastIndex)) {
-		MARKUP.lastIndex = at;
-		const match = MARKUP.exec(text);
-		if (!match) throw new Error(`unreadable markup on line ${line(at)}`);
-		const [, closing, name, attrs, empty] = match;
-		const parent = open[open.length - 1];
-		if (closing) {
-			if (closing !== parent.name) throw new Error(`</${closing}> on line ${line(at)} closes <${parent.name || "nothing"}>`);
-			open.pop();
-		} else if (name) {
-			const element = {
-				name,
-				attributes: attributes(attrs),
-				children: []
-			};
-			parent.children.push(element);
-			if (!empty) open.push(element);
-		}
-	}
-	if (open.length > 1) throw new Error(`<${open[open.length - 1].name}> is never closed`);
-	if (!top.children.length) throw new Error("no elements");
-	return top.children[0];
-}
-/** The first element named `name`, depth first, from `element` itself down. */
-function findElement(element, name) {
-	if (element.name === name) return element;
-	for (const child of element.children) {
-		const found = findElement(child, name);
-		if (found) return found;
-	}
-}
-var ENTITIES, MARKUP, ATTRIBUTE, decode$1, escapeAttribute;
-var init_xml = __esmMin((() => {
-	ENTITIES = {
-		amp: "&",
-		lt: "<",
-		gt: ">",
-		quot: "\"",
-		apos: "'"
-	};
-	MARKUP = /<!--[\s\S]*?-->|<!\[CDATA\[[\s\S]*?\]\]>|<[?!][^>]*>|<\/([\w:.-]+)\s*>|<([\w:.-]+)((?:\s+[\w:.-]+\s*=\s*(?:"[^"]*"|'[^']*'))*)\s*(\/?)>/y;
-	ATTRIBUTE = /([\w:.-]+)\s*=\s*(?:"([^"]*)"|'([^']*)')/g;
-	decode$1 = (value) => value.replace(/&(#x[0-9a-f]+|#\d+|\w+);/gi, (entity, code) => {
-		if (code[0] !== "#") return ENTITIES[code] ?? entity;
-		return String.fromCodePoint(code[1] === "x" || code[1] === "X" ? parseInt(code.slice(2), 16) : parseInt(code.slice(1), 10));
-	});
-	escapeAttribute = (value) => value.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/"/g, "&quot;");
-}));
 // src/node/emulator.ts
 /**
 * The capture emulator as an agent sees it, for writing a capture tour: what is on screen (a screenshot and every
-* element with its label, ID and bounds) and a way to move around (tap by label or point, back).
+* labelled element with its bounds), read through agent-device exactly as a tour reads it, and a way to move around
+* (tap by label or point, back).
 *   npx screenshot-studio screen [--serial emulator-5578] [--out screen.png] [--json]
 *   npx screenshot-studio screen --tap "Settings" | --tap 540,1200 | --back
 * Emulators only: a phone is refused.
@@ -4068,122 +4133,54 @@ var emulator_exports = /* @__PURE__ */ __exportAll({
 function emulator(serial = process.env.CAPTURE_SERIAL || "emulator-5578") {
 	const problem = missingEmulator(serial);
 	if (problem) throw new Error(problem);
-	if (!(String(adb(serial, [
-		"shell",
-		"getprop",
-		"ro.kernel.qemu"
-	])) + String(adb(serial, [
-		"shell",
-		"getprop",
-		"ro.boot.qemu"
-	]))).includes("1")) throw new Error(`${serial} is not an emulator. The studio only drives emulators, never a phone.`);
+	if (!new Emulator(serial).isEmulator()) throw new Error(`${serial} is not an emulator. The studio only drives emulators, never a phone.`);
 	return serial;
 }
-/** A screenshot and every labelled or tappable element on screen, top to bottom. */
-function readScreen(serial = emulator()) {
-	const raw = adb(serial, [
-		"exec-out",
-		"screencap",
-		"-p"
-	], true);
-	const start = raw.indexOf(Buffer.from([
-		137,
-		80,
-		78,
-		71
-	]));
-	if (start < 0) throw new Error(`${serial} sent no screenshot: ${raw.subarray(0, 200).toString()}`);
-	const png = raw.subarray(start);
-	adb(serial, [
-		"shell",
-		"uiautomator",
-		"dump",
-		"/sdcard/window.xml"
-	]);
-	const xml = String(adb(serial, [
-		"exec-out",
-		"cat",
-		"/sdcard/window.xml"
-	]));
-	const elements = [];
-	const walk = (node) => {
-		const a = node.attributes;
-		if (node.name === "node") {
-			const text = decode(a.text || "").trim(), description = decode(a["content-desc"] || "").trim();
-			const id = /obfuscated/.test(a["resource-id"] || "") ? "" : a["resource-id"] || "";
-			const clickable = a.clickable === "true" || a["long-clickable"] === "true";
-			const b = (a.bounds || "").match(/\d+/g)?.map(Number);
-			if (b?.length === 4 && b[2] > b[0] && b[3] > b[1] && (text || description || clickable && id)) elements.push({
-				label: text || description || id.replace(/^.*:id\//, ""),
-				...text && { text },
-				...description && { description },
-				...id && { id },
-				class: (a.class || "").split(".").pop() || "",
-				clickable,
-				bounds: b
-			});
-		}
-		node.children.forEach(walk);
-	};
-	walk(parseXml(xml));
-	elements.sort((p, q) => p.bounds[1] - q.bounds[1] || p.bounds[0] - q.bounds[0]);
+/** A screenshot and every labelled element on screen, top to bottom. */
+async function readScreen(serial = emulator()) {
+	const tree = await readTree(serial);
+	const png = new Emulator(serial).screenshot();
+	const elements = tree.nodes.filter((node) => node.text || node.desc || node.id).map(element).sort((p, q) => p.bounds[1] - q.bounds[1] || p.bounds[0] - q.bounds[0]);
 	return {
 		serial,
 		width: png.readUInt32BE(16),
 		height: png.readUInt32BE(20),
 		png,
-		elements
+		elements,
+		...tree.dialog && { dialog: tree.dialog }
 	};
 }
-/** The elements as lines an agent can act on: tappable ones with the tour call that taps them. */
+/** The elements as lines an agent can act on, each with the label a tour taps it by. */
 function formatScreen(screen) {
 	const lines = screen.elements.map((e) => {
 		const [l, t, r, b] = e.bounds;
-		const extra = [e.text && e.description && e.description !== e.text ? `desc "${e.description}"` : "", e.id ? `id ${e.id.replace(/^.*:id\//, "")}` : ""].filter(Boolean).join(", ");
-		return `${e.clickable ? "tap " : "    "} "${e.label.replace(/\n/g, " ")}"  ${e.class} at ${l},${t} ${r - l}×${b - t}${extra ? `  (${extra})` : ""}`;
+		const extra = [e.text && e.description && e.description !== e.text ? `desc "${e.description}"` : "", e.id && e.id !== e.label ? `id ${e.id}` : ""].filter(Boolean).join(", ");
+		return `"${e.label.replace(/\n/g, " ")}"  ${e.class} at ${l},${t} ${r - l}×${b - t}${extra ? `  (${extra})` : ""}`;
 	});
-	return [`${screen.serial}, ${screen.width}×${screen.height}. "tap" lines are tappable: in a tour, d.tap("label"); here, screen --tap "label".`, ...lines].join("\n");
+	return [
+		`${screen.serial}, ${screen.width}×${screen.height}. In a tour, d.tap("label") taps one (a regular expression matched whole); here, screen --tap "label".`,
+		...screen.dialog ? [`A system dialog is on screen: ${screen.dialog}`] : [],
+		...lines
+	].join("\n");
 }
-/** Tap an element by its label (exact, then containing) or a point "x,y"; or press back. Returns the element tapped. */
-function tapScreen(target, serial = emulator()) {
+/** Tap an element by its label (whole, then containing, case-insensitive) or a point "x,y"; or press back. */
+async function tapScreen(target, serial = emulator()) {
+	const emu = new Emulator(serial);
 	if (target === "back") {
-		adb(serial, [
-			"shell",
-			"input",
-			"keyevent",
-			"KEYCODE_BACK"
-		]);
+		emu.shell("input", "keyevent", "KEYCODE_BACK");
 		return "back";
 	}
 	const point = target.match(/^(\d+)\s*,\s*(\d+)$/);
 	if (point) {
-		adb(serial, [
-			"shell",
-			"input",
-			"tap",
-			point[1],
-			point[2]
-		]);
+		emu.shell("input", "tap", point[1], point[2]);
 		return `${point[1]},${point[2]}`;
 	}
-	const { elements } = readScreen(serial);
-	const wanted = target.toLowerCase();
-	const matches = [...elements.filter((e) => [
-		e.text,
-		e.description,
-		e.id?.replace(/^.*:id\//, "")
-	].some((v) => v?.toLowerCase() === wanted)), ...elements.filter((e) => e.label.toLowerCase().includes(wanted))];
-	const hit = matches.find((e) => e.clickable) || matches[0];
+	const { nodes } = await readTree(serial);
+	const escaped = target.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+	const hit = nodes.find(matcher(new RegExp(escaped, "i"))) || nodes.find(matcher(new RegExp(`.*${escaped}.*`, "i"))) || nodes.find((node) => node.id === target);
 	if (!hit) throw new Error(`Nothing on screen is labelled "${target}". Run \`npx screenshot-studio screen\` to see the labels.`);
-	const [l, t, r, b] = hit.bounds;
-	adb(serial, [
-		"shell",
-		"input",
-		"tap",
-		String(Math.round((l + r) / 2)),
-		String(Math.round((t + b) / 2))
-	]);
-	return hit.label;
+	await tapNode(serial, hit);
+	return hit.text || hit.desc || hit.id || hit.path;
 }
 /** `screen [--serial s] [--out file.png] [--json] [--tap label | --tap x,y | --back]` */
 async function run$5(argv) {
@@ -4195,10 +4192,10 @@ async function run$5(argv) {
 		const serial = emulator(option("serial"));
 		const tap = argv.includes("--back") ? "back" : option("tap");
 		if (tap) {
-			console.log(`tapped ${tapScreen(tap, serial)}`);
-			await new Promise((resolve) => setTimeout(resolve, 1200));
+			console.log(`tapped ${await tapScreen(tap, serial)}`);
+			await sleep(1200);
 		}
-		const screen = readScreen(serial);
+		const screen = await readScreen(serial);
 		const out = node_path.default.resolve(option("out") || "screen.png");
 		node_fs.default.writeFileSync(out, screen.png);
 		if (argv.includes("--json")) console.log(JSON.stringify({
@@ -4206,6 +4203,7 @@ async function run$5(argv) {
 			width: screen.width,
 			height: screen.height,
 			image: out,
+			...screen.dialog && { dialog: screen.dialog },
 			elements: screen.elements
 		}, null, 2));
 		else console.log(`${formatScreen(screen)}\nscreenshot: ${node_path.default.relative(process.cwd(), out) || out}`);
@@ -4215,23 +4213,20 @@ async function run$5(argv) {
 		return 1;
 	}
 }
-var adb, decode;
+var element;
 var init_emulator = __esmMin((() => {
-	init_xml();
 	init_recapture();
-	adb = (serial, args, binary = false) => {
-		const run = (0, node_child_process.spawnSync)("adb", [
-			"-s",
-			serial,
-			...args
-		], {
-			encoding: binary ? "buffer" : "utf8",
-			maxBuffer: 67108864
-		});
-		if (run.status !== 0) throw new Error(`adb ${args.join(" ")} failed: ${String(run.stderr).trim()}`);
-		return run.stdout;
-	};
-	decode = (text) => text.replace(/&quot;/g, "\"").replace(/&apos;/g, "'").replace(/&lt;/g, "<").replace(/&gt;/g, ">").replace(/&#10;/g, "\n").replace(/&amp;/g, "&");
+	init_emulator$1();
+	init_screen();
+	element = (node) => ({
+		label: node.text || node.desc || node.id,
+		...node.text && { text: node.text },
+		...node.desc && { description: node.desc },
+		...node.id && { id: node.id },
+		class: (node.cls || "").split(".").pop() || "",
+		bounds: node.b,
+		path: node.path
+	});
 }));
 // src/node/locales.ts
 /**
@@ -4396,6 +4391,70 @@ var init_compose = __esmMin((() => {
 	canvas = (inner) => `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 108 108">${inner}</svg>`;
 	visible = (inner) => `<svg xmlns="http://www.w3.org/2000/svg" viewBox="18 18 72 72">${inner}</svg>\n`;
 	dataUri = (svg) => `data:image/svg+xml;base64,${Buffer.from(svg).toString("base64")}`;
+}));
+// src/node/icon/xml.ts
+/** The attributes of one tag's markup, e.g. `<svg viewBox="0 0 108 108">`. */
+function attributes(markup) {
+	const found = {};
+	for (const [, name, double, single] of markup.matchAll(ATTRIBUTE)) found[name] = decode(double ?? single);
+	return found;
+}
+/** The document's root element. Throws on markup that doesn't nest. */
+function parseXml(text) {
+	const top = {
+		name: "",
+		attributes: {},
+		children: []
+	};
+	const open = [top];
+	const line = (at) => text.slice(0, at).split("\n").length;
+	for (let at = text.indexOf("<"); at >= 0; at = text.indexOf("<", MARKUP.lastIndex)) {
+		MARKUP.lastIndex = at;
+		const match = MARKUP.exec(text);
+		if (!match) throw new Error(`unreadable markup on line ${line(at)}`);
+		const [, closing, name, attrs, empty] = match;
+		const parent = open[open.length - 1];
+		if (closing) {
+			if (closing !== parent.name) throw new Error(`</${closing}> on line ${line(at)} closes <${parent.name || "nothing"}>`);
+			open.pop();
+		} else if (name) {
+			const element = {
+				name,
+				attributes: attributes(attrs),
+				children: []
+			};
+			parent.children.push(element);
+			if (!empty) open.push(element);
+		}
+	}
+	if (open.length > 1) throw new Error(`<${open[open.length - 1].name}> is never closed`);
+	if (!top.children.length) throw new Error("no elements");
+	return top.children[0];
+}
+/** The first element named `name`, depth first, from `element` itself down. */
+function findElement(element, name) {
+	if (element.name === name) return element;
+	for (const child of element.children) {
+		const found = findElement(child, name);
+		if (found) return found;
+	}
+}
+var ENTITIES, MARKUP, ATTRIBUTE, decode, escapeAttribute;
+var init_xml = __esmMin((() => {
+	ENTITIES = {
+		amp: "&",
+		lt: "<",
+		gt: ">",
+		quot: "\"",
+		apos: "'"
+	};
+	MARKUP = /<!--[\s\S]*?-->|<!\[CDATA\[[\s\S]*?\]\]>|<[?!][^>]*>|<\/([\w:.-]+)\s*>|<([\w:.-]+)((?:\s+[\w:.-]+\s*=\s*(?:"[^"]*"|'[^']*'))*)\s*(\/?)>/y;
+	ATTRIBUTE = /([\w:.-]+)\s*=\s*(?:"([^"]*)"|'([^']*)')/g;
+	decode = (value) => value.replace(/&(#x[0-9a-f]+|#\d+|\w+);/gi, (entity, code) => {
+		if (code[0] !== "#") return ENTITIES[code] ?? entity;
+		return String.fromCodePoint(code[1] === "x" || code[1] === "X" ? parseInt(code.slice(2), 16) : parseInt(code.slice(1), 10));
+	});
+	escapeAttribute = (value) => value.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/"/g, "&quot;");
 }));
 // src/node/icon/layers.ts
 /** The SVG layers an icon is drawn from, in store-listing/brand/ or a variant folder inside it. */
@@ -5273,7 +5332,7 @@ function createTools(defaultListing) {
 		},
 		{
 			name: "emulator_screen",
-			description: "Look at the capture emulator: a screenshot and every element on screen with its label, ID and bounds; \"tap\" marks the tappable ones. Use it to write or fix a capture tour (store-listing/capture-emulator.py): each label is what d.tap(\"…\") takes. Emulators only, never a phone.",
+			description: "Look at the capture emulator: a screenshot and every labelled element with its bounds, read exactly as a capture tour reads it. Use it to write or fix the tour (store-listing/capture.tour.mjs): each label is what d.tap(\"…\") takes. Emulators only, never a phone.",
 			inputSchema: {
 				type: "object",
 				properties: { serial: {
@@ -5283,7 +5342,7 @@ function createTools(defaultListing) {
 			},
 			async call(args) {
 				const { emulator, readScreen, formatScreen } = await Promise.resolve().then(() => (init_emulator(), emulator_exports));
-				const screen = readScreen(emulator(typeof args.serial === "string" ? args.serial : void 0));
+				const screen = await readScreen(emulator(typeof args.serial === "string" ? args.serial : void 0));
 				return [await image(screen.png, 1400), text(formatScreen(screen))];
 			}
 		},
@@ -5307,9 +5366,9 @@ function createTools(defaultListing) {
 			async call(args) {
 				const { emulator, readScreen, formatScreen, tapScreen } = await Promise.resolve().then(() => (init_emulator(), emulator_exports));
 				const serial = emulator(typeof args.serial === "string" ? args.serial : void 0);
-				const tapped = tapScreen(String(args.target), serial);
+				const tapped = await tapScreen(String(args.target), serial);
 				await new Promise((resolve) => setTimeout(resolve, 1200));
-				const screen = readScreen(serial);
+				const screen = await readScreen(serial);
 				return [await image(screen.png, 1400), text(`tapped ${tapped}\n${formatScreen(screen)}`)];
 			}
 		}
@@ -5653,7 +5712,7 @@ const COMMANDS = {
 	},
 	tour: {
 		summary: "Run the capture tour by hand: one language, on the capture emulator",
-		usage: "tour [--locale en-US] [--profile phone,tablet7] [--only 01-home,02-log] [--serial emulator-5578]",
+		usage: "tour [--locale en-US] [--profile phone,tablet7] [--only 01-home,02-log] [--serial emulator-5578] [--<option> value…]",
 		run: async (argv) => {
 			const option = (name) => {
 				const i = argv.indexOf(`--${name}`);
@@ -5666,13 +5725,26 @@ const COMMANDS = {
 				const { runTour } = await Promise.resolve().then(() => (init_tour(), tour_exports));
 				const { DEFAULT_SERIAL } = await Promise.resolve().then(() => (init_recapture(), recapture_exports));
 				const list = (name) => option(name)?.split(",").map((s) => s.trim()).filter(Boolean);
+				const options = {};
+				for (let i = 0; i < argv.length; i++) {
+					const name = argv[i].match(/^--(.+)$/)?.[1];
+					if (!name) continue;
+					const value = argv[i + 1] !== void 0 && !argv[i + 1].startsWith("--") ? argv[++i] : true;
+					if (![
+						"locale",
+						"profile",
+						"only",
+						"serial"
+					].includes(name)) options[name.replace(/-(\w)/g, (_, c) => c.toUpperCase())] = value;
+				}
 				try {
 					const written = await runTour(tourFile, {
 						listing,
 						locale: option("locale") || loadListing(listing).defaultLocale,
 						profiles: list("profile"),
 						only: list("only"),
-						serial: option("serial") || process.env.CAPTURE_SERIAL || DEFAULT_SERIAL
+						serial: option("serial") || process.env.CAPTURE_SERIAL || DEFAULT_SERIAL,
+						options
 					});
 					console.log(`${written.length} capture(s) written`);
 					return 0;

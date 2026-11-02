@@ -271,7 +271,7 @@ export function init(options: InitOptions = {}): InitResult {
     template('profiles.json');
     template('gallery.json');
     template('en-US/copy.json');
-    if (pkg && !ios) template('capture-emulator.py');
+    if (pkg && !ios) template('capture.tour.mjs');
     result.cards = ios ? 5 : 4;
   }
   if (ios) template('capture-simulator.py');
@@ -327,7 +327,7 @@ export async function run(argv: string[]): Promise<number> {
       ? `Next:\n  1. Write the headlines in store-listing/${result.locales[0]}/copy.json (one per card, *highlight* a key word)${others.length ? `\n  2. Translate them into the empty fields of ${others.map(l => `${l}/copy.json`).join(', ')}` : ''}\n  ${others.length ? 3 : 2}. ${cd}npx screenshot-studio check, then export (or studio --open for the editor)`
       : option('platform') === 'ios'
         ? `Next:\n  1. Make the app's Debug build open each screen from a launch argument (-screenshotScene) with sample data (docs/capture.md, iOS)\n  2. Write the tour in store-listing/capture-simulator.py; check capture.build in studio.json\n  3. ${cd}npx screenshot-studio recapture --boot`
-        : `Next:\n  1. Add a capture build that fills the app with sample data (docs/playbook.md, section 1)\n  2. Write the tour in store-listing/capture-emulator.py\n  3. ${cd}npx screenshot-studio recapture --boot`);
+        : `Next:\n  1. Add a capture build that fills the app with sample data (docs/playbook.md, section 1)\n  2. Write the tour in store-listing/capture.tour.mjs (npx screenshot-studio screen shows what to tap)\n  3. ${cd}npx screenshot-studio recapture --boot`);
     return 0;
   } catch (error) { console.error((error as Error).message); return 1; }
 }

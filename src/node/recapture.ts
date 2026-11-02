@@ -1,27 +1,28 @@
 /**
- * Rebuild the capture app, capture on the emulator, and export, as studio.json's "capture" block says:
- *   node store-listing/studio/recapture.cjs [locale…] [--profile phone] [--boot] [--no-build] [--no-capture] [--no-export] [--dry-run]
+ * Rebuild the capture app, capture on the emulator or simulator, and export, as studio.json's "capture" block says:
+ *   npx screenshot-studio recapture [locale…] [--profile phone] [--boot] [--no-build] [--no-capture] [--no-export] [--dry-run]
  * Without locales every locale in studio.json is exported, and captured where a run asks for it.
  *
  *   "capture": {
  *     "build": "./gradlew :app:assembleStoreCapture",               shell command, run from the repository
  *     "install": [{"apk": "app/build/…/app-storeCapture.apk", "package": "com.example.storecapture"}],
- *     "runs": [{"script": "store-listing/capture-emulator.py",      (the default)
- *               "args": ["--theme", "dark"],                         ${NAME} reads an environment variable
- *               "profiles": ["phone", "tablet7"],                    default: every capture profile; false: no --profile
+ *     "runs": [{"options": {"theme": "dark"},                        the tour's d.options; ${NAME} reads an environment variable
+ *               "profiles": ["phone", "tablet7"],                    default: every capture profile
  *               "locales": "default"}],                              "all" (default), "default" or a list
  *     "retries": 2,                                                  per capture run
  *     "serial": "emulator-5578",                                     the capture emulator (or CAPTURE_SERIAL)
  *     "avd": "Pixel_9_API_36",                                       what --boot starts when it isn't running
  *     "platform": "ios",                                             capture on iOS simulators instead (below)
- *     "simulator": "iPhone 17 Pro Max",                              iOS: for profiles that name no "simulator"
- *     "export": "cd store-listing && node render.mjs --locale {locale}",  instead of studio/export.cjs, per locale
- *     "after": ["python3 store-listing/prepare.py"]                  shell commands once everything is exported
+ *     "simulator": "iPhone 17 Pro Max",                              iOS: for profiles that name none
+ *     "export": "cd store-listing && node render.mjs --locale {locale}",  instead of the studio's export, per locale
+ *     "after": ["node scripts/refresh-readme.mjs"]                   shell commands once everything is exported
  *   }
  *
- * Each run is `python3 <script> --serial <emulator> --locale <locale> [--profile <profile>] <args>`, through
- * `uv run --with pillow` when uv is installed. The default locale goes first, since it records the tap map
- * other locales replay. --boot starts the capture emulator headless when it isn't running and waits for it.
+ * Android runs store-listing/capture.tour.mjs in the studio itself (capture/tour.ts), per run and locale. The default
+ * locale goes first, since it records the tap map other locales replay. A listing still on a Python tour
+ * (capture-emulator.py, a run's "script") runs `python3 <script> --serial <emulator> --locale <locale> [--profile
+ * <profile>] <args>`, through `uv run --with pillow` when uv is installed, until those go away. --boot starts the
+ * capture emulator headless when it isn't running and waits for it.
  *
  * iOS ("platform": "ios"): install entries are {"app": "build/…/App.app", "package": "<bundle ID>"}, the default
  * script is store-listing/capture-simulator.py, the capture profiles are profiles.json's "platform": "ios" ones with
@@ -148,7 +149,7 @@ export async function recapture(options: RecaptureOptions = {}): Promise<Recaptu
     const env: NodeJS.ProcessEnv = ios ? {...process.env, ...studioEnv, ...(simulator ? {CAPTURE_SIMULATOR: simulator} : {})}
       : {...process.env, ...studioEnv, CAPTURE_SERIAL: serial, ANDROID_SERIAL: serial};
     const expand = (word: string) => String(word).replace(/\$\{(\w+)\}/g, (_, name: string) => {
-      if (env[name] === undefined) throw new Error(`Set ${name} for this capture (studio.json capture args use it)`);
+      if (env[name] === undefined) throw new Error(`Set ${name} for this capture (studio.json capture args or options use it)`);
       return env[name]!;
     });
     const run = (command: string, args: string[] = [], {shell = false, check = true} = {}) => {
@@ -190,7 +191,7 @@ export async function recapture(options: RecaptureOptions = {}): Promise<Recaptu
             if (options.dryRun) { log(`$ tour ${path.relative(repo, tourFile)} --locale ${locale}${runProfiles ? ` --profile ${runProfiles.join(',')}` : ''}`); continue; }
             const attempts = (capture.retries ?? 2) + 1;
             for (let attempt = 1; ; attempt++) {
-              try { await runTour(tourFile, {listing, locale, profiles: runProfiles, serial, options: spec.options, log}); break; }
+              try { await runTour(tourFile, {listing, locale, profiles: runProfiles, serial, options: Object.fromEntries(Object.entries(spec.options || {}).map(([key, value]) => [key, typeof value === 'string' ? expand(value) : value])), log}); break; }
               catch (error) {
                 if (attempt === attempts) throw error;
                 log(`Capture failed (${(error as Error).message.split('\n')[0]}); reset the emulator and try again (${attempt + 1}/${attempts})`);

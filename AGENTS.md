@@ -33,5 +33,5 @@ Build before testing: the tests load `studio/studio.cjs`, which is what apps run
 - **Modules have no side effects.** Everything Node-side is bundled into one file; nothing may parse `process.argv`, exit, or start work at import time. A command is a `run(argv): Promise<number>` next to a library function that returns a typed result.
 - **Errors say what to do.** Throw `Error` with a message a user can act on ("No studio.json in …. Run `npx screenshot-studio init` first."). Library functions report problems in their result; only `run` prints.
 - **Read studio files with `readJson`** (`src/node/project.ts`) or the renderer's `json`: they drop the `$schema` key.
-- **Apps keep no copy.** The package serves `studio/` at each app's `store-listing/studio/` address, and tours get the capture module on `PYTHONPATH`. Keep those addresses stable: themes import `./studio/shapes.js`.
+- **Apps keep no copy.** The package serves `studio/` at each app's `store-listing/studio/` address, and runs each app's `capture.tour.mjs` itself. Keep those addresses stable: themes import `./studio/shapes.js`.
 - **Check against a real app** before calling a change done: copy one (never edit it in place), run `check` and `export` in it, and look at the images.

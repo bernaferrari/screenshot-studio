@@ -28,3 +28,13 @@ test('taps recorded in the default language replay by tree path, whatever the la
   assert.throws(() => replay.resolve('phone|light|Firewall', [toggle, german], () => true), /No recorded tap for phone\|light\|Firewall#1/);
   assert.throws(() => new TapMap('tap-map.json', false, () => null), /capture the default language first/);
 });
+
+test('waits and scrolls record a value in the default language and replay it, numbered per key', () => {
+  const recording = new TapMap('tap-map.json', true, () => null);
+  recording.put('phone|light|scroll Most blocked', '1800 1.0.4');
+  recording.put('phone|light|scroll Most blocked', '-120 1.0.2');
+  const replay = new TapMap('tap-map.json', false, () => recording.json());
+  assert.equal(replay.take('phone|light|scroll Most blocked'), '1800 1.0.4');
+  assert.equal(replay.take('phone|light|scroll Most blocked'), '-120 1.0.2');
+  assert.throws(() => replay.take('phone|light|scroll Most blocked'), /Nothing recorded for phone\|light\|scroll Most blocked#2/);
+});

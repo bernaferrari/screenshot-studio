@@ -1,32 +1,57 @@
 # Capturing
 
-Captures come from the real app on an Android emulator. An app writes only the tour (which screens, in which order); the studio's `capture.py` takes care of the device.
+Captures come from the real app on an Android emulator. An app writes only the tour (which screens, in which order);
+the studio sets the device up, reads and drives the app through [agent-device](https://github.com/callstackincubator/agent-device),
+saves each screen with its layout map, and puts the device back.
 
 ## The tour
 
-`store-listing/capture-emulator.py`:
+`store-listing/capture.tour.mjs` (`init --package` writes one):
 
-```python
-from capture import Device, parser
-
-args = parser(__doc__).parse_args()            # --serial, --profile, --locale, --only
-with Device(args, 'com.example.storecapture', '.MainActivity') as d:
-    for profile in d.profiles():               # phone, 7-inch, 10-inch… from profiles.json
-        d.night(False)
-        d.launch(clear=True)                   # clear data, set the language, start
-        d.shot('01-home')                      # <locale>/raw/<profile>/01-home.png + .nodes.json
-        d.tap('Settings')                      # by visible text or description
-        d.shot('02-settings')
+```js
+/** @type {import('screenshot-studio').Tour} */
+export default {
+  app: 'com.example.storecapture',
+  activity: '.MainActivity',
+  scenes: {
+    light: {
+      '01-home': null,                                 // the screen the app opens on
+      '02-settings': d => d.tap('Settings'),           // by visible text or description
+      '03-about': async d => { await d.tap('More'); await d.tap('About'); },
+      '04-tablet-only': d => d.profile === 'phone' ? false : d.tap('Split view'),  // false skips the scene
+    },
+    dark: {
+      '05-home-dark': null,
+    },
+  },
+};
 ```
 
-`recapture` runs the tour with the studio's `capture` module on `PYTHONPATH` and the app's listing in `SCREENSHOT_STUDIO_LISTING`. To run one tour by hand, use `npx screenshot-studio tour [store-listing/capture-emulator.py] [--locale de-DE] [--profile phone] [--only 01-home]`.
+For each language, every capture profile in `profiles.json` (phone, 7-inch, 10-inch…) and each theme, the studio
+starts the app fresh (data cleared, its language set), then walks the scenes in order: each says how to reach its
+screen from the one before, and the studio saves it as `<locale>/raw/<profile>/<scene>.png` with its `.nodes.json`
+layout map. Run one by hand with `npx screenshot-studio tour [--locale de-DE] [--profile phone] [--only 01-home]`.
 
-Tap by what's on screen, not by coordinates: layouts move between phone and tablet, and the studio replays the taps in every language (below).
+Tap by what's on screen, not by coordinates: layouts move between phone and tablet, and the studio replays the taps in
+every language (below).
+
+| Tour key | Does |
+|---|---|
+| `app`, `activity` | The capture build's package, and its launch activity when it has several |
+| `scenes` | `{light: {name: step}, dark: {...}}`; a step is `null`, a function of `d`, and returns `false` to skip |
+| `profiles` | Scenes that replace `scenes` for one profile (`{slate7: {light: {...}}}`) |
+| `start` | How each theme's run begins (default: launch with data cleared) |
+| `setup`, `teardown` | Once per language, before and after (teardown also after a failure) |
+| `run` | Instead of scenes: drive each profile yourself and call `d.shot()` (an app that captures with its own test) |
+| `install`, `uninstall` | An APK the tour installs itself (relative to store-listing/), and removing the app afterwards |
+| `settle`, `animated` | Milliseconds before each save (default 1200); scenes that capture a frame of real motion |
+| `battery`, `check` | The status bar's battery (default 100); a check every screen must pass (`nodes => boolean`) |
+| `offline`, `animations`, `appLocale`, `tapMap` | Default `true`: network off, animations on, the app's language set, taps replayed by position |
 
 ## Writing a tour: look at the emulator
 
 A tour taps through the app by what's on screen, so start by looking. `npx screenshot-studio screen` prints every
-element on the capture emulator, with its label, ID and bounds, marks the tappable ones, and saves a screenshot;
+labelled element on the capture emulator with its bounds, read the same way a tour reads it, and saves a screenshot;
 `--tap "Settings"` (or `--tap 540,1200`, or `--back`) moves first, `--json` prints it for tools. Each label is what
 `d.tap("…")` takes. With the MCP server, an agent does the same with `emulator_screen` and `emulator_tap` and sees the
 screen as it goes ([Agents](agents.md)).
@@ -34,38 +59,43 @@ screen as it goes ([Agents](agents.md)).
 If the capture emulator isn't running, every capture command says so and lists the ways forward: boot a dedicated
 one with `recapture --boot`, or capture on an emulator that is already running with `--serial`.
 
-## What `Device` sets up, and restores
+## What the studio sets up, and restores
 
 While the tour runs, the emulator gets:
 - the profile's screen size and density;
 - gesture navigation and System UI demo mode: 9:41, full battery and Wi-Fi, no notifications;
 - font scale 1, heads-up notifications off, other apps' notifications snoozed;
-- Wi-Fi and mobile data off (`offline=False` keeps them on);
-- animations on, or off with `animations=False` (useful when an endless animation blocks the UI tree);
+- Wi-Fi and mobile data off (`offline: false` keeps them on);
+- animations on, or off with `animations: false` (useful when an endless animation keeps the screen from settling);
 - the app's language (Android 13+ per-app language, checked by reading it back).
 
-Everything is restored on exit, even after a failure. `Device` only runs on an emulator, and refuses to start over a display override left by an interrupted run; clear one with `npx screenshot-studio reset` (add `--serial` for another emulator).
-
-It also recovers from a busy emulator: a stuck UiAutomation client, an "isn't responding" dialog, a slow first draw, and a full disk during install. Helper packages that would show up in an app list are hidden.
+Everything is restored afterwards, even after a failure. The studio only runs on an emulator, and refuses to start over
+a display override left by an interrupted run; clear one with `npx screenshot-studio reset` (add `--serial` for
+another emulator). Helper packages that would show up in an app list (SafetyCore, package verifiers) are hidden while
+capturing, and a system dialog on screen ("isn't responding") fails the shot instead of ending up in it.
 
 ## The toolkit
 
-| Method | Does |
-|---|---|
-| `tap(label, wait, text_only=, within=, key=)` | Taps the node whose text or description matches (a regular expression); `within` limits it to a region |
-| `find`, `present`, `wait_for` | Look for a node |
-| `back`, `key`, `type`, `swipe`, `scroll(fraction, up=)`, `drag(pixels)`, `scroll_to(label, top)` | Move around |
-| `launch(activity, clear, **extras)` | Start the app, optionally clearing its data |
-| `set_clock('09:41')` | Pin the device clock too (the host time comes back on exit) |
-| `night(on)`, `rotate`, `use(profile, w, h, dpi)` | Theme, orientation, sizes outside profiles.json |
-| `shot(*targets, animated=, check=)` | Checks the screen (the app in front, no system dialog, the right size), then saves it |
-| `shell`, `adb` | Anything else |
+What a step gets as `d` (typed as `TourDevice`):
 
-A `shot` target that's a plain name goes to `<locale>/raw/<profile>/<name>.png`, with its `.nodes.json` layout map. `--only a,b` skips the other shots.
+| Member | Does |
+|---|---|
+| `tap(label, {textOnly, within, key, wait, attempts})` | Taps the element whose text or description matches (a regular expression, matched whole); `within(bounds)` limits it to a region |
+| `waitFor(label)`, `present(label)`, `tree()` | Wait for an element, ask whether one is there, read every element |
+| `back`, `type`, `swipe`, `scroll(fraction, {up})`, `drag(pixels)`, `scrollTo(label, top)` | Move around |
+| `launch({clear, activity, extras, wait})` | Start the app, optionally clearing its data; extras become intent extras |
+| `setClock('09:41')` | Pin the device clock too (the host time comes back afterwards) |
+| `night(on)`, `rotate`, `resize(w, h, dpi)` | Theme, orientation, a size outside profiles.json |
+| `shot(name, {settle, animated, check})` | Checks the screen (no system dialog, the right size), then saves it; scenes call it for you |
+| `appFiles()`, `topActivity()`, `shell`, `adb`, `sleep` | Anything else |
+| `locale`, `defaultLocale`, `profile`, `theme`, `width`, `height`, `raw`, `options` | Where the run is |
 
 ## Every language from one tour
 
-The reference language runs first and records each tap's position in the UI tree (`<default>/raw/tap-map.json`). Other languages replay those positions, so a tour written with English labels runs in German or Japanese unchanged. `d.scope` (default `<profile>|<theme>`) keys the taps.
+The default language runs first and records where each `tap`, `waitFor` and `scrollTo` found its element in the UI
+tree (`<default>/raw/tap-map.json`). Other languages find the element at the same place, so a tour written with
+English labels runs in German or Japanese unchanged. Taps are keyed by profile, theme and label; give `key` when one
+label means different elements.
 
 Each capture's layout map (`<name>.nodes.json`) lists the UI elements and their bounds. A callout anchored to an element follows it into every language; when it can't, the exporter keeps the reference position and flags it for review.
 
@@ -81,21 +111,23 @@ It reads the `capture` block in `studio.json` (`init --package` writes a startin
 "capture": {
   "build": "./gradlew :app:assembleStoreCapture -q",
   "install": [{"apk": "app/build/outputs/apk/storeCapture/app-storeCapture.apk", "package": "com.example.storecapture"}],
-  "runs": [{"args": ["--theme", "light"]}, {"args": ["--theme", "dark"], "profiles": ["phone"], "locales": "default"}],
+  "runs": [{"options": {"palette": "blue"}}, {"profiles": ["phone"], "locales": "default", "options": {"palette": "dark"}}],
   "retries": 2,
   "serial": "emulator-5554",
   "avd": "Pixel_9_API_36",
-  "after": ["python3 scripts/refresh_readme_assets.py"]
+  "after": ["node scripts/refresh-readme.mjs"]
 }
 ```
 
-It builds, installs, then for each language (the reference first) runs each run's tour once per profile, retrying a failed run after resetting the emulator. Then it exports each language (one failing language doesn't stop the rest) and runs `after`.
+It builds, installs, then for each language (the default first) runs the tour once per run, retrying a failed run
+after resetting the emulator. Then it exports each language (one failing language doesn't stop the rest) and runs
+`after`.
 
 | Capture key | Meaning |
 |---|---|
 | `build` | Shell command that builds the capture app, run from the repository |
 | `install` | What to install before capturing: `apk` and its `package` |
-| `runs` | The tours to run (below) |
+| `runs` | How often to run the tour, and with what (below); default one run in every language |
 | `retries` | Tries per run after a failure |
 | `serial` | The capture emulator (default `emulator-5578`, or `CAPTURE_SERIAL`); it must be an emulator, never a phone |
 | `avd` | The emulator image `--boot` starts (default: the first in `emulator -list-avds`) |
@@ -104,10 +136,9 @@ It builds, installs, then for each language (the reference first) runs each run'
 
 | Run key | Default |
 |---|---|
-| `script` | `store-listing/capture-emulator.py` |
 | `locales` | `"all"`; or `"default"`, or a list |
-| `profiles` | every capture profile; `false` passes none |
-| `args` | extra arguments; `${NAME}` reads the environment |
+| `profiles` | every capture profile |
+| `options` | what the tour reads as `d.options`; `${NAME}` in a value reads the environment. `tour --name value` passes one by hand |
 
 | Option | Does |
 |---|---|
@@ -116,7 +147,9 @@ It builds, installs, then for each language (the reference first) runs each run'
 | `--no-build`, `--no-capture`, `--no-export` | Skip a step |
 | `--dry-run` | Print the commands without running them |
 
-Tours run through `uv run --with pillow` when `uv` is installed, plain `python3` otherwise (it then needs Pillow). Use one capture emulator at a time: several at once can run the computer out of memory, and the system then kills one mid-capture.
+Use one capture emulator at a time: several at once can run the computer out of memory, and the system then kills one
+mid-capture. Tours need Node 22.12 or later. A listing still on the old Python tour (`capture-emulator.py`) keeps
+working for now; move it to `capture.tour.mjs`, since the Python tours go away in a coming release.
 
 ## Fictional apps
 

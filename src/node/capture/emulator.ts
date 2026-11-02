@@ -1,13 +1,19 @@
 // The capture emulator's state, set for a capture and put back afterwards: display size and density, rotation,
 // System UI demo mode (9:41, full battery and Wi-Fi), night mode, the app's language, the clock, animations,
 // connectivity and the helper apps that would show up in a capture. Plain adb; agent-device drives the app.
+import fs from 'node:fs';
+import path from 'node:path';
 import {spawnSync} from 'node:child_process';
 
 /** Animation scales, set to 0 or 1 together. */
 export const SCALES = ['window_animation_scale', 'transition_animation_scale', 'animator_duration_scale'];
 const DEMO = 'com.android.systemui.demo';
-/** Tool and Play-services packages that would otherwise appear in app lists or pop up during a capture. */
-const HELPERS = /com\.(google\.android\.(gms|gsf|apps\.(messaging|photos|wellbeing|youtube\.music|maps))|android\.vending|callstack\.agentdevice\..*)/;
+/**
+ * Packages that would show up in a capture (in app lists, as pop-ups): Android's SafetyCore, contact keys and package
+ * verifiers, hidden for the user while capturing (pm install-existing brings one back). agent-device's own helper
+ * stays: the tour reads the screen through it.
+ */
+const HELPERS = /^(.*\.safetycore|.*contactkeys.*|.*\.verifier)$/;
 
 export const sleep = (ms: number) => new Promise<void>(resolve => setTimeout(resolve, ms));
 
@@ -16,6 +22,8 @@ export class Emulator {
   height = 0;
   density = 0;
   theme: 'light' | 'dark' = 'light';
+  /** The battery level the status bar shows. */
+  battery = 100;
   private saved = new Map<string, string>();
   private clockSet = false;
 
@@ -63,10 +71,29 @@ export class Emulator {
     this.setting('global', 'sysui_demo_allowed', '1');
     for (const line of this.try('pm', 'list', 'packages').split(/\s+/)) {
       const name = line.replace(/^package:/, '');
-      if (HELPERS.test(name) && !name.startsWith('com.callstack.agentdevice')) this.try('pm', 'uninstall', '--user', '0', name);
+      if (HELPERS.test(name)) this.try('pm', 'uninstall', '--user', '0', name);
     }
+    this.snapshotHelper();
+    this.try('pkill', '-f', 'uiautomator');
     this.try('cmd', 'notification', 'snooze', '--for', '3600000', 'all');
     if (options.offline) { this.try('svc', 'wifi', 'disable'); this.try('svc', 'data', 'disable'); }
+  }
+
+  /**
+   * agent-device reads the screen through a helper app. Its daemon remembers installing it, so when something else
+   * removed it (an older capture tool), it is installed again here from agent-device's own package.
+   */
+  private snapshotHelper() {
+    const pkg = 'com.callstack.agentdevice.snapshothelper';
+    if (this.try('pm', 'list', 'instrumentation').includes(pkg)) return;
+    this.try('pm', 'install-existing', '--user', '0', pkg);
+    if (this.try('pm', 'list', 'instrumentation').includes(pkg)) return;
+    for (let dir = __dirname; dir !== path.dirname(dir); dir = path.dirname(dir)) {
+      const dist = path.join(dir, 'node_modules', 'agent-device', 'android', 'snapshot-helper', 'dist');
+      const apk = fs.existsSync(dist) && fs.readdirSync(dist).find(name => name.endsWith('.apk'));
+      if (apk) { this.adb('install', '-r', '-t', path.join(dist, apk)); return; }
+    }
+    throw new Error(`agent-device's snapshot helper (${pkg}) is missing from the emulator and its APK was not found: reinstall screenshot-studio.`);
   }
 
   demo(command: string, extras: Record<string, string | number> = {}) {
@@ -74,7 +101,7 @@ export class Emulator {
   }
 
   /** Demo mode: 9:41, a full battery, full Wi-Fi, no mobile signal, SIM, airplane icon or notifications. */
-  statusBar(battery = 100) {
+  statusBar(battery = this.battery) {
     this.demo('exit');
     this.demo('enter');
     this.demo('clock', {hhmm: '0941'});

@@ -23,7 +23,7 @@ const COMMANDS: Record<string, Command> = {
     run: async argv => (await import('../node/export')).run(argv)},
   recapture: {summary: 'Build the app, capture on the emulator or simulator and export', usage: 'recapture [locale…] [--boot] [--profile phone] [--serial emulator-5578] [--simulator "iPhone 17 Pro Max"] [--no-build] [--no-capture] [--no-export] [--dry-run]',
     run: async argv => (await import('../node/recapture')).run(argv)},
-  tour: {summary: 'Run the capture tour by hand: one language, on the capture emulator', usage: 'tour [--locale en-US] [--profile phone,tablet7] [--only 01-home,02-log] [--serial emulator-5578]',
+  tour: {summary: 'Run the capture tour by hand: one language, on the capture emulator', usage: 'tour [--locale en-US] [--profile phone,tablet7] [--only 01-home,02-log] [--serial emulator-5578] [--<option> value…]',
     run: async argv => {
       const option = (name: string) => { const i = argv.indexOf(`--${name}`); return i >= 0 ? argv[i + 1] : undefined; };
       const {requireListing, loadListing} = await import('../node/project');
@@ -33,9 +33,17 @@ const COMMANDS: Record<string, Command> = {
         const {runTour} = await import('../node/capture/tour');
         const {DEFAULT_SERIAL} = await import('../node/recapture');
         const list = (name: string) => option(name)?.split(',').map(s => s.trim()).filter(Boolean);
+        // Any other --name value is the tour's d.options.name (--some-flag alone is true), as studio.json runs' "options".
+        const options: Record<string, unknown> = {};
+        for (let i = 0; i < argv.length; i++) {
+          const name = argv[i].match(/^--(.+)$/)?.[1];
+          if (!name) continue;
+          const value = argv[i + 1] !== undefined && !argv[i + 1].startsWith('--') ? argv[++i] : true;
+          if (!['locale', 'profile', 'only', 'serial'].includes(name)) options[name.replace(/-(\w)/g, (_, c: string) => c.toUpperCase())] = value;
+        }
         try {
           const written = await runTour(tourFile, {listing, locale: option('locale') || loadListing(listing).defaultLocale, profiles: list('profile'), only: list('only'),
-            serial: option('serial') || process.env.CAPTURE_SERIAL || DEFAULT_SERIAL});
+            serial: option('serial') || process.env.CAPTURE_SERIAL || DEFAULT_SERIAL, options});
           console.log(`${written.length} capture(s) written`);
           return 0;
         } catch (error) { console.error((error as Error).message); return 1; }

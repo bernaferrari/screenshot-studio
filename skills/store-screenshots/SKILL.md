@@ -93,9 +93,12 @@ start it (`recapture --boot`) or which running emulator to use (`--serial`).
 1. The app needs a capture build that opens on believable, fictional sample data (`docs/playbook.md`, section 1).
 2. Look at the app: `emulator_screen` shows the screen and every element's label; `emulator_tap` taps a label, a point
    or `back`. Find each screen the cards need.
-3. Write what you did as the tour in `store-listing/capture-emulator.py`: `d.tap("Settings")` with the labels you saw,
-   `d.shot("02-settings")` on each screen. The template shows the shape.
-4. `npx screenshot-studio recapture` builds, captures every language and every device size, and exports.
+3. Write what you did as the scenes of `store-listing/capture.tour.mjs`, each named for the capture it saves and
+   saying how to reach it from the one before: `'02-settings': d => d.tap('Settings')`, with the labels you saw in
+   the default language (other languages replay the same taps). `null` saves the screen as it is; returning `false`
+   skips a scene on that device. The `Tour` type in `studio/types.d.ts` lists everything (`docs/capture.md`).
+4. `npx screenshot-studio tour --profile phone` runs it once to check; then `npx screenshot-studio recapture` builds,
+   captures every language and every device size, and exports.
 
 ## 7. What good looks like
 
