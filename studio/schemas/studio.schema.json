@@ -416,6 +416,11 @@
             "type": "string"
           }
         },
+        "options": {
+          "type": "object",
+          "additionalProperties": true,
+          "description": "For a capture.tour.mjs: values the tour reads as d.options."
+        },
         "profiles": {
           "anyOf": [
             {

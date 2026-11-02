@@ -31,6 +31,8 @@
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
+import {Emulator} from './capture/emulator';
+import {runTour} from './capture/tour';
 import {spawn, spawnSync} from 'node:child_process';
 import {loadListing, requireListing, STUDIO_DIR} from './project';
 import {bootSimulator, simulatorsFor} from './ios';
@@ -170,12 +172,35 @@ export async function recapture(options: RecaptureOptions = {}): Promise<Recaptu
         else await bootEmulator(serial, capture.avd, log);
       }
       if (!ios && !options.dryRun) { const problem = missingEmulator(serial); if (problem) throw new Error(problem); }
+      // A TypeScript tour (store-listing/capture.tour.mjs) runs in the studio itself, through agent-device.
+      const tourFile = path.join(listing, 'capture.tour.mjs');
+      const typescriptTour = !ios && fs.existsSync(tourFile);
       for (const {apk, app, package: id} of capture.install || []) {
         const file = ios ? app : apk;
         if (!file) throw new Error(`capture.install needs ${ios ? '"app" (a simulator .app)' : '"apk"'} for ${id}`);
+        if (typescriptTour) { if (!options.dryRun) { new Emulator(serial).install(path.resolve(repo, file), id); log(`installed ${id}`); } else log(`$ install ${file}`); continue; }
         for (const sim of ios ? sims : [undefined]) run(python[0], [...python.slice(1), studioPy, 'install', file, '--package', id, ...device(sim)]);
       }
-      for (const locale of locales) {
+      if (typescriptTour) {
+        for (const locale of locales) {
+          for (const spec of capture.runs || [{}]) {
+            const wanted = spec.locales || 'all';
+            if (wanted === 'default' ? locale !== defaultLocale : Array.isArray(wanted) && !wanted.includes(locale)) continue;
+            const runProfiles = spec.profiles === false ? undefined : (spec.profiles || captureProfiles).filter(name => !options.profile || name === options.profile);
+            if (options.dryRun) { log(`$ tour ${path.relative(repo, tourFile)} --locale ${locale}${runProfiles ? ` --profile ${runProfiles.join(',')}` : ''}`); continue; }
+            const attempts = (capture.retries ?? 2) + 1;
+            for (let attempt = 1; ; attempt++) {
+              try { await runTour(tourFile, {listing, locale, profiles: runProfiles, serial, options: spec.options, log}); break; }
+              catch (error) {
+                if (attempt === attempts) throw error;
+                log(`Capture failed (${(error as Error).message.split('\n')[0]}); reset the emulator and try again (${attempt + 1}/${attempts})`);
+                new Emulator(serial).reset();
+              }
+            }
+          }
+        }
+      }
+      for (const locale of typescriptTour ? [] : locales) {
         for (const spec of capture.runs || [{}]) {
           const wanted = spec.locales || 'all';
           if (wanted === 'default' ? locale !== defaultLocale : Array.isArray(wanted) && !wanted.includes(locale)) continue;

@@ -23,7 +23,7 @@ const THREE_NOTICE = `/*! three.js r${JSON.parse(fs.readFileSync(path.join(root,
 await build({
   input: path.join(root, 'src/cli/main.ts'),
   platform: 'node',
-  external: [/^node:/, 'playwright'],
+  external: [/^node:/, 'playwright', 'agent-device'],
   output: {file: path.join(out, 'studio.cjs'), format: 'cjs', codeSplitting: false, banner: `#!/usr/bin/env node\n${banner}`},
 });
 for (const [entry, file] of [['src/renderer/render.ts', 'render.js'], ['src/renderer/shapes.ts', 'shapes.js'], ['src/renderer/devices3d.ts', 'devices3d.js']]) {

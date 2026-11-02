@@ -37,12 +37,12 @@
     "!themes/*/preview.jpg"
   ],
   "engines": {
-    "node": ">=20"
+    "node": ">=22.12"
   },
   "scripts": {
     "dev": "vite --host 127.0.0.1",
     "build": "npm run build:studio && npm run build:ui",
-    "test": "node --test test/gallery.test.cjs test/layout.test.cjs test/workspace.test.cjs test/ios.test.cjs test/schemas.test.cjs test/icon.test.cjs test/check.test.cjs test/init.test.cjs test/editor.test.mjs",
+    "test": "node --test test/gallery.test.cjs test/layout.test.cjs test/workspace.test.cjs test/ios.test.cjs test/schemas.test.cjs test/icon.test.cjs test/check.test.cjs test/init.test.cjs test/capture.test.cjs test/editor.test.mjs",
     "test:ui": "node --test test/navigation.browser.cjs",
     "build:studio": "npm run schemas && tsc -p tsconfig.json && node scripts/build-studio.mjs",
     "build:ui": "vite build && node scripts/install-ui.mjs",
@@ -51,6 +51,7 @@
     "test:golden": "node --test test/golden.test.cjs test/demo.test.cjs"
   },
   "dependencies": {
+    "agent-device": "^0.21.35",
     "playwright": "^1.62.1"
   },
   "devDependencies": {

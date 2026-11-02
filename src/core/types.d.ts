@@ -156,6 +156,8 @@ export interface CaptureInstall {
 export interface CaptureRun {
   script?: string;
   args?: string[];
+  /** For a capture.tour.mjs: values the tour reads as d.options. */
+  options?: Record<string, unknown>;
   profiles?: false | string[];
   locales?: 'all' | 'default' | Locale[];
 }
@@ -387,6 +389,86 @@ export interface Theme {
    * corners and CSS `transform` as its pose, and `--device-body` as its color. A card opts out with the layout word `flat`.
    */
   depth?: boolean | string[];
+}
+
+/**
+ * store-listing/capture.tour.mjs: how to reach each screen the cards need. The studio runs it for every language and
+ * capture size (profiles.json entries with captureWidth, captureHeight and captureDensity), sets the emulator up (size,
+ * density, 9:41 demo status bar, the app's language, light or dark), saves each scene as
+ * <locale>/raw/<profile>/<scene>.png with its layout map, and puts everything back afterwards.
+ *   /** @type {import('./studio/types').Tour} *\/
+ *   export default {app: 'com.example.app.storecapture', scenes: {light: {'01-home': null, '02-settings': d => d.tap('Settings')}}};
+ */
+export interface Tour {
+  /** The app's package (the capture build's). */
+  app: string;
+  /** Its launch activity, when the package has several (`.MainActivity` or the full name). */
+  activity?: string;
+  /**
+   * Scenes per theme, in order: each says how to reach its screen from the previous one, then the studio saves it.
+   * `null` saves the screen as it is; return `false` to skip a scene for this profile or language.
+   */
+  scenes: Partial<Record<'light' | 'dark', Record<string, TourStep | null>>>;
+  /** Before each profile's run of a theme's scenes. Default: launch the app with its data cleared. */
+  start?: TourStep;
+  /** Once per language, before the first profile (install fixtures, say), and after the last. */
+  setup?: TourStep;
+  teardown?: TourStep;
+  /** Instead of scenes: drive everything yourself, calling d.shot(). For apps that capture with their own test. */
+  run?: TourStep;
+  /** Milliseconds to let the screen settle before each scene is saved (default 1200). */
+  settle?: number;
+  /** Set the app's language for each capture (default true). */
+  appLocale?: boolean;
+  /** Wi-Fi and mobile data off while capturing (default true). */
+  offline?: boolean;
+  /** Keep animations on (default true). */
+  animations?: boolean;
+  /** Record taps in the default language and replay them by position in the others (default true). */
+  tapMap?: boolean;
+}
+export type TourStep = (d: TourDevice) => unknown;
+
+/** What a tour drives: the capture emulator, set up for one language, profile and theme. */
+export interface TourDevice {
+  app: string;
+  locale: string;
+  defaultLocale: string;
+  /** The profile being captured (phone, tablet7…) and its display size in pixels. */
+  profile: string;
+  width: number;
+  height: number;
+  theme: 'light' | 'dark';
+  serial: string;
+  /** The run's options from studio.json ("capture": {"runs": [{"options": {...}}]}). */
+  options: Record<string, unknown>;
+  /** Start the app fresh: force-stopped, data cleared when `clear` (its language set again), intent extras passed. */
+  launch(options?: {clear?: boolean; wait?: number; activity?: string; extras?: Record<string, string | number | boolean>}): Promise<void>;
+  /** Tap the element whose text (or description, unless textOnly) is `label`, a regular expression matched whole. */
+  tap(label: string | RegExp, options?: {textOnly?: boolean; wait?: number; attempts?: number; key?: string; within?: (bounds: [number, number, number, number]) => boolean}): Promise<void>;
+  tapAt(x: number, y: number, wait?: number): Promise<void>;
+  /** Whether `label` is on screen now (matched in every language as written, not through the tap map). */
+  present(label: string | RegExp, options?: {textOnly?: boolean}): Promise<boolean>;
+  waitFor(label: string | RegExp, options?: {textOnly?: boolean; timeout?: number}): Promise<void>;
+  back(wait?: number): Promise<void>;
+  /** Swipe up by `fraction` of the screen height from `start` (down with `up: true`). */
+  scroll(fraction?: number, options?: {start?: number; x?: number; up?: boolean; duration?: number; wait?: number}): Promise<void>;
+  swipe(x1: number, y1: number, x2: number, y2: number, options?: {duration?: number; wait?: number}): Promise<void>;
+  type(text: string): Promise<void>;
+  night(on: boolean): Promise<void>;
+  rotate(landscape: boolean): Promise<void>;
+  /** The emulator's clock at hh:mm today (default 9:41, matching the status bar). */
+  setClock(hhmm?: string): void;
+  /** Save the screen now as <locale>/raw/<profile>/<name>.png with its layout map (scenes do this for you). */
+  shot(name: string, options?: {settle?: number}): Promise<string>;
+  /** The UI tree now, each element with its path, bounds, text, description, ID and class. */
+  tree(): Promise<UiNode[]>;
+  /** Run a Screenshot Studio command from the listing, e.g. d.studio('fixtures', 'fixture-apps.json', '--install', d.serial). */
+  studio(...args: string[]): void;
+  /** adb on the emulator, for anything else: d.shell('pm', 'grant', d.app, 'android.permission.POST_NOTIFICATIONS'). */
+  shell(...words: (string | number)[]): string;
+  adb(...words: (string | number)[]): string;
+  sleep(ms: number): Promise<void>;
 }
 
 /** Boxes on the finished card, in card pixels (left, top, width, height). */

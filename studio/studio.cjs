@@ -50,9 +50,9 @@ node_http = __toESM(node_http, 1);
 let node_crypto = require("node:crypto");
 let node_child_process = require("node:child_process");
 let node_util = require("node:util");
+let node_url = require("node:url");
 let node_readline = require("node:readline");
 node_readline = __toESM(node_readline, 1);
-let node_url = require("node:url");
 // src/core/validate.ts
 /** Validate `value` against `schema`; an empty list means valid. */
 function validate(value, schema, root = schema, path = "") {
@@ -2321,6 +2321,575 @@ var init_export = __esmMin((() => {
 	};
 	decoded = (sheet) => sheet.evaluate(() => Promise.all([...document.images].map((image) => image.decode())));
 }));
+// src/node/capture/emulator.ts
+var emulator_exports$1 = /* @__PURE__ */ __exportAll({
+	Emulator: () => Emulator,
+	SCALES: () => SCALES,
+	sleep: () => sleep
+});
+var SCALES, DEMO$1, HELPERS, sleep, Emulator;
+var init_emulator$1 = __esmMin((() => {
+	SCALES = [
+		"window_animation_scale",
+		"transition_animation_scale",
+		"animator_duration_scale"
+	];
+	DEMO$1 = "com.android.systemui.demo";
+	HELPERS = /com\.(google\.android\.(gms|gsf|apps\.(messaging|photos|wellbeing|youtube\.music|maps))|android\.vending|callstack\.agentdevice\..*)/;
+	sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+	Emulator = class {
+		serial;
+		width = 0;
+		height = 0;
+		density = 0;
+		theme = "light";
+		saved = /* @__PURE__ */ new Map();
+		clockSet = false;
+		constructor(serial) {
+			this.serial = serial;
+		}
+		adb(...words) {
+			const run = (0, node_child_process.spawnSync)("adb", [
+				"-s",
+				this.serial,
+				...words.map(String)
+			], {
+				encoding: "utf8",
+				maxBuffer: 67108864,
+				timeout: 3e5
+			});
+			if (run.status !== 0) throw new Error(`adb ${words.join(" ")} failed: ${(run.stderr || run.stdout || "").trim()}`);
+			return run.stdout;
+		}
+		shell(...words) {
+			return this.adb("shell", ...words);
+		}
+		/** A shell command that may fail without stopping the capture. */
+		try(...words) {
+			try {
+				return this.shell(...words);
+			} catch {
+				return "";
+			}
+		}
+		setting(namespace, key, value) {
+			if (value === void 0) {
+				const read = this.try("settings", "get", namespace, key).trim();
+				return read === "null" ? "" : read;
+			}
+			this.shell("settings", "put", namespace, key, value);
+			return value;
+		}
+		/** Whether the serial is an emulator (a phone is refused). */
+		isEmulator() {
+			return (this.try("getprop", "ro.kernel.qemu") + this.try("getprop", "ro.boot.qemu")).includes("1");
+		}
+		/** Remember a setting to put back on restore, then set it. */
+		change(namespace, key, value) {
+			if (!this.saved.has(`${namespace}/${key}`)) this.saved.set(`${namespace}/${key}`, this.setting(namespace, key));
+			this.setting(namespace, key, value);
+		}
+		/** Prepare the emulator for a capture: a refused override, settings saved, demo mode allowed, helpers away. */
+		prepare(options) {
+			if (/Override/.test(this.try("wm", "size") + this.try("wm", "density"))) throw new Error("The emulator still has a display override from an interrupted run: npx screenshot-studio reset");
+			this.try("input", "keyevent", "KEYCODE_WAKEUP");
+			this.try("wm", "dismiss-keyguard");
+			this.try("cmd", "overlay", "enable-exclusive", "--category", "com.android.internal.systemui.navbar.gestural");
+			this.change("system", "font_scale", "1.0");
+			this.change("global", "heads_up_notifications_enabled", "0");
+			this.change("global", "auto_time", this.setting("global", "auto_time") || "1");
+			this.change("system", "accelerometer_rotation", "0");
+			this.change("system", "user_rotation", "0");
+			for (const key of SCALES) this.change("global", key, options.animations ? "1" : "0");
+			this.setting("global", "sysui_demo_allowed", "1");
+			for (const line of this.try("pm", "list", "packages").split(/\s+/)) {
+				const name = line.replace(/^package:/, "");
+				if (HELPERS.test(name) && !name.startsWith("com.callstack.agentdevice")) this.try("pm", "uninstall", "--user", "0", name);
+			}
+			this.try("cmd", "notification", "snooze", "--for", "3600000", "all");
+			if (options.offline) {
+				this.try("svc", "wifi", "disable");
+				this.try("svc", "data", "disable");
+			}
+		}
+		demo(command, extras = {}) {
+			this.try("am", "broadcast", "-a", DEMO$1, "--es", "command", command, ...Object.entries(extras).flatMap(([key, value]) => [
+				"--es",
+				key,
+				String(value)
+			]));
+		}
+		/** Demo mode: 9:41, a full battery, full Wi-Fi, no mobile signal, SIM, airplane icon or notifications. */
+		statusBar(battery = 100) {
+			this.demo("exit");
+			this.demo("enter");
+			this.demo("clock", { hhmm: "0941" });
+			this.demo("battery", {
+				level: battery,
+				plugged: "false"
+			});
+			this.demo("notifications", { visible: "false" });
+			this.demo("network", {
+				wifi: "show",
+				level: 4,
+				fully: "true",
+				mobile: "hide",
+				sims: 0,
+				airplane: "hide"
+			});
+		}
+		async resize(width, height, density, settle = 2e3) {
+			this.demo("exit");
+			this.shell("wm", "size", `${width}x${height}`);
+			this.shell("wm", "density", density);
+			Object.assign(this, {
+				width,
+				height,
+				density
+			});
+			await sleep(settle);
+			this.statusBar();
+		}
+		async night(on, settle = 2e3) {
+			this.shell("cmd", "uimode", "night", on ? "yes" : "no");
+			this.theme = on ? "dark" : "light";
+			await sleep(settle);
+		}
+		async rotate(landscape, settle = 4e3) {
+			this.setting("system", "accelerometer_rotation", "0");
+			this.setting("system", "user_rotation", landscape ? "1" : "0");
+			await sleep(settle);
+		}
+		/** The emulator's clock at today's hh:mm, matching the status bar; the host's time comes back on restore. */
+		setClock(hhmm = "09:41") {
+			const [hour, minute] = hhmm.split(":").map(Number);
+			const moment = /* @__PURE__ */ new Date();
+			moment.setHours(hour, minute, 0, 0);
+			this.clockSet = true;
+			this.setting("global", "auto_time", "0");
+			this.shell("cmd", "alarm", "set-time", moment.getTime());
+		}
+		/** The app's own language (Android 13+), checked; empty resets it to the system language. */
+		appLocale(pkg, locale) {
+			this.shell("cmd", "locale", "set-app-locales", pkg, "--user", "current", "--locales", locale);
+			const read = this.shell("cmd", "locale", "get-app-locales", pkg, "--user", "current");
+			if (read.match(/are \[([^\]]*)\]/)?.[1] !== locale) throw new Error(`The app's language did not switch to ${locale || "the system language"}: ${read.trim()}`);
+		}
+		/** The display as PNG. Some emulators print a warning (several displays) first: the image starts at its signature. */
+		screenshot() {
+			const run = (0, node_child_process.spawnSync)("adb", [
+				"-s",
+				this.serial,
+				"exec-out",
+				"screencap",
+				"-p"
+			], { maxBuffer: 67108864 });
+			const raw = run.stdout;
+			const start = raw.indexOf(Buffer.from([
+				137,
+				80,
+				78,
+				71
+			]));
+			if (run.status !== 0 || start < 0) throw new Error(`${this.serial} sent no screenshot: ${String(run.stderr || raw.subarray(0, 200))}`);
+			return raw.subarray(start);
+		}
+		/** Install an APK. Low storage: reinstall from scratch, then trim caches; another machine's debug key: reinstall. */
+		install(apk, pkg) {
+			for (let attempt = 0; attempt < 3; attempt++) {
+				let out;
+				try {
+					out = this.adb("install", "-r", "-t", apk);
+				} catch (error) {
+					out = error.message;
+				}
+				if (out.includes("Success")) return;
+				if (/INSUFFICIENT_STORAGE/.test(out) && attempt === 0) this.try("pm", "uninstall", pkg) || this.adbTry("uninstall", pkg);
+				else if (/INSUFFICIENT_STORAGE/.test(out) && attempt === 1) this.try("pm", "trim-caches", "64G");
+				else if (/UPDATE_INCOMPATIBLE/.test(out) && attempt === 0) this.adbTry("uninstall", pkg);
+				else throw new Error(`Installing ${apk} failed: ${out.trim()}`);
+			}
+			throw new Error(`Installing ${apk} failed after three tries.`);
+		}
+		adbTry(...words) {
+			try {
+				return this.adb(...words);
+			} catch {
+				return "";
+			}
+		}
+		/** Undo what an interrupted run can leave behind: display overrides, demo mode, dark mode, no animations, no network. */
+		reset() {
+			this.demo("exit");
+			for (const words of [
+				[
+					"wm",
+					"size",
+					"reset"
+				],
+				[
+					"wm",
+					"density",
+					"reset"
+				],
+				[
+					"cmd",
+					"uimode",
+					"night",
+					"no"
+				],
+				[
+					"svc",
+					"wifi",
+					"enable"
+				],
+				[
+					"svc",
+					"data",
+					"enable"
+				]
+			]) this.try(...words);
+			for (const key of SCALES) this.setting("global", key, "1");
+			this.setting("global", "heads_up_notifications_enabled", "1");
+			this.setting("global", "auto_time", "1");
+			this.setting("system", "accelerometer_rotation", "1");
+		}
+		/** Put everything back, even after a failure; returns what could not be. */
+		restore(options) {
+			const failed = [];
+			const step = (name, run) => {
+				try {
+					run();
+				} catch (error) {
+					failed.push(`${name}: ${error.message}`);
+				}
+			};
+			if (options.pkg) step("stop the app", () => this.shell("am", "force-stop", options.pkg));
+			if (options.pkg && options.appLocale) step("app language", () => this.appLocale(options.pkg, ""));
+			step("demo mode", () => this.demo("exit"));
+			step("night mode", () => this.shell("cmd", "uimode", "night", "no"));
+			step("display size", () => this.shell("wm", "size", "reset"));
+			step("display density", () => this.shell("wm", "density", "reset"));
+			if (this.clockSet) step("clock", () => this.shell("cmd", "alarm", "set-time", Date.now()));
+			const defaults = {
+				heads_up_notifications_enabled: "1",
+				auto_time: "1",
+				font_scale: "1.0",
+				accelerometer_rotation: "1",
+				user_rotation: "0",
+				...Object.fromEntries(SCALES.map((key) => [key, "1"]))
+			};
+			for (const [where, value] of this.saved) {
+				const [namespace, key] = where.split("/");
+				step(key, () => this.setting(namespace, key, value || defaults[key]));
+			}
+			if (options.offline) {
+				step("Wi-Fi", () => this.shell("svc", "wifi", "enable"));
+				step("mobile data", () => this.shell("svc", "data", "enable"));
+			}
+			if (options.uninstall && options.pkg) step("uninstall", () => this.adb("uninstall", options.pkg));
+			return failed;
+		}
+	};
+}));
+// src/node/capture/screen.ts
+/** One agent-device client for the run, in a session of its own. */
+function agentDevice() {
+	return client ||= import("agent-device").then(({ createAgentDeviceClient }) => createAgentDeviceClient({ session: "screenshot-studio" }));
+}
+/** The app's UI tree, without the system bars, each element with its path among its siblings. */
+async function readTree(serial) {
+	const snapshot = await (await agentDevice()).capture.snapshot({
+		platform: "android",
+		serial,
+		raw: true
+	});
+	const { width = Infinity, height = Infinity } = snapshot.viewport || {};
+	const onScreen = (node) => !node.rect || node.rect.x < width && node.rect.y < height && node.rect.x + node.rect.width > 0 && node.rect.y + node.rect.height > 0;
+	const kept = snapshot.nodes.filter((node) => !node.systemBar && node.visibleToUser !== false && onScreen(node));
+	const keptIndex = new Set(kept.map((node) => node.index));
+	const children = /* @__PURE__ */ new Map();
+	for (const node of kept) {
+		const parent = node.parentIndex !== void 0 && keptIndex.has(node.parentIndex) ? node.parentIndex : void 0;
+		if (!children.has(parent)) children.set(parent, []);
+		children.get(parent).push(node);
+	}
+	const nodes = [];
+	const visit = (parent, path) => (children.get(parent) || []).forEach((node, i) => {
+		const here = path ? `${path}.${i}` : String(i);
+		if (node.rect) {
+			const { x, y, width, height } = node.rect;
+			const text = node.label && TEXT_CLASS.test(node.type || "") ? node.label : void 0;
+			const desc = node.contentDescription || (node.label && !text ? node.label : void 0);
+			nodes.push({
+				path: here,
+				b: [
+					Math.round(x),
+					Math.round(y),
+					Math.round(x + width),
+					Math.round(y + height)
+				],
+				...text && { text },
+				...desc && { desc },
+				...node.identifier && { id: node.identifier },
+				...node.type && { cls: node.type }
+			});
+		}
+		visit(node.index, here);
+	});
+	visit(void 0, "");
+	return {
+		width: snapshot.viewport?.width || 0,
+		height: snapshot.viewport?.height || 0,
+		nodes
+	};
+}
+/** Whether an element matches a label: its whole text, or its description unless textOnly. A string is a regular expression. */
+function matcher(label, textOnly = false, within) {
+	const pattern = typeof label === "string" ? new RegExp(`^(?:${label})$`) : new RegExp(`^(?:${label.source})$`, label.flags);
+	return (node) => (!within || within(node.b)) && (pattern.test(node.text || "") || !textOnly && pattern.test(node.desc || ""));
+}
+/** Tap the middle of an element's bounds. */
+async function tapNode(serial, node) {
+	const [l, t, r, b] = node.b;
+	await (await agentDevice()).interactions.press({
+		platform: "android",
+		serial,
+		x: Math.round((l + r) / 2),
+		y: Math.round((t + b) / 2)
+	});
+}
+var TEXT_CLASS, client, TapMap;
+var init_screen = __esmMin((() => {
+	TEXT_CLASS = /(TextView|Button|EditText|CheckBox|RadioButton|Switch|Chip)$/;
+	client = null;
+	TapMap = class {
+		recording;
+		paths;
+		seen = /* @__PURE__ */ new Map();
+		constructor(file, recording, read) {
+			this.recording = recording;
+			const text = read(file);
+			this.paths = text ? JSON.parse(text) : {};
+			if (!recording && !text) throw new Error(`No tap map at ${file}: capture the default language first.`);
+		}
+		resolve(key, nodes, matches) {
+			const n = this.seen.get(key) || 0, slot = `${key}#${n}`;
+			let node;
+			if (this.recording) {
+				node = nodes.find(matches);
+				if (!node) throw new Error(`Nothing on screen matches "${key.split("|").pop()}"`);
+				this.paths[slot] = node.path;
+			} else {
+				const path = this.paths[slot];
+				if (!path) throw new Error(`No recorded tap for ${slot}: capture this scene in the default language first.`);
+				node = nodes.find((candidate) => candidate.path === path);
+				if (!node) throw new Error(`The recorded tap ${slot} has no element at ${path} here: the screen differs from the default language.`);
+			}
+			this.seen.set(key, n + 1);
+			return node;
+		}
+		json() {
+			return JSON.stringify(Object.fromEntries(Object.entries(this.paths).sort(([a], [b]) => a.localeCompare(b))), null, 1) + "\n";
+		}
+	};
+}));
+// src/node/capture/tour.ts
+var tour_exports = /* @__PURE__ */ __exportAll({
+	loadTour: () => loadTour,
+	runTour: () => runTour
+});
+async function loadTour(file) {
+	const tour = (await import(`${(0, node_url.pathToFileURL)(node_path.default.resolve(file)).href}?${node_fs.default.statSync(file).mtimeMs}`)).default;
+	if (!tour?.app || !tour.scenes && !tour.run) throw new Error(`${file} must export default {app, scenes} (see the Tour type in studio/types.d.ts).`);
+	return tour;
+}
+/** Run a tour for one language; returns the captures written, relative to the listing. */
+async function runTour(file, options) {
+	const log = options.log || ((line) => console.log(line));
+	const tour = await loadTour(file);
+	const read = (relative) => JSON.parse(node_fs.default.readFileSync(node_path.default.join(options.listing, relative), "utf8"));
+	const config = read("studio.json"), profiles = read("profiles.json");
+	const defaultLocale = config.defaultLocale || "en-US";
+	const sizes = Object.entries(profiles).filter(([name, p]) => p.captureWidth && p.captureHeight && p.captureDensity && (!options.profiles?.length || options.profiles.includes(name)));
+	if (!sizes.length) throw new Error(`No profile to capture${options.profiles?.length ? ` among ${options.profiles.join(", ")}` : ""}: give one captureWidth, captureHeight and captureDensity in profiles.json.`);
+	const problem = missingEmulator(options.serial);
+	if (problem) throw new Error(problem);
+	const emu = new Emulator(options.serial);
+	if (!emu.isEmulator()) throw new Error(`${options.serial} is not an emulator. Captures run only on emulators, never on a phone.`);
+	const appLocale = tour.appLocale !== false, offline = tour.offline !== false;
+	const recording = options.locale === defaultLocale;
+	const mapFile = node_path.default.join(options.listing, defaultLocale, "raw", "tap-map.json");
+	const taps = tour.tapMap === false ? null : new TapMap(mapFile, recording, (file) => node_fs.default.existsSync(file) ? node_fs.default.readFileSync(file, "utf8") : null);
+	const written = [];
+	let profile = "";
+	const d = {
+		app: tour.app,
+		locale: options.locale,
+		defaultLocale,
+		profile: "",
+		width: 0,
+		height: 0,
+		theme: "light",
+		serial: options.serial,
+		options: options.options || {},
+		async launch({ clear = false, wait = 4e3, activity = tour.activity, extras = {} } = {}) {
+			emu.shell("am", "force-stop", tour.app);
+			if (clear) {
+				emu.shell("pm", "clear", tour.app);
+				if (appLocale) emu.appLocale(tour.app, options.locale);
+			}
+			const component = activity ? activity.includes("/") ? activity : `${tour.app}/${activity}` : null;
+			const flags = Object.entries(extras).flatMap(([key, value]) => [
+				typeof value === "boolean" ? "--ez" : typeof value === "number" ? "--ei" : "--es",
+				key,
+				String(value)
+			]);
+			if (component) emu.shell("am", "start", "-W", "-n", component, ...flags);
+			else emu.shell("monkey", "-p", tour.app, "-c", "android.intent.category.LAUNCHER", "1");
+			await sleep(wait);
+		},
+		async tap(label, { textOnly = false, wait = 1500, attempts = 6, key, within } = {}) {
+			const matches = matcher(label, textOnly, within);
+			const slot = `${profile}|${d.theme}|${key || (typeof label === "string" ? label : label.source)}`;
+			let node, last;
+			for (let attempt = 0; attempt < attempts && !node; attempt++) try {
+				const { nodes } = await readTree(options.serial);
+				node = taps ? taps.resolve(slot, nodes, matches) : nodes.find(matches);
+				if (!node) throw new Error(`Nothing on screen matches "${label}"`);
+			} catch (error) {
+				last = error;
+				await sleep(1200);
+			}
+			if (!node) throw new Error(`${last.message} (${options.locale}, ${profile}, ${d.theme}). npx screenshot-studio screen shows what is there.`);
+			await tapNode(options.serial, node);
+			await sleep(wait);
+		},
+		async tapAt(x, y, wait = 1500) {
+			emu.shell("input", "tap", Math.round(x), Math.round(y));
+			await sleep(wait);
+		},
+		async present(label, { textOnly = false } = {}) {
+			return (await readTree(options.serial)).nodes.some(matcher(label, textOnly));
+		},
+		async waitFor(label, { textOnly = false, timeout = 1e4 } = {}) {
+			for (const end = Date.now() + timeout; Date.now() < end; await sleep(500)) if (await d.present(label, { textOnly })) return;
+			throw new Error(`"${label}" never appeared (${options.locale}, ${profile}, ${d.theme}).`);
+		},
+		async back(wait = 1200) {
+			emu.shell("input", "keyevent", "KEYCODE_BACK");
+			await sleep(wait);
+		},
+		async scroll(fraction = .5, { start = .8, x = .5, up = false, duration = 300, wait = 1200 } = {}) {
+			const [a, b] = up ? [start - fraction, start] : [start, start - fraction];
+			await d.swipe(d.width * x, d.height * a, d.width * x, d.height * b, {
+				duration,
+				wait
+			});
+		},
+		async swipe(x1, y1, x2, y2, { duration = 300, wait = 1200 } = {}) {
+			emu.shell("input", "swipe", ...[
+				x1,
+				y1,
+				x2,
+				y2
+			].map(Math.round), duration);
+			await sleep(wait);
+		},
+		async type(text) {
+			emu.shell("input", "text", text.replace(/ /g, "%s").replace(/([\\'"&|<>;()$`])/g, "\\$1"));
+			await sleep(500);
+		},
+		async night(on) {
+			await emu.night(on);
+			d.theme = emu.theme;
+		},
+		async rotate(landscape) {
+			await emu.rotate(landscape);
+		},
+		setClock(hhmm) {
+			emu.setClock(hhmm);
+		},
+		async shot(name, { settle = 1200 } = {}) {
+			await sleep(settle);
+			const relative = node_path.default.posix.join(options.locale, "raw", profile, `${name}.png`);
+			if (options.only?.length && !options.only.includes(name)) return relative;
+			const png = emu.screenshot();
+			const size = {
+				width: png.readUInt32BE(16),
+				height: png.readUInt32BE(20)
+			};
+			if (size.width !== d.width || size.height !== d.height) throw new Error(`${relative} came out ${size.width}×${size.height}, not the ${profile} size ${d.width}×${d.height}: the display did not take the profile's size.`);
+			const tree = await readTree(options.serial);
+			const target = node_path.default.join(options.listing, relative);
+			node_fs.default.mkdirSync(node_path.default.dirname(target), { recursive: true });
+			node_fs.default.writeFileSync(target, png);
+			node_fs.default.writeFileSync(target.replace(/\.png$/, ".nodes.json"), JSON.stringify({
+				source: "agent-device",
+				width: size.width,
+				height: size.height,
+				nodes: tree.nodes
+			}) + "\n");
+			written.push(relative);
+			log(`captured  ${relative}`);
+			return relative;
+		},
+		async tree() {
+			return (await readTree(options.serial)).nodes;
+		},
+		studio(...args) {
+			if ((0, node_child_process.spawnSync)(process.execPath, [node_path.default.join(STUDIO_DIR, "studio.cjs"), ...args], {
+				cwd: options.listing,
+				stdio: "inherit"
+			}).status !== 0) throw new Error(`screenshot-studio ${args.join(" ")} failed`);
+		},
+		shell: (...words) => emu.shell(...words),
+		adb: (...words) => emu.adb(...words),
+		sleep: (ms) => sleep(ms).then(() => void 0)
+	};
+	const step = async (fn) => fn ? fn(d) : void 0;
+	try {
+		emu.prepare({
+			offline,
+			animations: tour.animations !== false
+		});
+		if (appLocale) emu.appLocale(tour.app, options.locale);
+		await step(tour.setup);
+		for (const [name, p] of sizes) {
+			profile = d.profile = name;
+			await emu.resize(p.captureWidth, p.captureHeight, p.captureDensity);
+			d.width = p.captureWidth;
+			d.height = p.captureHeight;
+			if (tour.run) {
+				await step(tour.run);
+				continue;
+			}
+			for (const theme of ["light", "dark"]) {
+				const scenes = tour.scenes[theme];
+				if (!scenes) continue;
+				await d.night(theme === "dark");
+				emu.statusBar();
+				await (tour.start ? step(tour.start) : d.launch({ clear: true }));
+				for (const [scene, reach] of Object.entries(scenes)) if (await step(reach) !== false) await d.shot(scene, { settle: tour.settle });
+			}
+		}
+		await step(tour.teardown);
+	} finally {
+		if (taps?.recording) node_fs.default.writeFileSync(mapFile, taps.json());
+		for (const failure of emu.restore({
+			pkg: tour.app,
+			appLocale,
+			offline
+		})) log(`cleanup: ${failure}`);
+	}
+	return written;
+}
+var init_tour = __esmMin((() => {
+	init_recapture();
+	init_project();
+	init_emulator$1();
+	init_screen();
+}));
 // src/node/ios.ts
 /**
 * iOS: the App Store galleries, and the simulators that capture them (Xcode's `xcrun simctl`).
@@ -2627,9 +3196,18 @@ async function recapture(options = {}) {
 				const problem = missingEmulator(serial);
 				if (problem) throw new Error(problem);
 			}
+			const tourFile = node_path.default.join(listing, "capture.tour.mjs");
+			const typescriptTour = !ios && node_fs.default.existsSync(tourFile);
 			for (const { apk, app, package: id } of capture.install || []) {
 				const file = ios ? app : apk;
 				if (!file) throw new Error(`capture.install needs ${ios ? "\"app\" (a simulator .app)" : "\"apk\""} for ${id}`);
+				if (typescriptTour) {
+					if (!options.dryRun) {
+						new Emulator(serial).install(node_path.default.resolve(repo, file), id);
+						log(`installed ${id}`);
+					} else log(`$ install ${file}`);
+					continue;
+				}
 				for (const sim of ios ? sims : [void 0]) run(python[0], [
 					...python.slice(1),
 					studioPy,
@@ -2640,7 +3218,32 @@ async function recapture(options = {}) {
 					...device(sim)
 				]);
 			}
-			for (const locale of locales) for (const spec of capture.runs || [{}]) {
+			if (typescriptTour) for (const locale of locales) for (const spec of capture.runs || [{}]) {
+				const wanted = spec.locales || "all";
+				if (wanted === "default" ? locale !== defaultLocale : Array.isArray(wanted) && !wanted.includes(locale)) continue;
+				const runProfiles = spec.profiles === false ? void 0 : (spec.profiles || captureProfiles).filter((name) => !options.profile || name === options.profile);
+				if (options.dryRun) {
+					log(`$ tour ${node_path.default.relative(repo, tourFile)} --locale ${locale}${runProfiles ? ` --profile ${runProfiles.join(",")}` : ""}`);
+					continue;
+				}
+				const attempts = (capture.retries ?? 2) + 1;
+				for (let attempt = 1;; attempt++) try {
+					await runTour(tourFile, {
+						listing,
+						locale,
+						profiles: runProfiles,
+						serial,
+						options: spec.options,
+						log
+					});
+					break;
+				} catch (error) {
+					if (attempt === attempts) throw error;
+					log(`Capture failed (${error.message.split("\n")[0]}); reset the emulator and try again (${attempt + 1}/${attempts})`);
+					new Emulator(serial).reset();
+				}
+			}
+			for (const locale of typescriptTour ? [] : locales) for (const spec of capture.runs || [{}]) {
 				const wanted = spec.locales || "all";
 				if (wanted === "default" ? locale !== defaultLocale : Array.isArray(wanted) && !wanted.includes(locale)) continue;
 				const runProfiles = spec.profiles === false ? [null] : (spec.profiles || captureProfiles).filter((name) => !options.profile || name === options.profile);
@@ -2721,6 +3324,8 @@ async function run$8(argv) {
 }
 var DEFAULT_SERIAL, sdkRoot, has, adb$1;
 var init_recapture = __esmMin((() => {
+	init_emulator$1();
+	init_tour();
 	init_project();
 	init_ios();
 	init_playwright();
@@ -2735,7 +3340,6 @@ var init_recapture = __esmMin((() => {
 }));
 // src/core/layout.ts
 init_export();
-init_recapture();
 const TAGS = {
 	"*": "em",
 	"~": "del",
@@ -3614,6 +4218,7 @@ async function run$5(argv) {
 var adb, decode;
 var init_emulator = __esmMin((() => {
 	init_xml();
+	init_recapture();
 	adb = (serial, args, binary = false) => {
 		const run = (0, node_child_process.spawnSync)("adb", [
 			"-s",
@@ -5005,6 +5610,7 @@ init_server();
 init_store();
 init_gallery();
 init_validate();
+init_screen();
 const COMMANDS = {
 	init: {
 		summary: "Set up Screenshot Studio in an app (or from a folder of screenshots)",
@@ -5046,16 +5652,40 @@ const COMMANDS = {
 		run: async (argv) => (await Promise.resolve().then(() => (init_recapture(), recapture_exports))).run(argv)
 	},
 	tour: {
-		summary: "Run one capture tour by hand (the studio puts its capture module in reach)",
-		usage: "tour [store-listing/capture-emulator.py] [--locale en-US] [--profile phone] [--only 01-home]",
+		summary: "Run the capture tour by hand: one language, on the capture emulator",
+		usage: "tour [--locale en-US] [--profile phone,tablet7] [--only 01-home,02-log] [--serial emulator-5578]",
 		run: async (argv) => {
-			const { spawnSync } = await import("node:child_process");
-			const { requireListing } = await Promise.resolve().then(() => (init_project(), project_exports));
-			const { tourEnvironment } = await Promise.resolve().then(() => (init_recapture(), recapture_exports));
+			const option = (name) => {
+				const i = argv.indexOf(`--${name}`);
+				return i >= 0 ? argv[i + 1] : void 0;
+			};
+			const { requireListing, loadListing } = await Promise.resolve().then(() => (init_project(), project_exports));
 			const listing = requireListing();
+			const tourFile = node_path.default.join(listing, "capture.tour.mjs");
+			if (node_fs.default.existsSync(tourFile)) {
+				const { runTour } = await Promise.resolve().then(() => (init_tour(), tour_exports));
+				const { DEFAULT_SERIAL } = await Promise.resolve().then(() => (init_recapture(), recapture_exports));
+				const list = (name) => option(name)?.split(",").map((s) => s.trim()).filter(Boolean);
+				try {
+					const written = await runTour(tourFile, {
+						listing,
+						locale: option("locale") || loadListing(listing).defaultLocale,
+						profiles: list("profile"),
+						only: list("only"),
+						serial: option("serial") || process.env.CAPTURE_SERIAL || DEFAULT_SERIAL
+					});
+					console.log(`${written.length} capture(s) written`);
+					return 0;
+				} catch (error) {
+					console.error(error.message);
+					return 1;
+				}
+			}
+			const { spawnSync } = await import("node:child_process");
+			const { tourEnvironment } = await Promise.resolve().then(() => (init_recapture(), recapture_exports));
 			const script = argv[0] && !argv[0].startsWith("--") ? argv.shift() : ["capture-emulator.py", "capture-simulator.py"].map((f) => node_path.default.join(listing, f)).find((f) => node_fs.default.existsSync(f));
 			if (!script) {
-				console.error("No capture tour in store-listing/. Name one: npx screenshot-studio tour path/to/tour.py");
+				console.error("No capture tour in store-listing/. Write store-listing/capture.tour.mjs (docs/capture.md).");
 				return 1;
 			}
 			const python = spawnSync("sh", ["-c", "command -v uv"], { stdio: "ignore" }).status === 0 ? [
@@ -5088,13 +5718,17 @@ const COMMANDS = {
 		summary: "Undo a capture that was interrupted (display size, density, demo mode on the emulator)",
 		usage: "reset [--serial emulator-5578]",
 		run: async (argv) => {
-			const { spawnSync } = await import("node:child_process");
-			const { STUDIO_DIR } = await Promise.resolve().then(() => (init_project(), project_exports));
-			return spawnSync("python3", [
-				node_path.default.join(STUDIO_DIR, "capture.py"),
-				"reset",
-				...argv
-			], { stdio: "inherit" }).status ?? 1;
+			const { Emulator } = await Promise.resolve().then(() => (init_emulator$1(), emulator_exports$1));
+			const { DEFAULT_SERIAL } = await Promise.resolve().then(() => (init_recapture(), recapture_exports));
+			const at = argv.indexOf("--serial"), serial = at >= 0 ? argv[at + 1] : process.env.CAPTURE_SERIAL || DEFAULT_SERIAL;
+			try {
+				new Emulator(serial).reset();
+				console.log(`${serial} reset`);
+				return 0;
+			} catch (error) {
+				console.error(error.message);
+				return 1;
+			}
 		}
 	},
 	locales: {
@@ -5187,6 +5821,7 @@ if (require.main === module) main(process.argv.slice(2)).then((code) => {
 	console.error(error.message);
 	process.exitCode = 1;
 });
+exports.TapMap = TapMap;
 exports.bootEmulator = bootEmulator;
 exports.boundsFor = boundsFor;
 exports.boundsProblem = boundsProblem;
@@ -5207,6 +5842,7 @@ exports.imageSize = imageSize;
 exports.isWidow = isWidow;
 exports.loadListing = loadListing;
 exports.main = main;
+exports.matcher = matcher;
 exports.nodesFile = nodesFile;
 exports.outputFile = outputFile;
 exports.parseHeadline = parseHeadline;

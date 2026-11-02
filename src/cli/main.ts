@@ -23,14 +23,28 @@ const COMMANDS: Record<string, Command> = {
     run: async argv => (await import('../node/export')).run(argv)},
   recapture: {summary: 'Build the app, capture on the emulator or simulator and export', usage: 'recapture [locale…] [--boot] [--profile phone] [--serial emulator-5578] [--simulator "iPhone 17 Pro Max"] [--no-build] [--no-capture] [--no-export] [--dry-run]',
     run: async argv => (await import('../node/recapture')).run(argv)},
-  tour: {summary: 'Run one capture tour by hand (the studio puts its capture module in reach)', usage: 'tour [store-listing/capture-emulator.py] [--locale en-US] [--profile phone] [--only 01-home]',
+  tour: {summary: 'Run the capture tour by hand: one language, on the capture emulator', usage: 'tour [--locale en-US] [--profile phone,tablet7] [--only 01-home,02-log] [--serial emulator-5578]',
     run: async argv => {
-      const {spawnSync} = await import('node:child_process');
-      const {requireListing} = await import('../node/project');
-      const {tourEnvironment} = await import('../node/recapture');
+      const option = (name: string) => { const i = argv.indexOf(`--${name}`); return i >= 0 ? argv[i + 1] : undefined; };
+      const {requireListing, loadListing} = await import('../node/project');
       const listing = requireListing();
+      const tourFile = path.join(listing, 'capture.tour.mjs');
+      if (fs.existsSync(tourFile)) {
+        const {runTour} = await import('../node/capture/tour');
+        const {DEFAULT_SERIAL} = await import('../node/recapture');
+        const list = (name: string) => option(name)?.split(',').map(s => s.trim()).filter(Boolean);
+        try {
+          const written = await runTour(tourFile, {listing, locale: option('locale') || loadListing(listing).defaultLocale, profiles: list('profile'), only: list('only'),
+            serial: option('serial') || process.env.CAPTURE_SERIAL || DEFAULT_SERIAL});
+          console.log(`${written.length} capture(s) written`);
+          return 0;
+        } catch (error) { console.error((error as Error).message); return 1; }
+      }
+      // A Python tour (capture-emulator.py), until the app moves to capture.tour.mjs.
+      const {spawnSync} = await import('node:child_process');
+      const {tourEnvironment} = await import('../node/recapture');
       const script = argv[0] && !argv[0].startsWith('--') ? argv.shift()! : ['capture-emulator.py', 'capture-simulator.py'].map(f => path.join(listing, f)).find(f => fs.existsSync(f));
-      if (!script) { console.error('No capture tour in store-listing/. Name one: npx screenshot-studio tour path/to/tour.py'); return 1; }
+      if (!script) { console.error('No capture tour in store-listing/. Write store-listing/capture.tour.mjs (docs/capture.md).'); return 1; }
       const python = spawnSync('sh', ['-c', 'command -v uv'], {stdio: 'ignore'}).status === 0 ? ['uv', 'run', '-q', '--with', 'pillow', 'python3'] : ['python3'];
       return spawnSync(python[0], [...python.slice(1), script, ...argv], {stdio: 'inherit', env: {...process.env, ...tourEnvironment(listing)}}).status ?? 1;
     }},
@@ -38,9 +52,10 @@ const COMMANDS: Record<string, Command> = {
     run: async argv => (await import('../node/emulator')).run(argv)},
   reset: {summary: 'Undo a capture that was interrupted (display size, density, demo mode on the emulator)', usage: 'reset [--serial emulator-5578]',
     run: async argv => {
-      const {spawnSync} = await import('node:child_process');
-      const {STUDIO_DIR} = await import('../node/project');
-      return spawnSync('python3', [path.join(STUDIO_DIR, 'capture.py'), 'reset', ...argv], {stdio: 'inherit'}).status ?? 1;
+      const {Emulator} = await import('../node/capture/emulator');
+      const {DEFAULT_SERIAL} = await import('../node/recapture');
+      const at = argv.indexOf('--serial'), serial = at >= 0 ? argv[at + 1] : process.env.CAPTURE_SERIAL || DEFAULT_SERIAL;
+      try { new Emulator(serial).reset(); console.log(`${serial} reset`); return 0; } catch (error) { console.error((error as Error).message); return 1; }
     }},
   locales: {summary: 'Language coverage, or add a language', usage: 'locales [--init de-DE]',
     run: async argv => (await import('../node/locales')).run(argv)},
@@ -93,6 +108,7 @@ export {serve} from '../node/server';
 export {createWorkspaceStore} from '../node/workspace/store';
 export {cardsFor, withCopy, copyKeys, devicesFor, outputFile, nodesFile, followCallout, withoutMeta} from '../core/gallery';
 export {validate} from '../core/validate';
+export {matcher, TapMap} from '../node/capture/screen';
 
 if (require.main === module) main(process.argv.slice(2)).then(code => { process.exitCode = code; }, (error: Error) => { console.error(error.message); process.exitCode = 1; });
 export {parseHeadline, parseHighlight, frameSize, boundsFor, boundsProblem, calloutPlacement, isWidow, hasDeviceRatio} from '../core/layout';
