@@ -48,7 +48,7 @@
     "build:ui": "vite build && node scripts/install-ui.mjs",
     "schemas": "node scripts/schemas.mjs",
     "typecheck": "tsc -p tsconfig.json && tsc -p tsconfig.ui.json",
-    "test:golden": "node --test test/golden.test.cjs"
+    "test:golden": "node --test test/golden.test.cjs test/demo.test.cjs"
   },
   "dependencies": {
     "playwright": "^1.62.1"

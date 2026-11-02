@@ -1,0 +1,11 @@
+{
+  "$schema": "https://unpkg.com/screenshot-studio/studio/schemas/profiles.schema.json",
+  "phone": {
+    "width": 1080,
+    "height": 1920,
+    "captureWidth": 720,
+    "captureHeight": 1560,
+    "frame": "phone",
+    "label": "Phone"
+  }
+}

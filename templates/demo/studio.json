@@ -1,0 +1,11 @@
+{
+  "$schema": "https://unpkg.com/screenshot-studio/studio/schemas/studio.schema.json",
+  "app": "ChangeDetection",
+  "locales": [
+    "en-US",
+    "de-DE",
+    "zh-CN"
+  ],
+  "defaultLocale": "en-US",
+  "supersample": 2
+}

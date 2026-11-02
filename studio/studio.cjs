@@ -928,7 +928,7 @@ var check_exports = /* @__PURE__ */ __exportAll({
 	checkListing: () => checkListing,
 	formatIssues: () => formatIssues,
 	imageSize: () => imageSize,
-	run: () => run$9
+	run: () => run$10
 });
 /** Width and height of a PNG or JPEG, read from its header. */
 function imageSize(file) {
@@ -1111,7 +1111,7 @@ function formatIssues(result) {
 	return lines.join("\n");
 }
 /** `check [--json]` */
-async function run$9(argv) {
+async function run$10(argv) {
 	const at = argv.indexOf("--listing");
 	const result = checkListing(at >= 0 ? argv[at + 1] : void 0);
 	console.log(argv.includes("--json") ? JSON.stringify(result, null, 2) : formatIssues(result));
@@ -1478,7 +1478,7 @@ var init_routes = __esmMin((() => {
 *   npx screenshot-studio studio [port] [--add /path/to/app]… [--registry projects.json] [--open]
 */
 var server_exports = /* @__PURE__ */ __exportAll({
-	run: () => run$8,
+	run: () => run$9,
 	serve: () => serve
 });
 function writable(file, listingRoot) {
@@ -1592,7 +1592,7 @@ function serve(root, port = 0, { editable = false, workspace = null, activeProje
 * `studio [port] [--add /path/to/app]… [--registry projects.json] [--open]`: the editor. Inside an app it connects that
 * app; from the studio itself it opens the workspace of every connected project. Keeps running until stopped.
 */
-async function run$8(argv) {
+async function run$9(argv) {
 	const value = (flag) => {
 		const index = argv.indexOf(flag);
 		return index < 0 ? void 0 : argv[index + 1];
@@ -1715,7 +1715,7 @@ var init_playwright = __esmMin((() => {}));
 var export_exports = /* @__PURE__ */ __exportAll({
 	exportListing: () => exportListing,
 	formatSummary: () => formatSummary,
-	run: () => run$7
+	run: () => run$8
 });
 async function edgeColumns(page, width, height) {
 	await page.evaluate(() => {
@@ -2227,7 +2227,7 @@ function formatSummary(result) {
 	return lines.join("\n");
 }
 /** `export [--locale de-DE] [--kind phone] [--card 3] [--strict] [--fastlane] [--prune] [--jobs 4] [--json]` */
-async function run$7(argv) {
+async function run$8(argv) {
 	const arg = (name) => {
 		const i = argv.indexOf(`--${name}`);
 		return i >= 0 ? argv[i + 1] : void 0;
@@ -2421,7 +2421,7 @@ var recapture_exports = /* @__PURE__ */ __exportAll({
 	bootEmulator: () => bootEmulator,
 	booted: () => booted,
 	recapture: () => recapture,
-	run: () => run$6,
+	run: () => run$7,
 	tourEnvironment: () => tourEnvironment
 });
 /** What a capture tour gets from the studio: its capture module on PYTHONPATH, the app's listing, the CLI, Playwright. */
@@ -2619,7 +2619,7 @@ async function recapture(options = {}) {
 	return result;
 }
 /** `recapture [locale…] [--profile phone] [--simulator name] [--boot] [--no-build] [--no-capture] [--no-export] [--dry-run]` */
-async function run$6(argv) {
+async function run$7(argv) {
 	const flag = (name) => argv.includes(`--${name}`);
 	const option = (name) => {
 		const i = argv.indexOf(`--${name}`);
@@ -2807,7 +2807,8 @@ function hasDeviceRatio(width, height, ratios, expected) {
 var init_exports = /* @__PURE__ */ __exportAll({
 	existingScreenshots: () => existingScreenshots,
 	init: () => init,
-	run: () => run$5,
+	installTheme: () => installTheme,
+	run: () => run$6,
 	themes: () => themes
 });
 /** Every theme the package ships, with its one-line description. */
@@ -3058,21 +3059,12 @@ function init(options = {}) {
 	template("en-US/listing.json");
 	template("gitignore", ".gitignore");
 	template("README.md");
-	for (const file of ["theme.css", "theme.js"]) {
-		const from = node_path.default.join(THEMES, theme, file);
-		const extra = ios && file === "theme.css" ? node_fs.default.readFileSync(node_path.default.join(IOS_TEMPLATES, "theme.css"), "utf8") : "";
-		if (node_fs.default.existsSync(from)) write(file, fill(node_fs.default.readFileSync(from, "utf8") + extra));
-	}
-	for (const asset of node_fs.default.existsSync(node_path.default.join(THEMES, theme, "assets")) ? node_fs.default.readdirSync(node_path.default.join(THEMES, theme, "assets")) : []) {
-		const target = node_path.default.join(listing, "assets", asset);
-		if (node_fs.default.existsSync(target)) {
-			result.kept.push(`assets/${asset}`);
-			continue;
-		}
-		node_fs.default.mkdirSync(node_path.default.dirname(target), { recursive: true });
-		node_fs.default.copyFileSync(node_path.default.join(THEMES, theme, "assets", asset), target);
-		result.created.push(`assets/${asset}`);
-	}
+	installTheme(listing, theme, {
+		fill,
+		write,
+		result,
+		ios
+	});
 	const skill = node_path.default.join(PACKAGE, "skills", "store-screenshots", "SKILL.md");
 	if (node_fs.default.existsSync(skill) && !node_fs.default.existsSync(node_path.default.join(app, ".claude", "skills", "store-screenshots", "SKILL.md"))) {
 		node_fs.default.mkdirSync(node_path.default.join(app, ".claude", "skills", "store-screenshots"), { recursive: true });
@@ -3081,8 +3073,31 @@ function init(options = {}) {
 	}
 	return result;
 }
+/**
+* Copy a theme into a listing: theme.css and theme.js (with the app's name filled in; iOS galleries get their positions
+* after the theme's own look) and its assets byte for byte. `write` decides whether existing files are kept.
+*/
+function installTheme(listing, theme, options) {
+	if (!node_fs.default.existsSync(node_path.default.join(THEMES, theme, "theme.css"))) throw new Error(`No theme "${theme}". Available: ${themes().map((t) => t.name).join(", ")}`);
+	for (const file of ["theme.css", "theme.js"]) {
+		const from = node_path.default.join(THEMES, theme, file);
+		const extra = options.ios && file === "theme.css" ? node_fs.default.readFileSync(node_path.default.join(IOS_TEMPLATES, "theme.css"), "utf8") : "";
+		if (node_fs.default.existsSync(from)) options.write(file, options.fill(node_fs.default.readFileSync(from, "utf8") + extra));
+		else if (options.overwrite) node_fs.default.rmSync(node_path.default.join(listing, file), { force: true });
+	}
+	for (const asset of node_fs.default.existsSync(node_path.default.join(THEMES, theme, "assets")) ? node_fs.default.readdirSync(node_path.default.join(THEMES, theme, "assets")) : []) {
+		const target = node_path.default.join(listing, "assets", asset);
+		if (node_fs.default.existsSync(target) && !options.overwrite) {
+			options.result?.kept.push(`assets/${asset}`);
+			continue;
+		}
+		node_fs.default.mkdirSync(node_path.default.dirname(target), { recursive: true });
+		node_fs.default.copyFileSync(node_path.default.join(THEMES, theme, "assets", asset), target);
+		options.result?.created.push(`assets/${asset}`);
+	}
+}
 /** `init [app] [--name …] [--package …] [--theme …] [--screenshots folder] [--locales a,b]` */
-async function run$5(argv) {
+async function run$6(argv) {
 	const option = (name) => {
 		const i = argv.indexOf(`--${name}`);
 		return i >= 0 ? argv[i + 1] : void 0;
@@ -3150,6 +3165,64 @@ var init_init = __esmMin((() => {
 	};
 	slug = (text) => text.toLowerCase().replace(/\.[a-z]+$/, "").replace(/_/g, " ").replace(/^\d+[- ]*/, "").replace(/\d{5,}/g, " ").replace(/\b(screenshot|screen ?shot|img|image|copy)\b/g, " ").replace(/[^a-z0-9]+/g, "-").replace(/-\d{1,3}$/, "").replace(/^-+|-+$/g, "").replace(/^\d+$/, "") || "screen";
 	words = (text) => slug(text).replace(/-/g, " ");
+}));
+// src/node/demo.ts
+/**
+* A finished example in one command: real captures of an app in three languages, made into a Google Play set with a
+* theme, exported and opened in the editor.
+*   npx screenshot-studio demo [folder] [--theme signal] [--no-open]
+* Run it again with another --theme to see the same cards in another look; your edits to the words are kept.
+*/
+var demo_exports = /* @__PURE__ */ __exportAll({ run: () => run$5 });
+async function run$5(argv) {
+	const option = (name) => {
+		const i = argv.indexOf(`--${name}`);
+		return i >= 0 ? argv[i + 1] : void 0;
+	};
+	const theme = option("theme") || "signal";
+	const folder = node_path.default.resolve(argv.find((word, i) => !word.startsWith("--") && argv[i - 1] !== "--theme") || "screenshot-studio-demo");
+	const listing = node_path.default.join(folder, "store-listing");
+	if (!themes().some((t) => t.name === theme)) {
+		console.error(`No theme "${theme}". Available: ${themes().map((t) => t.name).join(", ")}`);
+		return 1;
+	}
+	if (node_fs.default.existsSync(listing)) {
+		if (!node_fs.default.existsSync(node_path.default.join(listing, ".demo"))) {
+			console.error(`${node_path.default.relative(process.cwd(), listing)} isn't a demo; pick another folder: npx screenshot-studio demo my-demo`);
+			return 1;
+		}
+		console.log(`Using the demo in ${node_path.default.relative(process.cwd(), folder) || "."}, with the ${theme} theme.`);
+	} else {
+		node_fs.default.cpSync(DEMO, listing, { recursive: true });
+		node_fs.default.writeFileSync(node_path.default.join(listing, ".demo"), "Made by `npx screenshot-studio demo`; it may swap the theme here.\n");
+		console.log(`Made a demo in ${node_path.default.relative(process.cwd(), folder)}: real captures in English, German and Chinese, with the ${theme} theme.`);
+	}
+	node_fs.default.rmSync(node_path.default.join(listing, "assets"), {
+		recursive: true,
+		force: true
+	});
+	installTheme(listing, theme, {
+		fill: (text) => text.replaceAll("{{name}}", "ChangeDetection"),
+		overwrite: true,
+		write: (relative, content) => node_fs.default.writeFileSync(node_path.default.join(listing, relative), content)
+	});
+	const result = await exportListing({ listing });
+	console.log(`\n${formatSummary(result)}`);
+	if (!result.ok) {
+		console.error(`\n${result.error}`);
+		return 1;
+	}
+	const where = node_path.default.relative(process.cwd(), listing);
+	console.log(`\nThe cards are in ${where}/<language>/phone/. Try another look: npx screenshot-studio demo --theme paper`);
+	if (argv.includes("--no-open")) return 0;
+	console.log("Opening the editor (Ctrl-C to stop)…");
+	process.chdir(folder);
+	return (await Promise.resolve().then(() => (init_server(), server_exports))).run(["--open"]);
+}
+var DEMO;
+var init_demo = __esmMin((() => {
+	init_init();
+	DEMO = node_path.default.resolve(__dirname, "..", "templates", "demo");
 }));
 // src/node/locales.ts
 /**
@@ -4376,6 +4449,7 @@ async function run$1(argv) {
 var PROTOCOL, text, listingArg;
 var init_mcp = __esmMin((() => {
 	init_check();
+	init_export();
 	init_project();
 	init_gallery();
 	PROTOCOL = "2025-06-18";
@@ -4545,6 +4619,11 @@ const COMMANDS = {
 		summary: "Set up Screenshot Studio in an app (or from a folder of screenshots)",
 		usage: "init [app] [--name \"My App\"] [--package com.example.app] [--theme starter] [--screenshots ./folder] [--locales en-US,de-DE] [--platform ios]",
 		run: async (argv) => (await Promise.resolve().then(() => (init_init(), init_exports))).run(argv)
+	},
+	demo: {
+		summary: "See it work in a minute: a finished example, exported and opened in the editor",
+		usage: "demo [folder] [--theme signal] [--no-open]",
+		run: async (argv) => (await Promise.resolve().then(() => (init_demo(), demo_exports))).run(argv)
 	},
 	themes: {
 		summary: "List the themes init can start from",

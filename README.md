@@ -6,9 +6,20 @@
 
 <p align="center">Screenshot Studio turns real screenshots of your app into Google Play and App Store screenshots, README images and app icons, in every language. It checks every card the way a reviewer would, and it's built so Claude and other agents can do the whole job for you.</p>
 
+<p align="center">
+  <img src="docs/images/before-after.jpg" width="100%" alt="Before: three plain screenshots of ChangeDetection. After: the finished Google Play cards, and the same card in German, Chinese, Hindi, Portuguese, Bengali and Spanish, with the app's own screens in each language">
+</p>
+
 ## Try it in a minute
 
-Got screenshots? That's all you need.
+No app needed: see a finished set made from real captures in three languages, then open it in the editor.
+
+```sh
+npx screenshot-studio demo
+npx screenshot-studio demo --theme paper    # the same cards in another look
+```
+
+Got screenshots of your own app? That's all you need.
 
 ```sh
 npx screenshot-studio init --name "My App" --screenshots ./screenshots --theme aurora
@@ -56,9 +67,17 @@ Every theme recolors from three variables (`--paper`, `--ink`, `--accent`). `npx
 - captures that aren't a real device shape;
 - store text over Google Play's or the App Store's limits, starter placeholders left in, languages still borrowing English.
 
-## All the way to automatic
+## Why not frameit, Figma or a screenshot website?
 
-When the app changes, one command rebuilds everything: `npx screenshot-studio recapture --boot` builds your capture app, boots the Android emulator or iOS simulator, walks through your screens in every language (a clean 9:41 status bar, the right screen size for each device), and exports. [How capture works](docs/capture.md).
+They're good at what they do; this does a different job.
+
+- **fastlane frameit** puts a device frame and a title over a background. That's one look, and the rest is up to you. Screenshot Studio is the layout and the look too (themes, several devices per card, callouts, README art), and it writes fastlane's folders with `export --fastlane`, so it can sit right where frameit was.
+- **A Figma template** gives you total freedom for one language. Eight cards in three sizes in twenty languages is 480 frames to keep in step by hand, and nothing tells you the German headline no longer fits. Here the words are one file per language and every card is re-rendered and checked from them.
+- **A screenshot website** is quick for a first set. But your art lives in someone else's editor: it can't be regenerated when the app changes, reviewed in a pull request, or made by an agent. Here everything is files in your repository and images are output.
+
+What only this does: the cards come from **real captures**, retaken by one command in every language, and `export` **checks** them like a reviewer before you ship.
+
+## All the way to automatic
 
 <p align="center">
   <img src="docs/images/readme-art.jpg" width="100%" alt="README art made with the studio: Calcula's tool panels, SDK Monitor's 2019 vs today, QuietGuard's rules, Keepout's hero">
@@ -70,6 +89,7 @@ The same studio makes the store listings and READMEs of [SDK Monitor](https://gi
 
 | Command | Does |
 |---|---|
+| `demo` | A finished example from real captures, exported and opened in the editor (`--theme`) |
 | `init` | Set up an app: from screenshots (`--screenshots`), for capture (`--package`), Android or iOS (`--platform`), with a theme |
 | `studio` | The editor |
 | `check` | Check every file, fast; run it after each edit |
@@ -99,7 +119,7 @@ The same studio makes the store listings and READMEs of [SDK Monitor](https://gi
 - **Real screens only.** No painted UI or made-up numbers; sample data is fictional and lives in a capture build.
 - **Everything regenerates.** Words, layout and look are files in your repository; images are output.
 - **Each app keeps its look.** The studio is shared; the theme is yours.
-- **Nothing to vendor.** Apps keep only their words, look and captures; the studio comes from the package. Pin it with `npx screenshot-studio@0.0.1` if you like.
+- **Nothing to vendor.** Apps keep only their words, look and captures; the studio comes from the package. Pin it with `npx screenshot-studio@0.0.2` if you like.
 
 ## License
 

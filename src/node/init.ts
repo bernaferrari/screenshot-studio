@@ -214,20 +214,7 @@ export function init(options: InitOptions = {}): InitResult {
   template('en-US/listing.json');
   template('gitignore', '.gitignore');
   template('README.md');
-  for (const file of ['theme.css', 'theme.js']) {
-    const from = path.join(THEMES, theme, file);
-    // iOS galleries get their positions after the theme's own look.
-    const extra = ios && file === 'theme.css' ? fs.readFileSync(path.join(IOS_TEMPLATES, 'theme.css'), 'utf8') : '';
-    if (fs.existsSync(from)) write(file, fill(fs.readFileSync(from, 'utf8') + extra));
-  }
-  // Theme assets (fonts, textures) are copied byte for byte.
-  for (const asset of fs.existsSync(path.join(THEMES, theme, 'assets')) ? fs.readdirSync(path.join(THEMES, theme, 'assets')) : []) {
-    const target = path.join(listing, 'assets', asset);
-    if (fs.existsSync(target)) { result.kept.push(`assets/${asset}`); continue; }
-    fs.mkdirSync(path.dirname(target), {recursive: true});
-    fs.copyFileSync(path.join(THEMES, theme, 'assets', asset), target);
-    result.created.push(`assets/${asset}`);
-  }
+  installTheme(listing, theme, {fill, write, result, ios});
   // Agents working in the app find the playbook here.
   const skill = path.join(PACKAGE, 'skills', 'store-screenshots', 'SKILL.md');
   if (fs.existsSync(skill) && !fs.existsSync(path.join(app, '.claude', 'skills', 'store-screenshots', 'SKILL.md'))) {
@@ -236,6 +223,27 @@ export function init(options: InitOptions = {}): InitResult {
     log('created   .claude/skills/store-screenshots/SKILL.md');
   }
   return result;
+}
+
+/**
+ * Copy a theme into a listing: theme.css and theme.js (with the app's name filled in; iOS galleries get their positions
+ * after the theme's own look) and its assets byte for byte. `write` decides whether existing files are kept.
+ */
+export function installTheme(listing: string, theme: string, options: {fill: (text: string) => string; write: (relative: string, content: string) => void; result?: {created: string[]; kept: string[]}; ios?: boolean; overwrite?: boolean}) {
+  if (!fs.existsSync(path.join(THEMES, theme, 'theme.css'))) throw new Error(`No theme "${theme}". Available: ${themes().map(t => t.name).join(', ')}`);
+  for (const file of ['theme.css', 'theme.js']) {
+    const from = path.join(THEMES, theme, file);
+    const extra = options.ios && file === 'theme.css' ? fs.readFileSync(path.join(IOS_TEMPLATES, 'theme.css'), 'utf8') : '';
+    if (fs.existsSync(from)) options.write(file, options.fill(fs.readFileSync(from, 'utf8') + extra));
+    else if (options.overwrite) fs.rmSync(path.join(listing, file), {force: true});
+  }
+  for (const asset of fs.existsSync(path.join(THEMES, theme, 'assets')) ? fs.readdirSync(path.join(THEMES, theme, 'assets')) : []) {
+    const target = path.join(listing, 'assets', asset);
+    if (fs.existsSync(target) && !options.overwrite) { options.result?.kept.push(`assets/${asset}`); continue; }
+    fs.mkdirSync(path.dirname(target), {recursive: true});
+    fs.copyFileSync(path.join(THEMES, theme, 'assets', asset), target);
+    options.result?.created.push(`assets/${asset}`);
+  }
 }
 
 /** `init [app] [--name …] [--package …] [--theme …] [--screenshots folder] [--locales a,b]` */
