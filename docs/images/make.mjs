@@ -1,5 +1,5 @@
-// The README's art. From the real exported cards of the apps that use the studio: hero.jpg, before-after.jpg and
-// themes.jpg. With --editor, from the editor open on a fresh `demo` project: editor-store.jpg, editor-languages.jpg
+// The README's art. From the real exported cards of the apps that use the studio: hero.jpg, before-after.jpg,
+// themes.jpg and readme-art.jpg. With --editor, from the editor open on a fresh `demo` project: editor-store.jpg, editor-languages.jpg
 // and demo.gif, the cards re-rendering live as the theme changes on disk (ffmpeg makes the GIF).
 //   node docs/images/make.mjs [--editor]        (APPS=~/Documents/android: the apps whose cards it shows)
 // Run `npm run build` first. The editor runs on a temporary home and project list; yours are left alone.
@@ -47,26 +47,28 @@ function hero() {
 <p style="position:absolute;top:286px;width:100%;text-align:center;font-size:56px;color:#5b5f73;letter-spacing:-.01em">Real app screens in. Store and README art out.</p>${fan}`, W, 1180];
 }
 
-/** Plain captures beside the finished cards, at one height; under them the same card in six more languages. */
+/** Plain captures beside the finished cards, at one height; under them the same card in three more languages. */
 function beforeAfter() {
   const app = listing('ChangeDetection');
   const raws = ['01-home', '02c-compare-page', '00-alert'].map(n => image(path.join(app, 'en-US/raw/phone/light', `${n}.png`)));
   const cards = ['01-home', '02-page', '03-alert'].map(n => image(path.join(app, 'en-US/phone', `v2-${n}.jpg`)));
-  const langs = [['de-DE', 'Deutsch'], ['zh-CN', '中文'], ['hi-IN', 'हिन्दी'], ['pt-BR', 'Português'], ['bn-BD', 'বাংলা'], ['es-ES', 'Español']]
+  const langs = [['de-DE', 'Deutsch'], ['zh-CN', '中文'], ['hi-IN', 'हिन्दी']]
     .map(([locale, name]) => [image(path.join(app, locale, 'phone/v2-01-home.jpg')), name]);
   const raw = (src, i) => `<img src="${src}" style="position:absolute;left:${80 + i * 317}px;top:190px;width:295px;border-radius:22px;box-shadow:0 0 0 1px #15172b18,0 24px 50px -24px #15172b60">`;
   const card = (src, i) => `<img class="card" src="${src}" style="left:${1196 + i * 382}px;top:190px;width:360px;border-radius:24px">`;
-  const lang = ([src, name], i) => `<figure style="position:absolute;left:${1196 + i * 188}px;top:900px;width:172px;text-align:center"><img src="${src}" style="width:172px;border-radius:12px;box-shadow:0 18px 40px -20px #15172b70;display:block"><figcaption style="margin-top:14px;font-size:28px;font-weight:600;color:#5b5f73">${name}</figcaption></figure>`;
-  const label = (x, bold, text) => `<p style="position:absolute;left:${x}px;top:92px;font-size:48px;font-weight:600;letter-spacing:-.015em;color:#5b5f73"><b style="color:#15172b;font-weight:750">${bold}</b> ${text}</p>`;
+  // The languages run off the bottom: their headlines and the top of the app are the point.
+  const lang = ([src, name], i) => `<p style="position:absolute;left:${1196 + i * 382}px;top:900px;font-size:30px;font-weight:650;color:#5b5f73">${name}</p>
+<img class="card" src="${src}" style="left:${1196 + i * 382}px;top:956px;width:360px;border-radius:24px">`;
+  const label = (x, bold, text) => `<p style="position:absolute;left:${x}px;top:110px;font-size:36px;font-weight:600;color:#5b5f73"><b style="color:#15172b;font-weight:750">${bold}</b> ${text}</p>`;
   return [`${label(80, 'Before:', 'your screenshots')}${label(1196, 'After:', 'a Google Play set, checked')}
 ${raws.map(raw).join('')}${cards.map(card).join('')}
 <svg style="position:absolute;left:1046px;top:470px" width="110" height="60" viewBox="0 0 110 60"><path d="M6 30H96M74 8l26 22-26 22" fill="none" stroke="#4150d0" stroke-width="9" stroke-linecap="round" stroke-linejoin="round"/></svg>
-<p style="position:absolute;left:80px;top:960px;width:930px;font-size:60px;font-weight:750;letter-spacing:-.03em;line-height:1.08">The same set in every language,<br><span style="color:#4150d0">the app's own screens too.</span></p>
-<p style="position:absolute;left:80px;top:1130px;width:900px;font-size:34px;line-height:1.35;color:#5b5f73">Captured in each language, laid out by one theme, every card checked: copy that doesn't fit, devices off the card, store limits.</p>
+<p style="position:absolute;left:80px;top:930px;width:1060px;font-size:60px;font-weight:780;letter-spacing:-.03em;line-height:1.08">The same set in every language,<br><span style="color:#4150d0">the app's own screens too.</span></p>
+<p style="position:absolute;left:80px;top:1110px;width:940px;font-size:34px;line-height:1.35;color:#5b5f73">Captured in each language, laid out by one theme, every card checked: copy that doesn't fit, devices off the card, store limits.</p>
 ${langs.map(lang).join('')}`, 2400, 1300];
 }
 
-/** The demo's text card in each theme, side by side, labelled, cut by the bottom edge. */
+/** The demo's text card in each theme, side by side, labelled, fading out at one line at the foot. */
 function themes() {
   const names = ['aurora', 'porcelain', 'signal', 'paper', 'panels', 'mono'];
   const work = fs.mkdtempSync(path.join(os.tmpdir(), 'readme-themes-'));
@@ -77,8 +79,16 @@ function themes() {
   });
   fs.rmSync(work, {recursive: true, force: true});
   const html = names.map((name, i) => `<p style="position:absolute;left:${48 + i * 392}px;top:44px;font-size:36px;font-weight:650;letter-spacing:-.01em">${name}</p>
-<img class="card" src="${cards[i]}" style="left:${48 + i * 392}px;top:112px;width:360px;border-radius:24px">`).join('');
+<div style="position:absolute;left:${48 + i * 392}px;top:112px;width:360px;height:500px;overflow:hidden;border-radius:24px 24px 0 0;-webkit-mask-image:linear-gradient(#000 62%,transparent)"><img src="${cards[i]}" style="width:360px;display:block"></div>`).join('');
   return [html, 2400, 640];
+}
+
+/** README art from four apps, two by two: each app's own README image, whole. */
+function readmeArt() {
+  const tiles = [['Calcula', 'tools.jpg'], ['WiFiWeakspot', 'tools.jpg'], ['Wordkeep', 'hero.jpg'], ['Lumina', 'hero.jpg']];
+  const width = 1120, height = Math.round(width * 1260 / 2400);
+  const html = tiles.map(([app, file], i) => `<img class="card" src="${image(path.join(listing(app), 'en-US/readme', file))}" style="left:${60 + (i % 2) * (width + 40)}px;top:${60 + Math.floor(i / 2) * (height + 40)}px;width:${width}px;height:${height}px;object-fit:cover;border-radius:24px">`).join('');
+  return [html, 2400, 60 * 2 + height * 2 + 40];
 }
 
 /** The editor on a fresh demo, shown as ~/code/ChangeDetection: its store preview, its languages, and the live GIF. */
@@ -96,17 +106,22 @@ async function editor(browser) {
       await page.getByText('Open studio').first().click();
       await page.waitForTimeout(4000);
     };
-    // Stills at 2x, the main pane only.
-    const still = await browser.newPage({viewport: {width: 1440, height: 900}, deviceScaleFactor: 2});
+    // Stills at 2x, each cropped to its one point: the Play page, and the languages table.
+    const still = await browser.newPage({viewport: {width: 1440, height: 1100}, deviceScaleFactor: 2});
     await open(still);
-    const pane = {x: 247, y: 55, width: 1193};
     await still.getByRole('button', {name: /Store preview/}).click();
     await still.waitForTimeout(3000);
-    await still.screenshot({path: path.join(out, 'editor-store.jpg'), type: 'jpeg', quality: 85, clip: {...pane, height: 845}});
+    const install = (await still.getByText('Install', {exact: true}).first().boundingBox());
+    // The phone from its top, a little air at the sides, running off the bottom through the cards.
+    const phone = {x: install.x - 90, y: install.y - 180, width: install.width + 180};
+    await still.screenshot({path: path.join(out, 'editor-store.jpg'), type: 'jpeg', quality: 85, clip: {...phone, height: 500}});
     await still.keyboard.press('Escape');
     await still.getByText('Languages').first().click();
     await still.waitForTimeout(3000);
-    await still.screenshot({path: path.join(out, 'editor-languages.jpg'), type: 'jpeg', quality: 85, clip: {...pane, height: 625}});
+    const rows = still.locator('.language-row');
+    const first = await rows.first().boundingBox(), last = await rows.last().boundingBox();
+    await still.screenshot({path: path.join(out, 'editor-languages.jpg'), type: 'jpeg', quality: 85,
+      clip: {x: first.x - 24, y: first.y - 24, width: first.width + 48, height: last.y + last.height - first.y + 48}});
     await still.close();
     console.log('docs/images/editor-store.jpg\ndocs/images/editor-languages.jpg');
 
@@ -136,7 +151,8 @@ async function editor(browser) {
     await context.close();
     const video = fs.readdirSync(home).find(file => file.endsWith('.webm'));
     execFileSync('ffmpeg', ['-y', '-loglevel', 'error', '-ss', String(start), '-to', String(end), '-i', path.join(home, video), '-vf',
-      'crop=1160:880:84:285,fps=10,scale=860:-1:flags=lanczos,split[a][b];[a]palettegen=max_colors=128:stats_mode=diff[p];[b][p]paletteuse=dither=bayer:bayer_scale=4:diff_mode=rectangle',
+      // The gallery's header and its card row, edge to edge, at their own size so they stay sharp.
+      'crop=1100:740:96:422,fps=8,split[a][b];[a]palettegen=max_colors=112:stats_mode=diff[p];[b][p]paletteuse=dither=bayer:bayer_scale=4:diff_mode=rectangle',
       path.join(out, 'demo.gif')]);
     console.log('docs/images/demo.gif');
   } finally {
@@ -150,5 +166,6 @@ try {
   await shoot(browser, ...hero(), 'hero.jpg');
   await shoot(browser, ...beforeAfter(), 'before-after.jpg');
   await shoot(browser, ...themes(), 'themes.jpg');
+  await shoot(browser, ...readmeArt(), 'readme-art.jpg');
   if (process.argv.includes('--editor')) await editor(browser);
 } finally { await browser.close(); }

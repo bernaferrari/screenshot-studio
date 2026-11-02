@@ -83,7 +83,7 @@ What only this does: the cards come from **real captures**, retaken by one comma
 ## All the way to automatic
 
 <p align="center">
-  <img src="docs/images/readme-art.jpg" width="100%" alt="README art made with the studio: Calcula's tool panels, SDK Monitor's 2019 vs today, QuietGuard's rules, Keepout's hero">
+  <img src="docs/images/readme-art.jpg" width="100%" alt="README art made with the studio: Calcula's tools, WiFi Weakspot's features, Wordkeep's paper banner and Lumina's dark one">
 </p>
 
 The same studio makes the store listings and READMEs of [SDK Monitor](https://github.com/bernaferrari/SDKMonitor), Calcula, Keepout, QuietGuard, ChangeDetection, Wordkeep and WiFi Weakspot.
