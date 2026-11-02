@@ -168,7 +168,7 @@ export async function recapture(options: RecaptureOptions = {}): Promise<Recaptu
           if (wanted === 'default' ? locale !== defaultLocale : Array.isArray(wanted) && !wanted.includes(locale)) continue;
           const runProfiles = spec.profiles === false ? [null] : (spec.profiles || captureProfiles).filter(name => !options.profile || name === options.profile);
           for (const profile of runProfiles) {
-            const script = spec.script || (ios ? 'store-listing/capture-simulator.py' : 'store-listing/capture-emulator.py');
+            const script = spec.script || path.relative(repo, path.join(listing, ios ? 'capture-simulator.py' : 'capture-emulator.py'));
             const args = [...python.slice(1), script, ...(ios ? (simulator ? ['--simulator', simulator] : []) : ['--serial', serial]), '--locale', locale,
               ...(profile ? ['--profile', profile] : []), ...(spec.args || []).map(expand)];
             const attempts = (capture.retries ?? 2) + 1;
@@ -185,7 +185,7 @@ export async function recapture(options: RecaptureOptions = {}): Promise<Recaptu
       // One language's export failing (copy that no longer fits, say) does not stop the others.
       result.failedExports = locales.filter(locale => !(capture.export
         ? run(capture.export.replaceAll('{locale}', locale), [], {shell: true, check: false})
-        : run(process.execPath, [path.join(STUDIO_DIR, 'studio.cjs'), 'export', '--locale', locale], {check: false})));
+        : run(process.execPath, [path.join(STUDIO_DIR, 'studio.cjs'), 'export', '--listing', listing, '--locale', locale], {check: false})));
       if (result.failedExports.length) throw new Error(`Export failed for ${result.failedExports.join(', ')}; captures are in place. Fix those and export again.`);
       for (const command of capture.after || []) run(command, [], {shell: true});
     }

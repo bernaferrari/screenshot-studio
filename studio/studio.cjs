@@ -2574,7 +2574,7 @@ async function recapture(options = {}) {
 				if (wanted === "default" ? locale !== defaultLocale : Array.isArray(wanted) && !wanted.includes(locale)) continue;
 				const runProfiles = spec.profiles === false ? [null] : (spec.profiles || captureProfiles).filter((name) => !options.profile || name === options.profile);
 				for (const profile of runProfiles) {
-					const script = spec.script || (ios ? "store-listing/capture-simulator.py" : "store-listing/capture-emulator.py");
+					const script = spec.script || node_path.default.relative(repo, node_path.default.join(listing, ios ? "capture-simulator.py" : "capture-emulator.py"));
 					const args = [
 						...python.slice(1),
 						script,
@@ -2605,6 +2605,8 @@ async function recapture(options = {}) {
 			}) : run(process.execPath, [
 				node_path.default.join(STUDIO_DIR, "studio.cjs"),
 				"export",
+				"--listing",
+				listing,
 				"--locale",
 				locale
 			], { check: false })));
