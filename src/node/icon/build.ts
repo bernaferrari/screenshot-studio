@@ -12,8 +12,8 @@ import type {IconJob, IconOptions, IconResult, IconSpec} from './types';
 /** Draw every icon brand/icon.json lists, plus brand/icon-preview.png (one per icon). */
 export async function buildIcons(options: IconOptions = {}): Promise<IconResult> {
   const log = options.log || ((line: string) => console.log(line));
-  const listing = requireListing(options.listing);
-  const specFile = options.spec ? path.resolve(options.spec) : path.join(listing, 'brand', 'icon.json');
+  // A named icon.json needs no app around it (a library's icon, say); otherwise it is the app's store-listing/brand/.
+  const specFile = options.spec ? path.resolve(options.spec) : path.join(requireListing(options.listing), 'brand', 'icon.json');
   if (!fs.existsSync(specFile)) {
     throw new Error(`No ${specFile}. Draw brand/background.svg and brand/foreground.svg, then list the targets in brand/icon.json.`);
   }

@@ -3728,8 +3728,7 @@ var init_targets = __esmMin((() => {
 /** Draw every icon brand/icon.json lists, plus brand/icon-preview.png (one per icon). */
 async function buildIcons(options = {}) {
 	const log = options.log || ((line) => console.log(line));
-	const listing = requireListing(options.listing);
-	const specFile = options.spec ? node_path.default.resolve(options.spec) : node_path.default.join(listing, "brand", "icon.json");
+	const specFile = options.spec ? node_path.default.resolve(options.spec) : node_path.default.join(requireListing(options.listing), "brand", "icon.json");
 	if (!node_fs.default.existsSync(specFile)) throw new Error(`No ${specFile}. Draw brand/background.svg and brand/foreground.svg, then list the targets in brand/icon.json.`);
 	const brand = node_path.default.dirname(specFile);
 	const root = node_path.default.resolve(brand, "..", "..");
