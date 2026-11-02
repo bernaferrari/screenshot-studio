@@ -7,6 +7,30 @@ import sys
 import time
 
 SERIAL = os.environ.get('CAPTURE_SERIAL', 'emulator-5578')
+
+
+def attached():
+    """Serials adb can reach right now, with their state (device, offline, unauthorized)."""
+    try:
+        out = subprocess.run(['adb', 'devices'], capture_output=True, text=True, timeout=20).stdout
+    except (OSError, subprocess.TimeoutExpired):
+        return {}
+    return dict(line.split('\t', 1) for line in out.splitlines()[1:] if '\t' in line)
+
+
+def missing_emulator(serial):
+    """Why the capture emulator can't be used, and the ways forward, or None when it is attached and ready."""
+    devices = attached()
+    if devices.get(serial) == 'device':
+        return None
+    others = [s for s, state in devices.items() if s != serial and state == 'device' and s.startswith('emulator-')]
+    lines = [f'The capture emulator {serial} is {devices.get(serial, "not running")}.']
+    lines.append('  Start a dedicated one: npx screenshot-studio recapture --boot   (boots an emulator as ' + serial + ')')
+    for other in others:
+        lines.append(f'  Or capture on {other}: add --serial {other}   (its display size, language and demo mode change during the '
+                     'capture and are restored after)')
+    lines.append('Captures run only on emulators, never on a phone.')
+    return '\n'.join(lines)
 DEMO = 'com.android.systemui.demo'
 SCALES = ('animator_duration_scale', 'transition_animation_scale', 'window_animation_scale')
 # Installed by tools or Google Play services rather than by a person; they would show up in app lists.

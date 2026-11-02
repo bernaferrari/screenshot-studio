@@ -1,67 +1,118 @@
 ---
 name: store-screenshots
-description: Make or improve an app's Google Play / App Store screenshots and README images from real app screens with Screenshot Studio. Use when the user asks for store screenshots, a Play or App Store listing, marketing images, a feature graphic, README hero images, or to translate or refresh them.
+description: Make, fix, translate or refresh an app's Google Play / App Store screenshots, feature graphic and README images from real app screens, with Screenshot Studio. Use whenever the user asks for store screenshots, a store listing's images, marketing or README art of their app, or to capture, restyle or translate them.
 ---
 
 # Store screenshots with Screenshot Studio
 
-Screenshot Studio turns real captures of the app into store and README images. You edit files (look, layout, words); the studio renders and checks them. Work in this loop: **edit → check → render → look → refine.** Never call a card done without looking at the image.
+Screenshot Studio turns real captures of an app into store cards and README art. You edit plain files (words, layout,
+look); the studio renders them in a browser and checks them like a store reviewer would. You work in one loop:
 
-## 1. Set up (once)
+**edit → check → render → look → refine.** Never call a card done without looking at its image.
 
-In the app's repository:
+## 1. Start
 
-- **The user has screenshots already** (or you can take them): `npx screenshot-studio init --name "App" --screenshots ./folder`. Phone and tablet shapes sort themselves into galleries. This is the fastest start; prefer it.
-- **Android app to capture automatically:** `npx screenshot-studio init --name "App" --package com.example.app`, then write the tour in `store-listing/capture-emulator.py` and run `npx screenshot-studio recapture --boot`. The app needs a capture build with believable, fictional sample data (see `docs/playbook.md`, section 1).
-- `npx screenshot-studio themes` lists starting looks; pass `--theme <name>`.
+Everything lives in `store-listing/` in the app's repository. If `store-listing/studio.json` exists, it is set up: skip
+to section 2. Otherwise pick the first path that fits:
 
-Already set up? There's a `store-listing/studio.json`; run the commands below from the app.
+| The user has | Run |
+|---|---|
+| Screenshots in a folder | `npx screenshot-studio init --name "App" --screenshots ./folder --theme aurora` |
+| Screenshots per language (`./folder/en-US/`, `./folder/de-DE/`…) | the same: every language lands on the same cards |
+| fastlane's screenshots | `npx screenshot-studio init --theme aurora`: it finds them in every language, and the app's name |
+| An Android app and no screenshots | `npx screenshot-studio init --name "App" --package com.example.app`, then section 6 |
+| Nothing yet, wants to see it | `npx screenshot-studio demo` (a finished example; `--theme paper`, `--3d`) |
 
-## 2. The files you edit
+`npx screenshot-studio themes` lists the looks. `init` prints what to do next; do it.
+
+## 2. Tools
+
+Prefer the MCP server (`claude mcp add screenshot-studio -- npx screenshot-studio mcp`, run from the app):
+
+| Tool | Use it to |
+|---|---|
+| `describe_listing` | Learn the galleries, cards, captures, headlines and output files. Call it first. |
+| `check` | Validate every file in a second. Run it after every edit. |
+| `render_card` | See one card. Its `layout` gives every device, the headline and each callout in card pixels. |
+| `export` | Render and check everything, and write the images. |
+| `view_image` | Look at a card, a capture, or `en-US/contact-phone.jpg` (the whole strip at once). |
+| `emulator_screen`, `emulator_tap` | See and move around the app on the capture emulator (section 6). |
+
+Without MCP, the CLI does the same: `check`, `export --kind phone --card 0`, `export`, `screen`; add `--json` for
+results you can parse, and open the images yourself.
+
+## 3. What to edit
 
 | To change | Edit |
-| --- | --- |
-| Which cards, their order, their captures and layout | `store-listing/gallery.json` |
-| Headlines and supporting lines | `store-listing/<locale>/copy.json` |
-| The look: fonts, colors, where the device sits | `store-listing/theme.css` |
-| Background art, extra elements | `store-listing/theme.js` |
-| Image sizes | `store-listing/profiles.json` |
+|---|---|
+| Headline and supporting line of a card | `<locale>/copy.json`, keyed by the card's `feature`: `*highlight*`, `\n` for a new line |
+| Which cards, their order, captures, layout words, callouts | `gallery.json` |
+| Fonts, colors (`--paper`, `--ink`, `--accent`), where devices sit | `theme.css` |
+| Background art, extra elements, real 3D devices (`depth: true`) | `theme.js` |
+| Image sizes, capture sizes | `profiles.json` |
+| Store text (title, short description) | `<locale>/listing.json` |
 
-Headline markup in copy: `*highlight*`, `\n` for a new line. Each card's words are keyed by its `feature`.
+**Placing devices.** Cards use layout words in `gallery.json`: `big` (one large device), `hang` (from the top, copy
+below), `duo` (two devices), plus `tilt` beside any of them. Themes place them with variables per gallery in
+`theme.css`: `.phone{--device-top:600px;--device-left:84px;--hang-top:-640px;--duo-width:540px;--duo-step:180px}`
+(full list in `docs/themes.md`). Change a variable, render, and read `layout` to confirm the numbers. One card placed by
+hand: an ordinary rule wins, `.phone .home .device{top:560px}`.
 
-## 3. The loop
+**Callouts** magnify part of a screen: `"callouts": [{"x": 40, "y": 520, "w": 1000, "h": 180, "mag": 1.2, "radius": 24}]`,
+in capture pixels. With `"target": "<path>", "targetMode": "element"` the callout follows that UI element into every
+language, but that needs the capture's layout map (`*.nodes.json`), which only the studio's own captures write.
 
-With the MCP server (`claude mcp add screenshot-studio -- npx screenshot-studio mcp`), use its tools: `describe_listing` first, `check` after each edit, `render_card` to see a card, `export` then `view_image en-US/contact-phone.jpg` to see the whole strip. Without it, use the CLI and read the images:
+## 4. Read what check and export tell you
 
-```sh
-npx screenshot-studio check                              # seconds; fix every ✗ before rendering
-npx screenshot-studio export --kind phone --card 0       # one card: store-listing/en-US/phone/…
-npx screenshot-studio export --locale en-US              # everything, then look at en-US/contact-phone.jpg
-```
+Every issue carries a fix; do what it says. The common ones:
 
-Read the images you rendered (scale large ones down first, e.g. `sips -Z 1400 in.jpg --out /tmp/x.jpg`). `export --json` gives the files written and each card's notes.
-
-## 4. What good looks like
-
-Judge every card against this before you show it:
-
-- **The app is the hero.** The real screen is large (about two thirds of the card) and may run off an edge. No small phones floating in space.
-- **One idea per card.** One short headline with one highlighted phrase, one supporting line. Readable at thumbnail size: if you squint at the contact sheet, can you read every headline?
-- **One system.** Every card shares a structure; vary color or one element, not the composition. The set reads as one strip.
-- **One continuous background** under the strip (a gradient or glow laid out in panorama coordinates: `panoramaGradient` and `panoramaLights` from `./studio/shapes.js`), not decoration per card.
-- **Upright devices** unless a tilt carries the idea. Frames that belong to the look, not default black.
-- **Nothing fake.** Real screens only, real status bar, fictional but believable data. Never paint UI.
-- **Order:** the first two cards show the core screens, then one feature per card, a light/dark pair, tablets last.
-
-Common fixes: copy shrunk to fit → shorten the headline. Device out of bounds → move it in `theme.css` (`.phone .<layout> .device{left, top, width}`). Background breaks at a seam → draw it with the panorama helpers in `theme.js` and set `continuous: true`. A card doesn't look like the others → make it use the same layout word.
+| Message | Do |
+|---|---|
+| `is still the starter placeholder` | Write a real headline (or line) for that card |
+| `field(s) not translated yet` | Translate those fields from the default language (section 5) |
+| `copy shrunk to N%` / `does not fit` | Shorten the headline; don't shrink the type |
+| `is left on a short last line` | Reword so the last line isn't one or two words |
+| `Screen leaves the side / top of the card` | Move or shrink the device (section 3) |
+| `takes at most 8 per device type` | Keep the best 8 (Play; 10 on the App Store) and cut the rest from `gallery.json` |
+| `background breaks at the seam` | Draw the background across the strip (`panoramaGradient` from `./studio/shapes.js`) |
+| `en-US capture: phone/…` (a card's note) | That language has no screen of its own there yet: fine until recaptured |
 
 ## 5. Languages
 
-`npx screenshot-studio locales --init de-DE` adds a language with empty fields; fill `de-DE/copy.json` (keep sample names and data in English). Captures can stay English until recaptured; the export says which cards borrow them. `export --strict` fails until a language is complete.
+`init` already made a `copy.json` for each language it found, with every field empty. For a new one:
+`npx screenshot-studio locales --init de-DE`. Translate each empty field from the default language: keep the
+`*highlight*` around the phrase that carries the meaning, keep `\n` breaks where the line wants one, keep it as short
+as the original, and keep names and sample data unchanged. Then `check` until no field is listed, and look at the
+contact sheet in that language: long languages (German, Finnish) are where copy stops fitting.
 
-## 6. Before you finish
+## 6. Capturing the app (Android)
 
-- `check` shows all good, and `export` has no warnings.
-- You've looked at the contact sheet and every card, and each one passes section 4.
-- Tell the user what changed and show them `store-listing/en-US/contact-phone.jpg`.
-- Commit `store-listing/` (the `.gitignore` there keeps other languages' images out).
+Captures come from a dedicated emulator (`emulator-5578`), never a phone. If it isn't running, the error says how to
+start it (`recapture --boot`) or which running emulator to use (`--serial`).
+
+1. The app needs a capture build that opens on believable, fictional sample data (`docs/playbook.md`, section 1).
+2. Look at the app: `emulator_screen` shows the screen and every element's label; `emulator_tap` taps a label, a point
+   or `back`. Find each screen the cards need.
+3. Write what you did as the tour in `store-listing/capture-emulator.py`: `d.tap("Settings")` with the labels you saw,
+   `d.shot("02-settings")` on each screen. The template shows the shape.
+4. `npx screenshot-studio recapture` builds, captures every language and every device size, and exports.
+
+## 7. What good looks like
+
+Judge every card, then the contact sheet, against this:
+
+- **The app is the hero.** The real screen is large (about two thirds of the card) and may run off an edge. No small
+  phones floating in space.
+- **One idea per card.** A short benefit headline ("Know when a page changes"), not a feature name ("Change
+  detection"), one highlighted phrase, one supporting line. Readable at thumbnail size.
+- **One system.** Every card shares a structure; vary one thing, not the composition. The strip reads as one.
+- **Real screens only.** Never paint or fake UI; fictional but believable data; a clean 9:41 status bar.
+- **Order.** The first two cards show the core value; then one feature per card; a light/dark pair; tablets last.
+
+## 8. Before you finish
+
+- `check` shows no errors and `export` no warnings (or each remaining warning is one the user chose to keep).
+- You looked at every card and at the contact sheet of each language.
+- Tell the user what changed and which images to look at (`store-listing/en-US/contact-phone.jpg`), and anything you
+  couldn't do (missing captures, languages left untranslated).
+- `store-listing/` is the source; commit it. Rendered images regenerate with `export`.

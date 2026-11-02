@@ -403,7 +403,7 @@ var check_exports = /* @__PURE__ */ __exportAll({
 	checkListing: () => checkListing,
 	formatIssues: () => formatIssues,
 	imageSize: () => imageSize,
-	run: () => run$10
+	run: () => run$11
 });
 /** Width and height of a PNG or JPEG, read from its header. */
 function imageSize(file) {
@@ -574,7 +574,14 @@ function checkListing(listingDir) {
 		if (locale !== defaultLocale) {
 			const file = `${locale}/copy.json`;
 			if (!node_fs.default.existsSync(node_path.default.join(listing, file))) warn(file, "is missing; this language shows the default words", { fix: `Run \`npx screenshot-studio locales --init ${locale}\`.` });
-			else load(file, "copy");
+			else {
+				const copy = load(file, "copy") || {};
+				const missing = Object.entries(defaultCopy).flatMap(([key, entry]) => Object.entries(entry || {}).filter(([field, text]) => typeof text === "string" && text.trim() && !copy[key]?.[field]?.trim()).map(([field]) => `${key}.${field}`));
+				if (missing.length) warn(file, `${missing.length} field(s) not translated yet; those cards show ${defaultLocale} words: ${missing.slice(0, 6).join(", ")}${missing.length > 6 ? ", …" : ""}`, {
+					code: "untranslated",
+					fix: `Translate each empty field from ${defaultLocale}/copy.json, keeping its *highlight* and line breaks.`
+				});
+			}
 		}
 		const words = readJson(node_path.default.join(listing, locale, "listing.json"), null);
 		for (const problem of words ? listingProblems(words, store) : []) error(`${locale}/listing.json`, problem.message, { path: problem.field });
@@ -593,7 +600,7 @@ function formatIssues(result) {
 	return lines.join("\n");
 }
 /** `check [--json]` */
-async function run$10(argv) {
+async function run$11(argv) {
 	const at = argv.indexOf("--listing");
 	const result = checkListing(at >= 0 ? argv[at + 1] : void 0);
 	console.log(argv.includes("--json") ? JSON.stringify(result, null, 2) : formatIssues(result));
@@ -1518,7 +1525,7 @@ var init_routes = __esmMin((() => {
 *   npx screenshot-studio studio [port] [--add /path/to/app]… [--registry projects.json] [--open]
 */
 var server_exports = /* @__PURE__ */ __exportAll({
-	run: () => run$9,
+	run: () => run$10,
 	serve: () => serve
 });
 function writable(file, listingRoot) {
@@ -1632,7 +1639,7 @@ function serve(root, port = 0, { editable = false, workspace = null, activeProje
 * `studio [port] [--add /path/to/app]… [--registry projects.json] [--open]`: the editor. Inside an app it connects that
 * app; from the studio itself it opens the workspace of every connected project. Keeps running until stopped.
 */
-async function run$9(argv) {
+async function run$10(argv) {
 	const value = (flag) => {
 		const index = argv.indexOf(flag);
 		return index < 0 ? void 0 : argv[index + 1];
@@ -1755,7 +1762,7 @@ var init_playwright = __esmMin((() => {}));
 var export_exports = /* @__PURE__ */ __exportAll({
 	exportListing: () => exportListing,
 	formatSummary: () => formatSummary,
-	run: () => run$8
+	run: () => run$9
 });
 async function edgeColumns(page, width, height) {
 	await page.evaluate(() => {
@@ -2163,7 +2170,10 @@ async function writeCards(run, { locale, dir }, gallery, manifest, written, tall
 			bytes: bytes.length,
 			notes
 		};
-		run.cards.push(card);
+		run.cards.push({
+			...card,
+			layout: report.layout
+		});
 		manifest.galleries[kind].push({
 			...card,
 			file,
@@ -2271,7 +2281,7 @@ function formatSummary(result) {
 	return lines.join("\n");
 }
 /** `export [--locale de-DE] [--kind phone] [--card 3] [--strict] [--fastlane] [--prune] [--jobs 4] [--json]` */
-async function run$8(argv) {
+async function run$9(argv) {
 	const arg = (name) => {
 		const i = argv.indexOf(`--${name}`);
 		return i >= 0 ? argv[i + 1] : void 0;
@@ -2465,8 +2475,9 @@ var recapture_exports = /* @__PURE__ */ __exportAll({
 	DEFAULT_SERIAL: () => DEFAULT_SERIAL,
 	bootEmulator: () => bootEmulator,
 	booted: () => booted,
+	missingEmulator: () => missingEmulator,
 	recapture: () => recapture,
-	run: () => run$7,
+	run: () => run$8,
 	tourEnvironment: () => tourEnvironment
 });
 /** What a capture tour gets from the studio: its capture module on PYTHONPATH, the app's listing, the CLI, Playwright. */
@@ -2480,7 +2491,18 @@ function tourEnvironment(listing) {
 }
 /** Whether the emulator is attached and has finished booting. */
 function booted(serial) {
-	return adb(serial, "shell", "getprop", "sys.boot_completed").stdout?.trim() === "1";
+	return adb$1(serial, "shell", "getprop", "sys.boot_completed").stdout?.trim() === "1";
+}
+/** Why the capture emulator can't be used and the ways forward, or null when it has booted. */
+function missingEmulator(serial) {
+	if (booted(serial)) return null;
+	const devices = ((0, node_child_process.spawnSync)("adb", ["devices"], { encoding: "utf8" }).stdout || "").split("\n").slice(1).map((line) => line.split("	")).filter(([id, state]) => id && state === "device").map(([id]) => id);
+	return [
+		`The capture emulator ${serial} isn't running.`,
+		`  Start a dedicated one: npx screenshot-studio recapture --boot   (boots an emulator as ${serial})`,
+		...devices.filter((id) => id.startsWith("emulator-") && id !== serial).map((id) => `  Or capture on ${id}: add --serial ${id}   (its display size, language and demo mode change during the capture and are restored after)`),
+		"Captures run only on emulators, never on a phone."
+	].join("\n");
 }
 /** Start an emulator headless on the serial's port and wait until Android has booted. */
 async function bootEmulator(serial, avd, log) {
@@ -2528,7 +2550,7 @@ async function bootEmulator(serial, avd, log) {
 			"night",
 			"no"
 		]
-	]) adb(serial, "shell", ...args);
+	]) adb$1(serial, "shell", ...args);
 	log(`${serial} is ready.`);
 }
 async function recapture(options = {}) {
@@ -2601,6 +2623,10 @@ async function recapture(options = {}) {
 				if (ios) for (const sim of sims) await bootSimulator(sim, log);
 				else await bootEmulator(serial, capture.avd, log);
 			}
+			if (!ios && !options.dryRun) {
+				const problem = missingEmulator(serial);
+				if (problem) throw new Error(problem);
+			}
 			for (const { apk, app, package: id } of capture.install || []) {
 				const file = ios ? app : apk;
 				if (!file) throw new Error(`capture.install needs ${ios ? "\"app\" (a simulator .app)" : "\"apk\""} for ${id}`);
@@ -2666,7 +2692,7 @@ async function recapture(options = {}) {
 	return result;
 }
 /** `recapture [locale…] [--profile phone] [--simulator name] [--boot] [--no-build] [--no-capture] [--no-export] [--dry-run]` */
-async function run$7(argv) {
+async function run$8(argv) {
 	const flag = (name) => argv.includes(`--${name}`);
 	const option = (name) => {
 		const i = argv.indexOf(`--${name}`);
@@ -2693,7 +2719,7 @@ async function run$7(argv) {
 	if (result.error) console.error(result.error);
 	return result.ok ? 0 : 1;
 }
-var DEFAULT_SERIAL, sdkRoot, has, adb;
+var DEFAULT_SERIAL, sdkRoot, has, adb$1;
 var init_recapture = __esmMin((() => {
 	init_project();
 	init_ios();
@@ -2701,7 +2727,7 @@ var init_recapture = __esmMin((() => {
 	DEFAULT_SERIAL = "emulator-5578";
 	sdkRoot = () => process.env.ANDROID_HOME || process.env.ANDROID_SDK_ROOT || [node_path.default.join(node_os.default.homedir(), "Library/Android/sdk"), node_path.default.join(node_os.default.homedir(), "Android/Sdk")].find((dir) => node_fs.default.existsSync(dir)) || "";
 	has = (command) => (0, node_child_process.spawnSync)("sh", ["-c", `command -v ${command}`], { stdio: "ignore" }).status === 0;
-	adb = (serial, ...args) => (0, node_child_process.spawnSync)("adb", [
+	adb$1 = (serial, ...args) => (0, node_child_process.spawnSync)("adb", [
 		"-s",
 		serial,
 		...args
@@ -2855,7 +2881,8 @@ var init_exports = /* @__PURE__ */ __exportAll({
 	existingScreenshots: () => existingScreenshots,
 	init: () => init,
 	installTheme: () => installTheme,
-	run: () => run$6,
+	run: () => run$7,
+	screenshotSets: () => screenshotSets,
 	themes: () => themes
 });
 /** Every theme the package ships, with its one-line description. */
@@ -2869,33 +2896,57 @@ function themes() {
 		};
 	});
 }
+function setsOf(byLocale, folder, title) {
+	const locales = Object.keys(byLocale).filter((locale) => byLocale[locale].length).sort();
+	if (!locales.length) return null;
+	const reference = locales.includes("en-US") ? "en-US" : locales[0];
+	return {
+		byLocale: Object.fromEntries(locales.map((locale) => [locale, byLocale[locale]])),
+		reference,
+		folder,
+		title
+	};
+}
 /**
-* Screenshots the app already has, where store tools keep them: fastlane's (supply for Play, snapshot/deliver for the
-* App Store), then a screenshots/ folder. Also the app's name, when fastlane has it.
+* Screenshots the app already has, in every language, where store tools keep them: fastlane's (supply for Play,
+* snapshot/deliver for the App Store), then a screenshots/ folder. Also the app's name, when fastlane has it.
 */
 function existingScreenshots(app, ios = false) {
-	const isImage = (file) => /\.(png|jpe?g|webp)$/i.test(file);
-	const android = [
-		"fastlane/metadata/android/en-US/images/phoneScreenshots",
-		"fastlane/metadata/android/en-US/images/sevenInchScreenshots",
-		"fastlane/metadata/android/en-US/images/tenInchScreenshots"
-	];
-	const apple = ["fastlane/screenshots/en-US", "fastlane/metadata/en-US/screenshots"];
-	const generic = [
+	const languages = (folder) => node_fs.default.existsSync(node_path.default.join(app, folder)) ? node_fs.default.readdirSync(node_path.default.join(app, folder)).filter((name) => LOCALE_DIR.test(name)) : [];
+	const byLocale = {};
+	if (ios) {
+		for (const locale of languages("fastlane/screenshots")) (byLocale[locale] ||= []).push(...imagesIn(node_path.default.join(app, "fastlane/screenshots", locale)));
+		for (const locale of languages("fastlane/metadata")) (byLocale[locale] ||= []).push(...imagesIn(node_path.default.join(app, "fastlane/metadata", locale, "screenshots")));
+	} else for (const locale of languages("fastlane/metadata/android")) for (const kind of [
+		"phoneScreenshots",
+		"sevenInchScreenshots",
+		"tenInchScreenshots"
+	]) (byLocale[locale] ||= []).push(...imagesIn(node_path.default.join(app, "fastlane/metadata/android", locale, "images", kind)));
+	const title = (locale) => {
+		const file = node_path.default.join(app, ios ? `fastlane/metadata/${locale}/name.txt` : `fastlane/metadata/android/${locale}/title.txt`);
+		return node_fs.default.existsSync(file) ? node_fs.default.readFileSync(file, "utf8").trim().split("\n")[0] || void 0 : void 0;
+	};
+	const fastlane = setsOf(byLocale, node_path.default.join(app, "fastlane"));
+	if (fastlane) return {
+		...fastlane,
+		title: title(fastlane.reference)
+	};
+	for (const folder of [
 		"screenshots",
 		"docs/screenshots",
 		"store/screenshots"
-	];
-	const folders = (ios ? [...apple, ...generic] : [...android, ...generic]).map((folder) => node_path.default.join(app, folder)).filter((folder) => node_fs.default.existsSync(folder));
-	const images = folders.flatMap((folder) => node_fs.default.readdirSync(folder).filter(isImage).sort((a, b) => a.localeCompare(b, void 0, { numeric: true })).map((file) => node_path.default.join(folder, file)));
-	if (!images.length) return null;
-	const titleFile = node_path.default.join(app, ios ? "fastlane/metadata/en-US/name.txt" : "fastlane/metadata/android/en-US/title.txt");
-	const title = node_fs.default.existsSync(titleFile) ? node_fs.default.readFileSync(titleFile, "utf8").trim().split("\n")[0] : void 0;
-	return {
-		folder: folders[0],
-		images,
-		title: title || void 0
-	};
+	]) {
+		const found = screenshotSets(node_path.default.join(app, folder));
+		if (found) return found;
+	}
+	return null;
+}
+/** A --screenshots folder: its own images (one language), or one subfolder per language (en-US/, de-DE/…). */
+function screenshotSets(folder) {
+	if (!node_fs.default.existsSync(folder) || !node_fs.default.statSync(folder).isDirectory()) return null;
+	const own = imagesIn(folder);
+	if (own.length) return setsOf({ "en-US": own }, folder);
+	return setsOf(Object.fromEntries(node_fs.default.readdirSync(folder).filter((name) => LOCALE_DIR.test(name)).map((locale) => [locale, imagesIn(node_path.default.join(folder, locale))])), folder);
 }
 /** Which gallery an image belongs to, by its shape. */
 function galleryFor(width, height) {
@@ -2935,7 +2986,6 @@ function galleryFor(width, height) {
 * to set the order), or a comma-separated list of files in the order given.
 */
 function screenshotFiles(source) {
-	const isImage = (file) => /\.(png|jpe?g|webp)$/i.test(file);
 	if (source.includes(",")) {
 		const files = source.split(",").map((file) => node_path.default.resolve(file.trim()));
 		for (const file of files) if (!node_fs.default.existsSync(file) || !isImage(file)) throw new Error(`${file} isn't a PNG, JPEG or WebP image`);
@@ -3011,26 +3061,64 @@ function importScreenshots(source, listing, locale, log, ios = false) {
 		copy
 	};
 }
+/**
+* Another language's screenshots onto the reference language's cards: the nth image of each gallery's shape becomes
+* that gallery's nth capture, under the same name, so every card shows this language's own screen.
+*/
+function importLocale(images, listing, locale, imported, log, ios = false) {
+	const used = {};
+	let count = 0;
+	for (const source of images) {
+		const file = node_path.default.basename(source), size = imageSize(source);
+		const kind = size && (ios ? iosGalleryFor : galleryFor)(size.width, size.height)?.kind;
+		const cards = kind ? imported.galleries[kind] : void 0;
+		if (!size || !kind || !Array.isArray(cards)) {
+			log(`skipped   ${locale}/${file} (no ${kind || "phone or tablet"} gallery to match)`);
+			continue;
+		}
+		const profile = imported.profiles[kind];
+		if (Math.abs(size.width / size.height - profile.captureWidth / profile.captureHeight) > .001) {
+			log(`skipped   ${locale}/${file} (${size.width}×${size.height} isn't the ${kind} shape)`);
+			continue;
+		}
+		const card = cards[used[kind] = (used[kind] ?? -1) + 1];
+		if (!card?.raw) {
+			log(`skipped   ${locale}/${file} (more ${kind} screenshots than the reference language has)`);
+			continue;
+		}
+		node_fs.default.mkdirSync(node_path.default.dirname(node_path.default.join(listing, locale, "raw", card.raw)), { recursive: true });
+		node_fs.default.copyFileSync(source, node_path.default.join(listing, locale, "raw", card.raw));
+		count++;
+	}
+	log(`imported  ${count} screenshot(s) for ${locale}`);
+	return count;
+}
 function init(options = {}) {
 	requirePackage();
 	const log = options.log || ((line) => console.log(line));
 	const app = node_path.default.resolve(options.app || ".");
 	const listing = node_path.default.join(app, "store-listing");
-	const found = !options.screenshots && !options.package ? existingScreenshots(app, options.platform === "ios") : null;
-	if (found) log(`found     ${found.images.length} screenshot(s) in ${node_path.default.relative(app, found.folder) || "."}`);
+	const found = options.screenshots && !options.screenshots.includes(",") ? screenshotSets(node_path.default.resolve(options.screenshots)) : !options.screenshots && !options.package ? existingScreenshots(app, options.platform === "ios") : null;
+	if (found) log(`found     screenshots in ${Object.entries(found.byLocale).map(([locale, images]) => `${locale} (${images.length})`).join(", ")} in ${node_path.default.relative(app, found.folder) || "."}`);
 	const name = options.name || found?.title || node_path.default.basename(app);
 	const pkg = options.package || "";
 	const theme = options.theme || "starter";
 	const ios = options.platform === "ios";
 	if (options.platform && !["android", "ios"].includes(options.platform)) throw new Error(`Unknown platform "${options.platform}": use android or ios`);
 	if (!node_fs.default.existsSync(node_path.default.join(THEMES, theme, "theme.css"))) throw new Error(`No theme "${theme}". Available: ${themes().map((t) => t.name).join(", ")}`);
-	const locales = [.../* @__PURE__ */ new Set(["en-US", ...options.locales || []])];
+	const reference = found?.reference || "en-US";
+	const locales = [.../* @__PURE__ */ new Set([
+		reference,
+		...Object.keys(found?.byLocale || {}),
+		...options.locales || []
+	])];
 	const result = {
 		listing,
 		created: [],
 		kept: [],
 		cards: 0,
-		theme
+		theme,
+		locales
 	};
 	const sims = ios ? defaultSimulators() : null;
 	const fill = (text) => text.replaceAll("{{name}}", name).replaceAll("{{package}}", pkg || "com.example.app").replaceAll("{{scheme}}", name.toLowerCase().replace(/[^a-z0-9]+/g, "") || "myapp").replaceAll("{{iphoneSimulator}}", sims?.iphone || "").replaceAll("{{ipadSimulator}}", sims?.ipad || "");
@@ -3053,13 +3141,14 @@ function init(options = {}) {
 	const config = {
 		...readJson(node_path.default.join(TEMPLATES, "studio.json")),
 		app: name,
-		locales
+		locales,
+		defaultLocale: reference
 	};
 	if (pkg) config.package = pkg;
 	else delete config.package;
-	const screenshots = options.screenshots || found?.images.join(",");
+	const screenshots = found ? found.byLocale[reference].join(",") : options.screenshots;
 	if (screenshots) {
-		const imported = importScreenshots(screenshots, listing, "en-US", log, ios);
+		const imported = importScreenshots(screenshots, listing, reference, log, ios);
 		if (sims) {
 			for (const [kind, profile] of Object.entries(imported.profiles)) if (profile.captureWidth) profile.simulator = kind === "iphone" ? sims.iphone : sims.ipad;
 		}
@@ -3072,10 +3161,18 @@ function init(options = {}) {
 			$schema: "https://unpkg.com/screenshot-studio/studio/schemas/gallery.schema.json",
 			...imported.galleries
 		});
-		write("en-US/copy.json", {
+		write(`${reference}/copy.json`, {
 			$schema: "https://unpkg.com/screenshot-studio/studio/schemas/copy.schema.json",
 			...imported.copy
 		});
+		const blank = Object.fromEntries(Object.entries(imported.copy).map(([key, entry]) => [key, Object.fromEntries(Object.keys(entry).map((field) => [field, ""]))]));
+		for (const locale of locales.filter((locale) => locale !== reference)) {
+			if (found?.byLocale[locale]) importLocale(found.byLocale[locale], listing, locale, imported, log, ios);
+			write(`${locale}/copy.json`, {
+				$schema: "https://unpkg.com/screenshot-studio/studio/schemas/copy.schema.json",
+				...blank
+			});
+		}
 		result.cards = Object.values(imported.galleries).reduce((n, gallery) => n + (Array.isArray(gallery) ? gallery : gallery.cards).length, 0);
 	} else {
 		if (pkg && ios) config.capture = {
@@ -3103,7 +3200,7 @@ function init(options = {}) {
 		result.cards = ios ? 5 : 4;
 	}
 	if (ios) template("capture-simulator.py");
-	template("en-US/listing.json");
+	template("en-US/listing.json", `${reference}/listing.json`);
 	template("gitignore", ".gitignore");
 	template("README.md");
 	installTheme(listing, theme, {
@@ -3144,7 +3241,7 @@ function installTheme(listing, theme, options) {
 	}
 }
 /** `init [app] [--name …] [--package …] [--theme …] [--screenshots folder] [--locales a,b]` */
-async function run$6(argv) {
+async function run$7(argv) {
 	const option = (name) => {
 		const i = argv.indexOf(`--${name}`);
 		return i >= 0 ? argv[i + 1] : void 0;
@@ -3171,14 +3268,15 @@ async function run$6(argv) {
 		const where = node_path.default.relative(process.cwd(), node_path.default.dirname(result.listing)) || ".";
 		const cd = where === "." ? "" : `cd ${where} && `;
 		console.log(`\nReady: ${result.cards} card(s) with the ${result.theme} theme.\n`);
-		console.log(option("screenshots") ? `Next:\n  ${cd}npx screenshot-studio export        render the cards\n  npx screenshot-studio studio --open  edit words and look in the editor` : option("platform") === "ios" ? `Next:\n  1. Make the app's Debug build open each screen from a launch argument (-screenshotScene) with sample data (docs/capture.md, iOS)\n  2. Write the tour in store-listing/capture-simulator.py; check capture.build in studio.json\n  3. ${cd}npx screenshot-studio recapture --boot` : `Next:\n  1. Add a capture build that fills the app with sample data (docs/playbook.md, section 1)\n  2. Write the tour in store-listing/capture-emulator.py\n  3. ${cd}npx screenshot-studio recapture --boot`);
+		const others = result.locales.slice(1);
+		console.log(option("screenshots") || result.cards ? `Next:\n  1. Write the headlines in store-listing/${result.locales[0]}/copy.json (one per card, *highlight* a key word)${others.length ? `\n  2. Translate them into the empty fields of ${others.map((l) => `${l}/copy.json`).join(", ")}` : ""}\n  ${others.length ? 3 : 2}. ${cd}npx screenshot-studio check, then export (or studio --open for the editor)` : option("platform") === "ios" ? `Next:\n  1. Make the app's Debug build open each screen from a launch argument (-screenshotScene) with sample data (docs/capture.md, iOS)\n  2. Write the tour in store-listing/capture-simulator.py; check capture.build in studio.json\n  3. ${cd}npx screenshot-studio recapture --boot` : `Next:\n  1. Add a capture build that fills the app with sample data (docs/playbook.md, section 1)\n  2. Write the tour in store-listing/capture-emulator.py\n  3. ${cd}npx screenshot-studio recapture --boot`);
 		return 0;
 	} catch (error) {
 		console.error(error.message);
 		return 1;
 	}
 }
-var PACKAGE, TEMPLATES, IOS_TEMPLATES, THEMES, requirePackage, featureGraphic, slug, words;
+var PACKAGE, TEMPLATES, IOS_TEMPLATES, THEMES, requirePackage, featureGraphic, isImage, LOCALE_DIR, imagesIn, slug, words;
 var init_init = __esmMin((() => {
 	init_check();
 	init_project();
@@ -3210,6 +3308,12 @@ var init_init = __esmMin((() => {
 			tagline: "One line about what *your app* does."
 		} }
 	};
+	isImage = (file) => /\.(png|jpe?g|webp)$/i.test(file);
+	LOCALE_DIR = /^[a-z]{2,3}(-[A-Za-z0-9]{2,8})*$/;
+	imagesIn = (folder) => node_fs.default.existsSync(folder) && node_fs.default.statSync(folder).isDirectory() ? node_fs.default.readdirSync(folder).filter(isImage).sort((a, b) => a.localeCompare(b, void 0, {
+		numeric: true,
+		sensitivity: "base"
+	})).map((file) => node_path.default.join(folder, file)) : [];
 	slug = (text) => text.toLowerCase().replace(/\.[a-z]+$/, "").replace(/_/g, " ").replace(/^\d+[- ]*/, "").replace(/\d{5,}/g, " ").replace(/\b(screenshot|screen ?shot|img|image|copy)\b/g, " ").replace(/[^a-z0-9]+/g, "-").replace(/-\d{1,3}$/, "").replace(/^-+|-+$/g, "").replace(/^\d+$/, "") || "screen";
 	words = (text) => slug(text).replace(/-/g, " ");
 }));
@@ -3221,8 +3325,8 @@ var init_init = __esmMin((() => {
 * Run it again with another --theme to see the same cards in another look; your edits to the words are kept. --3d
 * draws the phones as real 3D devices, tilted (the theme's `depth` and the `tilt` layout word).
 */
-var demo_exports = /* @__PURE__ */ __exportAll({ run: () => run$5 });
-async function run$5(argv) {
+var demo_exports = /* @__PURE__ */ __exportAll({ run: () => run$6 });
+async function run$6(argv) {
 	const option = (name) => {
 		const i = argv.indexOf(`--${name}`);
 		return i >= 0 ? argv[i + 1] : void 0;
@@ -3277,6 +3381,253 @@ var init_demo = __esmMin((() => {
 	init_init();
 	DEMO = node_path.default.resolve(__dirname, "..", "templates", "demo");
 }));
+// src/node/icon/xml.ts
+/** The attributes of one tag's markup, e.g. `<svg viewBox="0 0 108 108">`. */
+function attributes(markup) {
+	const found = {};
+	for (const [, name, double, single] of markup.matchAll(ATTRIBUTE)) found[name] = decode$1(double ?? single);
+	return found;
+}
+/** The document's root element. Throws on markup that doesn't nest. */
+function parseXml(text) {
+	const top = {
+		name: "",
+		attributes: {},
+		children: []
+	};
+	const open = [top];
+	const line = (at) => text.slice(0, at).split("\n").length;
+	for (let at = text.indexOf("<"); at >= 0; at = text.indexOf("<", MARKUP.lastIndex)) {
+		MARKUP.lastIndex = at;
+		const match = MARKUP.exec(text);
+		if (!match) throw new Error(`unreadable markup on line ${line(at)}`);
+		const [, closing, name, attrs, empty] = match;
+		const parent = open[open.length - 1];
+		if (closing) {
+			if (closing !== parent.name) throw new Error(`</${closing}> on line ${line(at)} closes <${parent.name || "nothing"}>`);
+			open.pop();
+		} else if (name) {
+			const element = {
+				name,
+				attributes: attributes(attrs),
+				children: []
+			};
+			parent.children.push(element);
+			if (!empty) open.push(element);
+		}
+	}
+	if (open.length > 1) throw new Error(`<${open[open.length - 1].name}> is never closed`);
+	if (!top.children.length) throw new Error("no elements");
+	return top.children[0];
+}
+/** The first element named `name`, depth first, from `element` itself down. */
+function findElement(element, name) {
+	if (element.name === name) return element;
+	for (const child of element.children) {
+		const found = findElement(child, name);
+		if (found) return found;
+	}
+}
+var ENTITIES, MARKUP, ATTRIBUTE, decode$1, escapeAttribute;
+var init_xml = __esmMin((() => {
+	ENTITIES = {
+		amp: "&",
+		lt: "<",
+		gt: ">",
+		quot: "\"",
+		apos: "'"
+	};
+	MARKUP = /<!--[\s\S]*?-->|<!\[CDATA\[[\s\S]*?\]\]>|<[?!][^>]*>|<\/([\w:.-]+)\s*>|<([\w:.-]+)((?:\s+[\w:.-]+\s*=\s*(?:"[^"]*"|'[^']*'))*)\s*(\/?)>/y;
+	ATTRIBUTE = /([\w:.-]+)\s*=\s*(?:"([^"]*)"|'([^']*)')/g;
+	decode$1 = (value) => value.replace(/&(#x[0-9a-f]+|#\d+|\w+);/gi, (entity, code) => {
+		if (code[0] !== "#") return ENTITIES[code] ?? entity;
+		return String.fromCodePoint(code[1] === "x" || code[1] === "X" ? parseInt(code.slice(2), 16) : parseInt(code.slice(1), 10));
+	});
+	escapeAttribute = (value) => value.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/"/g, "&quot;");
+}));
+// src/node/emulator.ts
+/**
+* The capture emulator as an agent sees it, for writing a capture tour: what is on screen (a screenshot and every
+* element with its label, ID and bounds) and a way to move around (tap by label or point, back).
+*   npx screenshot-studio screen [--serial emulator-5578] [--out screen.png] [--json]
+*   npx screenshot-studio screen --tap "Settings" | --tap 540,1200 | --back
+* Emulators only: a phone is refused.
+*/
+var emulator_exports = /* @__PURE__ */ __exportAll({
+	emulator: () => emulator,
+	formatScreen: () => formatScreen,
+	readScreen: () => readScreen,
+	run: () => run$5,
+	tapScreen: () => tapScreen
+});
+/** The serial, checked: attached, booted, and an emulator. */
+function emulator(serial = process.env.CAPTURE_SERIAL || "emulator-5578") {
+	const problem = missingEmulator(serial);
+	if (problem) throw new Error(problem);
+	if (!(String(adb(serial, [
+		"shell",
+		"getprop",
+		"ro.kernel.qemu"
+	])) + String(adb(serial, [
+		"shell",
+		"getprop",
+		"ro.boot.qemu"
+	]))).includes("1")) throw new Error(`${serial} is not an emulator. The studio only drives emulators, never a phone.`);
+	return serial;
+}
+/** A screenshot and every labelled or tappable element on screen, top to bottom. */
+function readScreen(serial = emulator()) {
+	const raw = adb(serial, [
+		"exec-out",
+		"screencap",
+		"-p"
+	], true);
+	const start = raw.indexOf(Buffer.from([
+		137,
+		80,
+		78,
+		71
+	]));
+	if (start < 0) throw new Error(`${serial} sent no screenshot: ${raw.subarray(0, 200).toString()}`);
+	const png = raw.subarray(start);
+	adb(serial, [
+		"shell",
+		"uiautomator",
+		"dump",
+		"/sdcard/window.xml"
+	]);
+	const xml = String(adb(serial, [
+		"exec-out",
+		"cat",
+		"/sdcard/window.xml"
+	]));
+	const elements = [];
+	const walk = (node) => {
+		const a = node.attributes;
+		if (node.name === "node") {
+			const text = decode(a.text || "").trim(), description = decode(a["content-desc"] || "").trim();
+			const id = /obfuscated/.test(a["resource-id"] || "") ? "" : a["resource-id"] || "";
+			const clickable = a.clickable === "true" || a["long-clickable"] === "true";
+			const b = (a.bounds || "").match(/\d+/g)?.map(Number);
+			if (b?.length === 4 && b[2] > b[0] && b[3] > b[1] && (text || description || clickable && id)) elements.push({
+				label: text || description || id.replace(/^.*:id\//, ""),
+				...text && { text },
+				...description && { description },
+				...id && { id },
+				class: (a.class || "").split(".").pop() || "",
+				clickable,
+				bounds: b
+			});
+		}
+		node.children.forEach(walk);
+	};
+	walk(parseXml(xml));
+	elements.sort((p, q) => p.bounds[1] - q.bounds[1] || p.bounds[0] - q.bounds[0]);
+	return {
+		serial,
+		width: png.readUInt32BE(16),
+		height: png.readUInt32BE(20),
+		png,
+		elements
+	};
+}
+/** The elements as lines an agent can act on: tappable ones with the tour call that taps them. */
+function formatScreen(screen) {
+	const lines = screen.elements.map((e) => {
+		const [l, t, r, b] = e.bounds;
+		const extra = [e.text && e.description && e.description !== e.text ? `desc "${e.description}"` : "", e.id ? `id ${e.id.replace(/^.*:id\//, "")}` : ""].filter(Boolean).join(", ");
+		return `${e.clickable ? "tap " : "    "} "${e.label.replace(/\n/g, " ")}"  ${e.class} at ${l},${t} ${r - l}×${b - t}${extra ? `  (${extra})` : ""}`;
+	});
+	return [`${screen.serial}, ${screen.width}×${screen.height}. "tap" lines are tappable: in a tour, d.tap("label"); here, screen --tap "label".`, ...lines].join("\n");
+}
+/** Tap an element by its label (exact, then containing) or a point "x,y"; or press back. Returns the element tapped. */
+function tapScreen(target, serial = emulator()) {
+	if (target === "back") {
+		adb(serial, [
+			"shell",
+			"input",
+			"keyevent",
+			"KEYCODE_BACK"
+		]);
+		return "back";
+	}
+	const point = target.match(/^(\d+)\s*,\s*(\d+)$/);
+	if (point) {
+		adb(serial, [
+			"shell",
+			"input",
+			"tap",
+			point[1],
+			point[2]
+		]);
+		return `${point[1]},${point[2]}`;
+	}
+	const { elements } = readScreen(serial);
+	const wanted = target.toLowerCase();
+	const matches = [...elements.filter((e) => [
+		e.text,
+		e.description,
+		e.id?.replace(/^.*:id\//, "")
+	].some((v) => v?.toLowerCase() === wanted)), ...elements.filter((e) => e.label.toLowerCase().includes(wanted))];
+	const hit = matches.find((e) => e.clickable) || matches[0];
+	if (!hit) throw new Error(`Nothing on screen is labelled "${target}". Run \`npx screenshot-studio screen\` to see the labels.`);
+	const [l, t, r, b] = hit.bounds;
+	adb(serial, [
+		"shell",
+		"input",
+		"tap",
+		String(Math.round((l + r) / 2)),
+		String(Math.round((t + b) / 2))
+	]);
+	return hit.label;
+}
+/** `screen [--serial s] [--out file.png] [--json] [--tap label | --tap x,y | --back]` */
+async function run$5(argv) {
+	const option = (name) => {
+		const i = argv.indexOf(`--${name}`);
+		return i >= 0 ? argv[i + 1] : void 0;
+	};
+	try {
+		const serial = emulator(option("serial"));
+		const tap = argv.includes("--back") ? "back" : option("tap");
+		if (tap) {
+			console.log(`tapped ${tapScreen(tap, serial)}`);
+			await new Promise((resolve) => setTimeout(resolve, 1200));
+		}
+		const screen = readScreen(serial);
+		const out = node_path.default.resolve(option("out") || "screen.png");
+		node_fs.default.writeFileSync(out, screen.png);
+		if (argv.includes("--json")) console.log(JSON.stringify({
+			serial,
+			width: screen.width,
+			height: screen.height,
+			image: out,
+			elements: screen.elements
+		}, null, 2));
+		else console.log(`${formatScreen(screen)}\nscreenshot: ${node_path.default.relative(process.cwd(), out) || out}`);
+		return 0;
+	} catch (error) {
+		console.error(error.message);
+		return 1;
+	}
+}
+var adb, decode;
+var init_emulator = __esmMin((() => {
+	init_xml();
+	adb = (serial, args, binary = false) => {
+		const run = (0, node_child_process.spawnSync)("adb", [
+			"-s",
+			serial,
+			...args
+		], {
+			encoding: binary ? "buffer" : "utf8",
+			maxBuffer: 67108864
+		});
+		if (run.status !== 0) throw new Error(`adb ${args.join(" ")} failed: ${String(run.stderr).trim()}`);
+		return run.stdout;
+	};
+	decode = (text) => text.replace(/&quot;/g, "\"").replace(/&apos;/g, "'").replace(/&lt;/g, "<").replace(/&gt;/g, ">").replace(/&#10;/g, "\n").replace(/&amp;/g, "&");
+}));
 // src/node/locales.ts
 /**
 * Languages at a glance, and adding new ones.
@@ -3319,8 +3670,8 @@ function localeCoverage(listing) {
 				total: raws.length
 			},
 			sidecars: {
-				done: raws.filter((raw) => exists(nodesFile(raw))).length,
-				total: raws.length
+				done: mapped(files, locale).filter((raw) => exists(nodesFile(raw))).length,
+				total: mapped(files, locale).length
 			}
 		};
 	});
@@ -3337,7 +3688,7 @@ function formatCoverage(report) {
 	return [
 		`${report.captures} captures and ${report.fields} copy fields per locale (default ${report.defaultLocale})`,
 		"",
-		"locale      words        captures     layout sidecars",
+		"locale      words        captures     layout maps (for callouts)",
 		...report.rows.map((row) => `${row.locale.padEnd(10)}  ${tally(row.words).padEnd(11)}  ${tally(row.captures).padEnd(11)}  ${tally(row.sidecars)}`)
 	].join("\n");
 }
@@ -3395,12 +3746,13 @@ async function run$4(argv) {
 		return 1;
 	}
 }
-var LOCALE, resolveListing, fieldCount, USAGE$3;
+var LOCALE, resolveListing, mapped, fieldCount, USAGE$3;
 var init_locales = __esmMin((() => {
 	init_gallery();
 	init_project();
 	LOCALE = /^[a-z]{2,3}(-[A-Za-z0-9]{2,8})*$/;
 	resolveListing = (listing) => requireListing(listing);
+	mapped = ({ galleries, profiles, defaultLocale }, locale) => [...new Set(Object.keys(galleries).filter((kind) => locale === defaultLocale || !profiles[kind]?.defaultLocaleOnly).flatMap((kind) => cardsFor(galleries, kind).flatMap((card) => (card.callouts || []).map((c) => c.raw || devicesFor(card)[c.device || 0]?.raw).filter((raw) => !!raw))))];
 	fieldCount = (copy) => Object.values(copy).reduce((n, entry) => n + Object.keys(entry).length, 0);
 	USAGE$3 = `Usage:
   npx screenshot-studio locales                 words translated, captures present and layout sidecars per locale
@@ -3439,70 +3791,6 @@ var init_compose = __esmMin((() => {
 	canvas = (inner) => `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 108 108">${inner}</svg>`;
 	visible = (inner) => `<svg xmlns="http://www.w3.org/2000/svg" viewBox="18 18 72 72">${inner}</svg>\n`;
 	dataUri = (svg) => `data:image/svg+xml;base64,${Buffer.from(svg).toString("base64")}`;
-}));
-// src/node/icon/xml.ts
-/** The attributes of one tag's markup, e.g. `<svg viewBox="0 0 108 108">`. */
-function attributes(markup) {
-	const found = {};
-	for (const [, name, double, single] of markup.matchAll(ATTRIBUTE)) found[name] = decode(double ?? single);
-	return found;
-}
-/** The document's root element. Throws on markup that doesn't nest. */
-function parseXml(text) {
-	const top = {
-		name: "",
-		attributes: {},
-		children: []
-	};
-	const open = [top];
-	const line = (at) => text.slice(0, at).split("\n").length;
-	for (let at = text.indexOf("<"); at >= 0; at = text.indexOf("<", MARKUP.lastIndex)) {
-		MARKUP.lastIndex = at;
-		const match = MARKUP.exec(text);
-		if (!match) throw new Error(`unreadable markup on line ${line(at)}`);
-		const [, closing, name, attrs, empty] = match;
-		const parent = open[open.length - 1];
-		if (closing) {
-			if (closing !== parent.name) throw new Error(`</${closing}> on line ${line(at)} closes <${parent.name || "nothing"}>`);
-			open.pop();
-		} else if (name) {
-			const element = {
-				name,
-				attributes: attributes(attrs),
-				children: []
-			};
-			parent.children.push(element);
-			if (!empty) open.push(element);
-		}
-	}
-	if (open.length > 1) throw new Error(`<${open[open.length - 1].name}> is never closed`);
-	if (!top.children.length) throw new Error("no elements");
-	return top.children[0];
-}
-/** The first element named `name`, depth first, from `element` itself down. */
-function findElement(element, name) {
-	if (element.name === name) return element;
-	for (const child of element.children) {
-		const found = findElement(child, name);
-		if (found) return found;
-	}
-}
-var ENTITIES, MARKUP, ATTRIBUTE, decode, escapeAttribute;
-var init_xml = __esmMin((() => {
-	ENTITIES = {
-		amp: "&",
-		lt: "<",
-		gt: ">",
-		quot: "\"",
-		apos: "'"
-	};
-	MARKUP = /<!--[\s\S]*?-->|<!\[CDATA\[[\s\S]*?\]\]>|<[?!][^>]*>|<\/([\w:.-]+)\s*>|<([\w:.-]+)((?:\s+[\w:.-]+\s*=\s*(?:"[^"]*"|'[^']*'))*)\s*(\/?)>/y;
-	ATTRIBUTE = /([\w:.-]+)\s*=\s*(?:"([^"]*)"|'([^']*)')/g;
-	decode = (value) => value.replace(/&(#x[0-9a-f]+|#\d+|\w+);/gi, (entity, code) => {
-		if (code[0] !== "#") return ENTITIES[code] ?? entity;
-		return String.fromCodePoint(code[1] === "x" || code[1] === "X" ? parseInt(code.slice(2), 16) : parseInt(code.slice(1), 10));
-	});
-	escapeAttribute = (value) => value.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/"/g, "&quot;");
 }));
 // src/node/icon/layers.ts
 /** The SVG layers an icon is drawn from, in store-listing/brand/ or a variant folder inside it. */
@@ -4284,7 +4572,7 @@ function createTools(defaultListing) {
 		},
 		{
 			name: "render_card",
-			description: "Render one card and return the image, so you can see it. Also returns the renderer's notes (copy shrunk to fit, borrowed captures) or why it failed (copy that doesn't fit, a device out of bounds). Use it to iterate on theme.css, gallery.json or copy.json.",
+			description: "Render one card and return the image, so you can see it. Also returns the renderer's notes (copy shrunk to fit, borrowed captures), where every device, the headline and each callout landed in card pixels (layout), or why it failed (copy that doesn't fit, a device out of bounds). Use it to iterate on theme.css, gallery.json or copy.json.",
 			inputSchema: {
 				type: "object",
 				properties: {
@@ -4316,9 +4604,10 @@ function createTools(defaultListing) {
 				});
 				if (!result.ok || !result.cards.length) return [text(`Render failed: ${result.error || "no such card"}`)];
 				const card = result.cards[0];
-				return [image(node_path.default.join(listing, card.file), 1400), text({
+				return [await image(node_path.default.join(listing, card.file), 1400), text({
 					file: card.file,
 					notes: card.notes,
+					layout: card.layout,
 					warnings: result.warnings
 				})];
 			}
@@ -4374,41 +4663,87 @@ function createTools(defaultListing) {
 				const file = node_path.default.resolve(listing, String(args.file));
 				if (!file.startsWith(listing + node_path.default.sep)) throw new Error("The file must be inside the store-listing folder.");
 				if (!node_fs.default.existsSync(file)) throw new Error(`${args.file} doesn't exist. Export first, or check the path with describe_listing.`);
-				return [image(file, 1600)];
+				return [await image(file, 1600)];
+			}
+		},
+		{
+			name: "emulator_screen",
+			description: "Look at the capture emulator: a screenshot and every element on screen with its label, ID and bounds; \"tap\" marks the tappable ones. Use it to write or fix a capture tour (store-listing/capture-emulator.py): each label is what d.tap(\"…\") takes. Emulators only, never a phone.",
+			inputSchema: {
+				type: "object",
+				properties: { serial: {
+					type: "string",
+					description: "The emulator (default: the capture emulator, emulator-5578)."
+				} }
+			},
+			async call(args) {
+				const { emulator, readScreen, formatScreen } = await Promise.resolve().then(() => (init_emulator(), emulator_exports));
+				const screen = readScreen(emulator(typeof args.serial === "string" ? args.serial : void 0));
+				return [await image(screen.png, 1400), text(formatScreen(screen))];
+			}
+		},
+		{
+			name: "emulator_tap",
+			description: "Move around the app on the capture emulator, to find the screens a tour should capture: tap an element by its label (as emulator_screen lists it) or a point \"x,y\", or \"back\". Returns the screen after the tap.",
+			inputSchema: {
+				type: "object",
+				properties: {
+					target: {
+						type: "string",
+						description: "A label, \"x,y\" in screen pixels, or \"back\"."
+					},
+					serial: {
+						type: "string",
+						description: "The emulator (default: the capture emulator, emulator-5578)."
+					}
+				},
+				required: ["target"]
+			},
+			async call(args) {
+				const { emulator, readScreen, formatScreen, tapScreen } = await Promise.resolve().then(() => (init_emulator(), emulator_exports));
+				const serial = emulator(typeof args.serial === "string" ? args.serial : void 0);
+				const tapped = tapScreen(String(args.target), serial);
+				await new Promise((resolve) => setTimeout(resolve, 1200));
+				const screen = readScreen(serial);
+				return [await image(screen.png, 1400), text(`tapped ${tapped}\n${formatScreen(screen)}`)];
 			}
 		}
 	];
 }
-/** An image as MCP content, scaled down on macOS when it's large so it stays within an agent's image limits. */
-function image(file, maxSide) {
-	let data = node_fs.default.readFileSync(file);
-	let mimeType = /\.png$/i.test(file) ? "image/png" : "image/jpeg";
-	if (process.platform === "darwin" && data.length > 6e5) {
-		const scaled = node_path.default.join(node_fs.default.mkdtempSync(node_path.default.join(require("node:os").tmpdir(), "studio-mcp-")), "image.jpg");
-		try {
-			require("node:child_process").execFileSync("sips", [
-				"-Z",
-				String(maxSide),
-				"-s",
-				"format",
-				"jpeg",
-				file,
-				"--out",
-				scaled
-			], { stdio: "ignore" });
-			data = node_fs.default.readFileSync(scaled);
-			mimeType = "image/jpeg";
-		} catch {}
-		node_fs.default.rmSync(node_path.default.dirname(scaled), {
-			recursive: true,
-			force: true
-		});
-	}
-	return {
+/** An image as MCP content: large ones are scaled to fit maxSide and sent as JPEG, so they stay within an agent's limits. */
+async function image(source, maxSide) {
+	const data = typeof source === "string" ? node_fs.default.readFileSync(source) : source;
+	const png = typeof source === "string" ? /\.png$/i.test(source) : data[0] === 137;
+	if (data.length <= 6e5) return {
 		type: "image",
 		data: data.toString("base64"),
-		mimeType
+		mimeType: png ? "image/png" : "image/jpeg"
 	};
+	browser ||= launchBrowser(() => {});
+	const page = await (await browser).newPage();
+	try {
+		return {
+			type: "image",
+			data: await page.evaluate(async ({ src, maxSide }) => {
+				const img = new Image();
+				img.src = src;
+				await img.decode();
+				const scale = Math.min(1, maxSide / Math.max(img.naturalWidth, img.naturalHeight));
+				const canvas = Object.assign(document.createElement("canvas"), {
+					width: Math.round(img.naturalWidth * scale),
+					height: Math.round(img.naturalHeight * scale)
+				});
+				canvas.getContext("2d").drawImage(img, 0, 0, canvas.width, canvas.height);
+				return canvas.toDataURL("image/jpeg", .85).split(",")[1];
+			}, {
+				src: `data:image/${png ? "png" : "jpeg"};base64,${data.toString("base64")}`,
+				maxSide
+			}),
+			mimeType: "image/jpeg"
+		};
+	} finally {
+		await page.close();
+	}
 }
 /** `mcp [--listing path]`: serve until stdin closes. */
 async function run$1(argv) {
@@ -4462,7 +4797,7 @@ async function run$1(argv) {
 						name: "screenshot-studio",
 						version
 					},
-					instructions: "Make and check app store screenshots from real app captures. Start with describe_listing, edit theme.css / gallery.json / <locale>/copy.json, then check, render_card to see a card, and view_image en-US/contact-phone.jpg after export to judge the whole strip."
+					instructions: "Make and check app store screenshots from real app captures. Start with describe_listing, edit theme.css / gallery.json / <locale>/copy.json, then check, render_card to see a card (its layout gives every box in card pixels), and view_image en-US/contact-phone.jpg after export to judge the whole strip. To capture the app itself, emulator_screen shows the capture emulator and the labels a tour taps, and emulator_tap moves around the app."
 				});
 				break;
 			case "notifications/initialized":
@@ -4496,13 +4831,15 @@ async function run$1(argv) {
 			default: fail(-32601, `Method not found: ${request.method}`);
 		}
 	}
+	if (browser) await (await browser).close();
 	return 0;
 }
-var PROTOCOL, text, listingArg;
+var PROTOCOL, text, listingArg, browser;
 var init_mcp = __esmMin((() => {
 	init_check();
 	init_export();
 	init_project();
+	init_playwright();
 	init_gallery();
 	PROTOCOL = "2025-06-18";
 	text = (value) => ({
@@ -4513,6 +4850,7 @@ var init_mcp = __esmMin((() => {
 		type: "string",
 		description: "The app folder or its store-listing folder. Defaults to the one the server was started in."
 	} };
+	browser = null;
 }));
 // src/node/readme-preview.ts
 /**
@@ -4660,6 +4998,7 @@ var init_readme_preview = __esmMin((() => {
 * app's store-listing/ from there, or from `--listing <path>`.
 */
 init_export();
+init_recapture();
 init_check();
 init_project();
 init_server();
@@ -4739,6 +5078,11 @@ const COMMANDS = {
 				}
 			}).status ?? 1;
 		}
+	},
+	screen: {
+		summary: "What the capture emulator shows: a screenshot and every element to tap, for writing a tour",
+		usage: "screen [--serial emulator-5578] [--out screen.png] [--json] [--tap \"Settings\" | --tap 540,1200 | --back]",
+		run: async (argv) => (await Promise.resolve().then(() => (init_emulator(), emulator_exports))).run(argv)
 	},
 	reset: {
 		summary: "Undo a capture that was interrupted (display size, density, demo mode on the emulator)",

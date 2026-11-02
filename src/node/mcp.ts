@@ -11,6 +11,7 @@ import readline from 'node:readline';
 import {checkListing, formatIssues} from './check';
 import {exportListing} from './export';
 import {findListing, loadListing, readCopy} from './project';
+import {launchBrowser} from './playwright';
 import {cardsFor, devicesFor, outputFile} from '../core/gallery';
 
 const PROTOCOL = '2025-06-18';
@@ -65,7 +66,7 @@ export function createTools(defaultListing?: string): Tool[] {
     },
     {
       name: 'render_card',
-      description: 'Render one card and return the image, so you can see it. Also returns the renderer\'s notes (copy shrunk to fit, borrowed captures) or why it failed (copy that doesn\'t fit, a device out of bounds). Use it to iterate on theme.css, gallery.json or copy.json.',
+      description: 'Render one card and return the image, so you can see it. Also returns the renderer\'s notes (copy shrunk to fit, borrowed captures), where every device, the headline and each callout landed in card pixels (layout), or why it failed (copy that doesn\'t fit, a device out of bounds). Use it to iterate on theme.css, gallery.json or copy.json.',
       inputSchema: {type: 'object', properties: {
         ...listingArg,
         gallery: {type: 'string', description: 'The gallery, e.g. phone, tablet7, tablet10, readme.'},
@@ -79,7 +80,7 @@ export function createTools(defaultListing?: string): Tool[] {
         const result = await exportListing({listing, locales: [locale], kind: String(args.gallery), card: Number(args.card), log: () => {}});
         if (!result.ok || !result.cards.length) return [text(`Render failed: ${result.error || 'no such card'}`)];
         const card = result.cards[0];
-        return [image(path.join(listing, card.file), 1400), text({file: card.file, notes: card.notes, warnings: result.warnings})];
+        return [await image(path.join(listing, card.file), 1400), text({file: card.file, notes: card.notes, layout: card.layout, warnings: result.warnings})];
       },
     },
     {
@@ -106,26 +107,60 @@ export function createTools(defaultListing?: string): Tool[] {
         const file = path.resolve(listing, String(args.file));
         if (!file.startsWith(listing + path.sep)) throw new Error('The file must be inside the store-listing folder.');
         if (!fs.existsSync(file)) throw new Error(`${args.file} doesn't exist. Export first, or check the path with describe_listing.`);
-        return [image(file, 1600)];
+        return [await image(file, 1600)];
+      },
+    },
+    {
+      name: 'emulator_screen',
+      description: 'Look at the capture emulator: a screenshot and every element on screen with its label, ID and bounds; "tap" marks the tappable ones. Use it to write or fix a capture tour (store-listing/capture-emulator.py): each label is what d.tap("…") takes. Emulators only, never a phone.',
+      inputSchema: {type: 'object', properties: {serial: {type: 'string', description: 'The emulator (default: the capture emulator, emulator-5578).'}}},
+      async call(args) {
+        const {emulator, readScreen, formatScreen} = await import('./emulator');
+        const screen = readScreen(emulator(typeof args.serial === 'string' ? args.serial : undefined));
+        return [await image(screen.png, 1400), text(formatScreen(screen))];
+      },
+    },
+    {
+      name: 'emulator_tap',
+      description: 'Move around the app on the capture emulator, to find the screens a tour should capture: tap an element by its label (as emulator_screen lists it) or a point "x,y", or "back". Returns the screen after the tap.',
+      inputSchema: {type: 'object', properties: {
+        target: {type: 'string', description: 'A label, "x,y" in screen pixels, or "back".'},
+        serial: {type: 'string', description: 'The emulator (default: the capture emulator, emulator-5578).'},
+      }, required: ['target']},
+      async call(args) {
+        const {emulator, readScreen, formatScreen, tapScreen} = await import('./emulator');
+        const serial = emulator(typeof args.serial === 'string' ? args.serial : undefined);
+        const tapped = tapScreen(String(args.target), serial);
+        await new Promise(resolve => setTimeout(resolve, 1200));
+        const screen = readScreen(serial);
+        return [await image(screen.png, 1400), text(`tapped ${tapped}\n${formatScreen(screen)}`)];
       },
     },
   ];
 }
 
-/** An image as MCP content, scaled down on macOS when it's large so it stays within an agent's image limits. */
-function image(file: string, maxSide: number): Content {
-  let data = fs.readFileSync(file);
-  let mimeType = /\.png$/i.test(file) ? 'image/png' : 'image/jpeg';
-  if (process.platform === 'darwin' && data.length > 600_000) {
-    const scaled = path.join(fs.mkdtempSync(path.join(require('node:os').tmpdir(), 'studio-mcp-')), 'image.jpg');
-    try {
-      require('node:child_process').execFileSync('sips', ['-Z', String(maxSide), '-s', 'format', 'jpeg', file, '--out', scaled], {stdio: 'ignore'});
-      data = fs.readFileSync(scaled);
-      mimeType = 'image/jpeg';
-    } catch { /* send the original */ }
-    fs.rmSync(path.dirname(scaled), {recursive: true, force: true});
-  }
-  return {type: 'image', data: data.toString('base64'), mimeType};
+/** One headless browser for the session, to scale large images down on any platform. */
+let browser: Promise<import('playwright').Browser> | null = null;
+
+/** An image as MCP content: large ones are scaled to fit maxSide and sent as JPEG, so they stay within an agent's limits. */
+async function image(source: string | Buffer, maxSide: number): Promise<Content> {
+  const data = typeof source === 'string' ? fs.readFileSync(source) : source;
+  const png = typeof source === 'string' ? /\.png$/i.test(source) : data[0] === 0x89;
+  if (data.length <= 600_000) return {type: 'image', data: data.toString('base64'), mimeType: png ? 'image/png' : 'image/jpeg'};
+  browser ||= launchBrowser(() => {});
+  const page = await (await browser).newPage();
+  try {
+    const jpeg = await page.evaluate(async ({src, maxSide}) => {
+      const img = new Image();
+      img.src = src;
+      await img.decode();
+      const scale = Math.min(1, maxSide / Math.max(img.naturalWidth, img.naturalHeight));
+      const canvas = Object.assign(document.createElement('canvas'), {width: Math.round(img.naturalWidth * scale), height: Math.round(img.naturalHeight * scale)});
+      canvas.getContext('2d')!.drawImage(img, 0, 0, canvas.width, canvas.height);
+      return canvas.toDataURL('image/jpeg', .85).split(',')[1];
+    }, {src: `data:image/${png ? 'png' : 'jpeg'};base64,${data.toString('base64')}`, maxSide});
+    return {type: 'image', data: jpeg, mimeType: 'image/jpeg'};
+  } finally { await page.close(); }
 }
 
 interface Request {jsonrpc: '2.0'; id?: number | string | null; method: string; params?: Record<string, unknown>}
@@ -148,7 +183,7 @@ export async function run(argv: string[]): Promise<number> {
     switch (request.method) {
       case 'initialize':
         reply({protocolVersion: PROTOCOL, capabilities: {tools: {}}, serverInfo: {name: 'screenshot-studio', version},
-          instructions: 'Make and check app store screenshots from real app captures. Start with describe_listing, edit theme.css / gallery.json / <locale>/copy.json, then check, render_card to see a card, and view_image en-US/contact-phone.jpg after export to judge the whole strip.'});
+          instructions: 'Make and check app store screenshots from real app captures. Start with describe_listing, edit theme.css / gallery.json / <locale>/copy.json, then check, render_card to see a card (its layout gives every box in card pixels), and view_image en-US/contact-phone.jpg after export to judge the whole strip. To capture the app itself, emulator_screen shows the capture emulator and the labels a tour taps, and emulator_tap moves around the app.'});
         break;
       case 'notifications/initialized': case 'notifications/cancelled': break;
       case 'ping': reply({}); break;
@@ -163,5 +198,6 @@ export async function run(argv: string[]): Promise<number> {
       default: fail(-32601, `Method not found: ${request.method}`);
     }
   }
+  if (browser) await (await browser).close();
   return 0;
 }

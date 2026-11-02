@@ -675,5 +675,26 @@ if (q.has("fit")) {
 	fit();
 	addEventListener("resize", fit);
 }
+const box = (element) => {
+	const b = relative(main, element);
+	return {
+		left: Math.round(b.left),
+		top: Math.round(b.top),
+		width: Math.round(b.width),
+		height: Math.round(b.height)
+	};
+};
+const headerBox = main.querySelector("header");
+report.layout = {
+	width: W,
+	height: H,
+	devices: devices.map((d) => ({
+		raw: d.spec.raw,
+		...d.spec.role && { role: d.spec.role },
+		...box(d.node)
+	})),
+	...headerBox && { header: box(headerBox) },
+	callouts: [...main.querySelectorAll(".callout")].map(box)
+};
 root.dataset.report = JSON.stringify(report);
 root.dataset.ready = "true";

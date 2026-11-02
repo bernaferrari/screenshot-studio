@@ -141,7 +141,7 @@ A card with no capture is art only (a drawn feature graphic, say). `"frame": "no
 {"x": 163, "y": 908, "w": 880, "h": 176, "mag": 1.16, "radius": 24}
 ```
 
-Coordinates are capture pixels; `dx`/`dy` move it. A callout may come from another capture of the same scene (`"raw"`, a notification shade, say) placed with `"place": {"left", "top", "width"}` in canvas pixels. `"role"` adds a class. The editor's callout picker writes these, and can anchor a callout to a UI element so it follows that element in every language.
+Coordinates are capture pixels; `dx`/`dy` move it. A callout may come from another capture of the same scene (`"raw"`, a notification shade, say) placed with `"place": {"left", "top", "width"}` in canvas pixels. `"role"` adds a class. The editor's callout picker writes these, and can anchor a callout to a UI element so it follows that element in every language. That needs the capture's layout map (`<name>.nodes.json`, written beside each capture by the studio's own tours); imported screenshots have none, so their callouts are boxes.
 
 ## Themes
 

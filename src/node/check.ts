@@ -21,8 +21,8 @@ export interface Issue {
   message: string;
   /** What to do about it. */
   fix?: string;
-  /** A kind other commands act on: `placeholder` (starter words left in), `store-limit` (more cards than the store takes). */
-  code?: 'placeholder' | 'store-limit';
+  /** A kind other commands act on: `placeholder` (starter words left in), `store-limit` (more cards than the store takes), `untranslated`. */
+  code?: 'placeholder' | 'store-limit' | 'untranslated';
 }
 
 export interface CheckResult {
@@ -146,7 +146,14 @@ export function checkListing(listingDir?: string): CheckResult {
     if (locale !== defaultLocale) {
       const file = `${locale}/copy.json`;
       if (!fs.existsSync(path.join(listing, file))) warn(file, 'is missing; this language shows the default words', {fix: `Run \`npx screenshot-studio locales --init ${locale}\`.`});
-      else load<Copy>(file, 'copy');
+      else {
+        // Words still to translate: every field the default language fills in, empty here.
+        const copy = load<Copy>(file, 'copy') || {};
+        const missing = Object.entries(defaultCopy).flatMap(([key, entry]) => Object.entries(entry || {})
+          .filter(([field, text]) => typeof text === 'string' && text.trim() && !copy[key]?.[field]?.trim()).map(([field]) => `${key}.${field}`));
+        if (missing.length) warn(file, `${missing.length} field(s) not translated yet; those cards show ${defaultLocale} words: ${missing.slice(0, 6).join(', ')}${missing.length > 6 ? ', …' : ''}`,
+          {code: 'untranslated', fix: `Translate each empty field from ${defaultLocale}/copy.json, keeping its *highlight* and line breaks.`});
+      }
     }
     const words = readJson<Listing | null>(path.join(listing, locale, 'listing.json'), null);
     for (const problem of words ? listingProblems(words, store) : []) error(`${locale}/listing.json`, problem.message, {path: problem.field});

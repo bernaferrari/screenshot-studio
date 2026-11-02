@@ -23,6 +23,17 @@ with Device(args, 'com.example.storecapture', '.MainActivity') as d:
 
 Tap by what's on screen, not by coordinates: layouts move between phone and tablet, and the studio replays the taps in every language (below).
 
+## Writing a tour: look at the emulator
+
+A tour taps through the app by what's on screen, so start by looking. `npx screenshot-studio screen` prints every
+element on the capture emulator, with its label, ID and bounds, marks the tappable ones, and saves a screenshot;
+`--tap "Settings"` (or `--tap 540,1200`, or `--back`) moves first, `--json` prints it for tools. Each label is what
+`d.tap("…")` takes. With the MCP server, an agent does the same with `emulator_screen` and `emulator_tap` and sees the
+screen as it goes ([Agents](agents.md)).
+
+If the capture emulator isn't running, every capture command says so and lists the ways forward: boot a dedicated
+one with `recapture --boot`, or capture on an emulator that is already running with `--serial`.
+
 ## What `Device` sets up, and restores
 
 While the tour runs, the emulator gets:

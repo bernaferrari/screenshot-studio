@@ -105,6 +105,7 @@ The same studio makes the store listings and READMEs of [SDK Monitor](https://gi
 | `check` | Check every file, fast; run it after each edit |
 | `export` | Render and check every card; one language, gallery or card; fastlane folders |
 | `recapture` | Build, capture on the emulator or simulator, and export |
+| `screen` | What the capture emulator shows: a screenshot and every element to tap, for writing a tour |
 | `locales` | Language coverage; `--init de-DE` adds one |
 | `icons` | Every app icon from one drawing |
 | `mcp` | The MCP server for agents |

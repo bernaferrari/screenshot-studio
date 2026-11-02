@@ -6,7 +6,7 @@
 import {plainHeadline} from '../core/layout';
 import type {ThemeContext} from '../core/types';
 import {drawCallouts} from './callouts';
-import {captureLoader, checkBounds, createDevices, labelDevices, measure, settleDevices, sizeFrames} from './devices';
+import {captureLoader, checkBounds, createDevices, labelDevices, measure, relative, settleDevices, sizeFrames} from './devices';
 import {findWidows, fitCopy} from './fit';
 import {identity} from './identity';
 import {loadCard} from './load';
@@ -85,5 +85,10 @@ if (q.has('fit')) {
   fit();
   addEventListener('resize', fit);
 }
+// Where everything landed, for adjusting a layout by numbers (export --json, the MCP server's render_card).
+const box = (element: Element) => { const b = relative(main, element); return {left: Math.round(b.left), top: Math.round(b.top), width: Math.round(b.width), height: Math.round(b.height)}; };
+const headerBox = main.querySelector('header');
+report.layout = {width: W, height: H, devices: devices.map(d => ({raw: d.spec.raw, ...(d.spec.role && {role: d.spec.role}), ...box(d.node)})),
+  ...(headerBox && {header: box(headerBox)}), callouts: [...main.querySelectorAll('.callout')].map(box)};
 root.dataset.report = JSON.stringify(report);
 root.dataset.ready = 'true';

@@ -85,6 +85,18 @@ export function booted(serial: string): boolean {
   return adb(serial, 'shell', 'getprop', 'sys.boot_completed').stdout?.trim() === '1';
 }
 
+/** Why the capture emulator can't be used and the ways forward, or null when it has booted. */
+export function missingEmulator(serial: string): string | null {
+  if (booted(serial)) return null;
+  const devices = (spawnSync('adb', ['devices'], {encoding: 'utf8'}).stdout || '').split('\n').slice(1)
+    .map(line => line.split('\t')).filter(([id, state]) => id && state === 'device').map(([id]) => id);
+  return [`The capture emulator ${serial} isn't running.`,
+    `  Start a dedicated one: npx screenshot-studio recapture --boot   (boots an emulator as ${serial})`,
+    ...devices.filter(id => id.startsWith('emulator-') && id !== serial).map(id =>
+      `  Or capture on ${id}: add --serial ${id}   (its display size, language and demo mode change during the capture and are restored after)`),
+    'Captures run only on emulators, never on a phone.'].join('\n');
+}
+
 /** Start an emulator headless on the serial's port and wait until Android has booted. */
 export async function bootEmulator(serial: string, avd: string | undefined, log: (line: string) => void): Promise<void> {
   if (booted(serial)) return;
@@ -157,6 +169,7 @@ export async function recapture(options: RecaptureOptions = {}): Promise<Recaptu
         if (ios) for (const sim of sims) await bootSimulator(sim, log);
         else await bootEmulator(serial, capture.avd, log);
       }
+      if (!ios && !options.dryRun) { const problem = missingEmulator(serial); if (problem) throw new Error(problem); }
       for (const {apk, app, package: id} of capture.install || []) {
         const file = ios ? app : apk;
         if (!file) throw new Error(`capture.install needs ${ios ? '"app" (a simulator .app)' : '"apk"'} for ${id}`);

@@ -53,6 +53,8 @@ export interface ExportedCard {
   height: number;
   bytes: number;
   notes: string[];
+  /** Where the devices, headline and callouts landed, in card pixels. */
+  layout?: CardReport['layout'];
 }
 
 export interface LocaleTally {
@@ -421,7 +423,7 @@ async function writeCards(run: Run, {locale, dir}: LocalePlan, gallery: GalleryP
     if (report.widows?.length) warn(`${label}: "${report.widows.join('", "')}" is left on a short last line; reword or shorten the copy`);
     tally.cards++;
     const card: ExportedCard = {locale, kind, index: i, feature: slide.feature, file: path.join(locale, file).split(path.sep).join('/'), width, height, bytes: bytes.length, notes};
-    run.cards.push(card);
+    run.cards.push({...card, layout: report.layout});
     manifest.galleries[kind].push({...card, file, slide: i, sources: run.gallery.devicesFor(slide).map(d => `raw/${d.raw}`)});
     log(`${label}${notes.length ? `  (${notes.join('; ')})` : ''}`);
   }

@@ -60,6 +60,11 @@ function capturesFor({galleries, profiles, defaultLocale}: ListingFiles, locale:
     ])));
 }
 
+/** The captures this locale's callouts lift their regions from. */
+const mapped = ({galleries, profiles, defaultLocale}: ListingFiles, locale: string): string[] => [...new Set(Object.keys(galleries)
+  .filter(kind => locale === defaultLocale || !profiles[kind]?.defaultLocaleOnly)
+  .flatMap(kind => cardsFor(galleries, kind).flatMap(card => (card.callouts || []).map(c => c.raw || devicesFor(card)[c.device || 0]?.raw).filter((raw): raw is string => !!raw))))];
+
 const fieldCount = (copy: Copy): number => Object.values(copy).reduce((n, entry) => n + Object.keys(entry).length, 0);
 
 /** How far each locale is: words translated, captures present and layout sidecars beside them. */
@@ -81,7 +86,8 @@ export function localeCoverage(listing?: string): CoverageReport {
       isDefault: locale === defaultLocale,
       words: {done, total: fields},
       captures: {done: raws.filter(raw => exists(raw)).length, total: raws.length},
-      sidecars: {done: raws.filter(raw => exists(nodesFile(raw))).length, total: raws.length},
+      // Layout maps matter only for the captures callouts lift from, to follow their element into this language.
+      sidecars: {done: mapped(files, locale).filter(raw => exists(nodesFile(raw))).length, total: mapped(files, locale).length},
     };
   });
   return {defaultLocale, captures: capturesFor(files, defaultLocale).size, fields, rows};
@@ -93,7 +99,7 @@ export function formatCoverage(report: CoverageReport): string {
   return [
     `${report.captures} captures and ${report.fields} copy fields per locale (default ${report.defaultLocale})`,
     '',
-    'locale      words        captures     layout sidecars',
+    'locale      words        captures     layout maps (for callouts)',
     ...report.rows.map(row => `${row.locale.padEnd(10)}  ${tally(row.words).padEnd(11)}  ${tally(row.captures).padEnd(11)}  ${tally(row.sidecars)}`),
   ].join('\n');
 }

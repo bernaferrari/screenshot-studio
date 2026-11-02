@@ -389,6 +389,15 @@ export interface Theme {
   depth?: boolean | string[];
 }
 
+/** Boxes on the finished card, in card pixels (left, top, width, height). */
+export interface CardLayout {
+  width: number;
+  height: number;
+  devices: (Box & {raw: string; role?: string})[];
+  header?: Box;
+  callouts: Box[];
+}
+
 /** What the renderer reports for one card. */
 export interface CardReport {
   locale: string;
@@ -401,4 +410,6 @@ export interface CardReport {
   continuous?: boolean;
   /** Last words left alone on their own line. */
   widows?: string[];
+  /** Where everything landed, in card pixels: for adjusting a layout by numbers rather than by eye. */
+  layout?: CardLayout;
 }

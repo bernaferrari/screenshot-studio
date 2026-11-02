@@ -3,7 +3,7 @@ import argparse
 import sys
 import time
 
-from capture_emulator import SCALES, SERIAL, Emulator
+from capture_emulator import SCALES, SERIAL, Emulator, missing_emulator
 from capture_shot import Shots
 from capture_tour import Tour
 from capture_ui import Screen
@@ -51,6 +51,9 @@ class Device(Tour, Emulator, Screen, Shots):
 
     # lifecycle ----------------------------------------------------------------------------------------
     def __enter__(self):
+        problem = missing_emulator(self.serial)
+        if problem:
+            raise SystemExit(problem)
         qemu = self.shell('getprop', 'ro.kernel.qemu').strip() + self.shell('getprop', 'ro.boot.qemu').strip()
         if '1' not in qemu:
             raise SystemExit(f'{self.serial} is not an emulator.')

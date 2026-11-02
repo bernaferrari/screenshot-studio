@@ -1314,7 +1314,9 @@ test("the review queue lists check and export issues with fixes and opens their 
   await page.goto(base + projects[0].editorURL + "?view=review");
   const issues = page.locator(".review-issue");
   await issues.first().waitFor();
-  assert.equal(await issues.count(), 4);
+  assert.equal(await issues.count(), 5);
+  // Words the default language has and German doesn't, named so they can be translated.
+  await page.getByText(/field\(s\) not translated yet/).first().waitFor();
   await page.getByText('"unused" isn\'t used by any card', { exact: true }).waitFor();
   await page.getByText("Remove it, or fix the card's feature name.").waitFor();
   await page.getByText("en-US/phone/old.png", { exact: true }).waitFor();
@@ -1328,13 +1330,13 @@ test("the review queue lists check and export issues with fixes and opens their 
   // The header and the section link count what needs fixing.
   await page
     .getByRole("navigation", { name: "Project sections" })
-    .getByRole("link", { name: /Review\s*4/ })
+    .getByRole("link", { name: /Review\s*5/ })
     .waitFor();
   // A fixed file leaves the queue on its own.
   delete copy.unused;
   write(listing + "/en-US/copy.json", copy);
   await page.waitForFunction(
-    () => document.querySelectorAll(".review-issue").length === 3,
+    () => document.querySelectorAll(".review-issue").length === 4,
   );
   await page
     .locator(".review-issue")

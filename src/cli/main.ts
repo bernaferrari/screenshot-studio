@@ -34,6 +34,8 @@ const COMMANDS: Record<string, Command> = {
       const python = spawnSync('sh', ['-c', 'command -v uv'], {stdio: 'ignore'}).status === 0 ? ['uv', 'run', '-q', '--with', 'pillow', 'python3'] : ['python3'];
       return spawnSync(python[0], [...python.slice(1), script, ...argv], {stdio: 'inherit', env: {...process.env, ...tourEnvironment(listing)}}).status ?? 1;
     }},
+  screen: {summary: 'What the capture emulator shows: a screenshot and every element to tap, for writing a tour', usage: 'screen [--serial emulator-5578] [--out screen.png] [--json] [--tap "Settings" | --tap 540,1200 | --back]',
+    run: async argv => (await import('../node/emulator')).run(argv)},
   reset: {summary: 'Undo a capture that was interrupted (display size, density, demo mode on the emulator)', usage: 'reset [--serial emulator-5578]',
     run: async argv => {
       const {spawnSync} = await import('node:child_process');
