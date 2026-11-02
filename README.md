@@ -5,7 +5,7 @@
 <p align="center">Screenshot Studio turns real screenshots of your app into Google Play and App Store screenshots, README images and app icons, in every language. It checks every card the way a reviewer would, and it's built so Claude and other agents can do the whole job for you.</p>
 
 <p align="center">
-  <img src="docs/images/before-after.jpg" width="100%" alt="Before: three plain screenshots of ChangeDetection. After: the finished Google Play cards, and the same card in German, Chinese, Hindi, Portuguese, Bengali and Spanish, captured in each language">
+  <img src="docs/images/before-after.jpg" width="100%" alt="Before: three plain screenshots of SDK Monitor. After: the finished Google Play cards, and the same card in German, Chinese and Japanese, captured in each language">
 </p>
 
 ## Try it in a minute

@@ -1,7 +1,7 @@
 // The README's art. From the real exported cards of the apps that use the studio: hero.jpg, before-after.jpg,
 // themes.jpg, depth.jpg, callouts.jpg and readme-art.jpg. With --editor, from the editor open on a fresh `demo` project: editor-store.jpg and
 // editor-languages.jpg (for docs/editor.md) and demo.gif, the cards re-rendering live as the theme changes on disk (ffmpeg makes the GIF).
-//   node docs/images/make.mjs [--editor]        (APPS=~/Documents/android: the apps whose cards it shows)
+//   node docs/images/make.mjs [hero before-after …] [--editor]   (APPS=~/Documents/android: the apps whose cards it shows)
 // Run `npm run build` first. The editor runs on a temporary home and project list; yours are left alone.
 import fs from 'node:fs';
 import os from 'node:os';
@@ -50,11 +50,11 @@ function hero() {
 
 /** Plain captures beside the finished cards, at one height; under them the same card in three more languages. */
 function beforeAfter() {
-  const app = listing('ChangeDetection');
-  const raws = ['01-home', '02c-compare-page', '00-alert'].map(n => image(path.join(app, 'en-US/raw/phone/light', `${n}.png`)));
-  const cards = ['01-home', '02-page', '03-alert'].map(n => image(path.join(app, 'en-US/phone', `v2-${n}.jpg`)));
-  const langs = [['de-DE', 'Deutsch'], ['zh-CN', '中文'], ['hi-IN', 'हिन्दी']]
-    .map(([locale, name]) => [image(path.join(app, locale, 'phone/v2-01-home.jpg')), name]);
+  const app = listing('SDKMonitor');
+  const raws = ['01-apps', '03-logs', '02-details'].map(n => image(path.join(app, 'en-US/raw/phone', `${n}.png`)));
+  const cards = ['01-apps', '02-logs', '04-details'].map(n => image(path.join(app, 'en-US/phone', `phone-${n}.jpg`)));
+  const langs = [['de-DE', 'Deutsch'], ['zh-CN', '中文'], ['ja-JP', '日本語']]
+    .map(([locale, name]) => [image(path.join(app, locale, 'phone/phone-01-apps.jpg')), name]);
   const raw = (src, i) => `<img src="${src}" style="position:absolute;left:${80 + i * 317}px;top:190px;width:295px;border-radius:22px;box-shadow:0 0 0 1px #15172b18,0 24px 50px -24px #15172b60">`;
   const card = (src, i) => `<img class="card" src="${src}" style="left:${1196 + i * 382}px;top:190px;width:360px;border-radius:24px">`;
   // The languages run off the bottom: their headlines and the top of the app are the point.
@@ -204,13 +204,11 @@ async function editor(browser) {
   }
 }
 
+// Names (hero, before-after…) make only those images; none makes them all.
+const wanted = process.argv.slice(2).filter(arg => !arg.startsWith('--'));
+const images = {'hero': hero, 'before-after': beforeAfter, 'themes': themes, 'depth': depth, 'callouts': callouts, 'readme-art': readmeArt};
 const browser = await chromium.launch();
 try {
-  await shoot(browser, ...hero(), 'hero.jpg');
-  await shoot(browser, ...beforeAfter(), 'before-after.jpg');
-  await shoot(browser, ...themes(), 'themes.jpg');
-  await shoot(browser, ...depth(), 'depth.jpg');
-  await shoot(browser, ...callouts(), 'callouts.jpg');
-  await shoot(browser, ...readmeArt(), 'readme-art.jpg');
+  for (const [name, make] of Object.entries(images)) if (!wanted.length || wanted.includes(name)) await shoot(browser, ...make(), `${name}.jpg`);
   if (process.argv.includes('--editor')) await editor(browser);
 } finally { await browser.close(); }
