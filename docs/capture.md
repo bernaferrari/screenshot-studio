@@ -44,7 +44,7 @@ every language (below).
 | `setup`, `teardown` | Once per language, before and after (teardown also after a failure) |
 | `run` | Instead of scenes: drive each profile yourself and call `d.shot()` (an app that captures with its own test) |
 | `install`, `uninstall` | An APK the tour installs itself (relative to store-listing/), and removing the app afterwards |
-| `settle`, `animated` | Milliseconds before each save (default 1200); scenes that capture a frame of real motion |
+| `settle`, `animated` | Extra milliseconds before each save, once the screen has settled; scenes that capture a frame of real motion |
 | `battery`, `check` | The status bar's battery (default 100); a check every screen must pass (`nodes => boolean`) |
 | `offline`, `animations`, `appLocale`, `tapMap` | Default `true`: network off, animations on, the app's language set, taps replayed by position |
 
@@ -76,19 +76,36 @@ capturing, and a system dialog on screen ("isn't responding") fails the shot ins
 
 ## The toolkit
 
-What a step gets as `d` (typed as `TourDevice`):
+What a step gets as `d` (typed as `TourDevice`). It works like an e2e test: every action waits for what it needs (the
+element to show up, the app to come to the front), then for the screen to settle (two identical frames in a row), so a
+tour has no sleeps or retry counts.
 
 | Member | Does |
 |---|---|
-| `tap(label, {textOnly, within, key, wait, attempts})` | Taps the element whose text or description matches (a regular expression, matched whole); `within(bounds)` limits it to a region |
-| `waitFor(label)`, `present(label)`, `tree()` | Wait for an element, ask whether one is there, read every element |
-| `back`, `type`, `swipe`, `scroll(fraction, {up})`, `drag(pixels)`, `scrollTo(label, top)` | Move around |
-| `launch({clear, activity, extras, wait})` | Start the app, optionally clearing its data; extras become intent extras |
+| `tap(label, {textOnly, above, below, timeout, key})` | Waits for the element whose text or description matches (a regular expression, matched whole), taps it, and waits for the screen to settle. `above: .3` keeps to the top 30% of the screen |
+| `waitFor(label, {timeout})`, `isVisible(label)`, `tree()` | Wait for an element, ask whether one is there now, read every element |
+| `waitUntil(() => …, {timeout, message})` | Wait for anything else: a capture build's seed marker (`d.appFiles().includes('seeded')`), say |
+| `back`, `type`, `swipe`, `scroll(fraction, {up})`, `drag(pixels)`, `scrollTo(label, top)` | Move around; each settles |
+| `launch({clear, activity, extras})` | Start the app, in front and settled; `clear` wipes its data; extras become intent extras |
 | `setClock('09:41')` | Pin the device clock too (the host time comes back afterwards) |
 | `night(on)`, `rotate`, `resize(w, h, dpi)` | Theme, orientation, a size outside profiles.json |
-| `shot(name, {settle, animated, check})` | Checks the screen (no system dialog, the right size), then saves it; scenes call it for you |
-| `appFiles()`, `topActivity()`, `shell`, `adb`, `sleep` | Anything else |
+| `shot(name, {animated, check})` | Checks the screen (no system dialog, the right size), then saves it; scenes call it for you |
+| `settle()`, `sleep(ms)` | Wait for the screen to stop changing; wait a set time (a recording that must run its course) |
+| `appFiles()`, `topActivity()`, `shell`, `adb` | Anything else |
 | `locale`, `defaultLocale`, `profile`, `theme`, `width`, `height`, `raw`, `options` | Where the run is |
+
+A tour reads like a test of the app's story:
+
+```js
+scenes: {
+  light: {
+    '01-home': null,
+    async '02-stats'(d) { await d.tap('Activity', {textOnly: true}); await d.tap('Insights'); },
+    '03-blocked': d => d.scrollTo('Most blocked apps', .12),
+    async '04-filters'(d) { await d.tap('Filters', {above: .3}); await d.tap('DNS lookups'); },
+  },
+},
+```
 
 ## Every language from one tour
 
@@ -148,8 +165,8 @@ after resetting the emulator. Then it exports each language (one failing languag
 | `--dry-run` | Print the commands without running them |
 
 Use one capture emulator at a time: several at once can run the computer out of memory, and the system then kills one
-mid-capture. Tours need Node 22.12 or later. A listing still on the old Python tour (`capture-emulator.py`) keeps
-working for now; move it to `capture.tour.mjs`, since the Python tours go away in a coming release.
+mid-capture. Tours need Node 22.12 or later. A listing with a Python tour from an older version (`capture-emulator.py`)
+gets an error saying so: write its scenes as `capture.tour.mjs`.
 
 ## Fictional apps
 
@@ -189,34 +206,44 @@ Each iOS profile in `profiles.json` has `"platform": "ios"`, a capture size and 
 
 ### The tour
 
-`store-listing/capture-simulator.py`:
+The same `store-listing/capture.tour.mjs`, with the same toolkit: agent-device reads the simulator's accessibility tree
+and taps through XCTest, so `d.tap('Settings')`, `waitFor`, `scrollTo` and the tap map work as on Android (positions
+are in screenshot pixels on both). `init --platform ios` writes one:
 
-```python
-from ios import Simulator, parser
-
-args = parser(__doc__).parse_args()                  # --simulator, --profile, --locale, --only, --keep
-with Simulator(args, 'com.example.myapp') as s:
-    for profile in s.profiles():                     # iphone, ipad: boots each profile's simulator
-        s.appearance('light')                        # or s.night(False)
-        s.launch(screenshotScene='home')             # -screenshotScene home, in the locale's language
-        s.shot('01-home')                            # <locale>/raw/<profile>/01-home.png
-        s.launch(screenshotScene='settings')
-        s.shot('02-settings')
+```js
+export default {
+  app: 'com.example.myapp',
+  // Each theme starts the app afresh, in the capture's language; extras become launch arguments.
+  start: d => d.launch({extras: {screenshotScene: 'home'}}),
+  scenes: {
+    light: {
+      '01-home': null,
+      '02-settings': d => d.tap('Settings'),
+      async '03-share'(d) { await d.openUrl('myapp://share'); },
+    },
+    dark: {'04-home-dark': null},
+  },
+};
 ```
 
-While the tour runs, each simulator gets a status bar at 9:41 with full battery, Wi-Fi and signal and no carrier (`simctl status_bar override`), and the default text size. On exit the status bar is cleared, appearance and text size are put back, and simulators the tour booted are shut down (`--keep` leaves them running).
+While the tour runs, each simulator gets a status bar at 9:41 with full battery, Wi-Fi and signal and no carrier
+(`simctl status_bar override`), and the default text size. Afterwards the status bar is cleared, appearance and text
+size are put back, and simulators the tour booted are shut down. The first iOS capture on a machine builds
+agent-device's XCTest runner, which takes a few minutes once.
 
-| Method | Does |
+| iOS member | Does |
 |---|---|
-| `launch(*args, **defaults)` | Restart the app with launch arguments; `screenshotScene='home'` becomes `-screenshotScene home`. Adds `-AppleLanguages (de-DE) -AppleLocale de_DE` for the locale |
-| `open_url(url)` | Open a deep link in the running app |
-| `appearance('dark')`, `night(on)` | Light or dark |
+| `launch({extras, clear})` | Restart the app; `extras: {screenshotScene: 'home'}` becomes `-screenshotScene home` (UserDefaults), with `-AppleLanguages (de-DE) -AppleLocale de_DE` for the capture's language. `clear` reinstalls the app (a fresh start), when the tour or studio.json installs it |
+| `openUrl(url)` | Open a deep link in the running app (it keeps its language) |
+| `night(on)` | Light or dark appearance (scenes do this for you) |
 | `privacy('grant', 'photos')` | Grant a permission up front, so no alert covers a scene |
-| `install(app)`, `terminate()` | Install a simulator `.app`; stop the app |
-| `shot(*targets)` | Save the screen (square corners; the frame rounds them), checking its size |
-| `use(profile, simulator, w, h)` | A simulator outside `profiles.json` |
+| `simctl(...words)` | Anything else |
 
-**Navigation is the app's job.** simctl can't tap, and there is no UI tree, so there's no `tap('Settings')`, no tap map and no `.nodes.json`. (Callouts still work with hand-drawn regions; they just don't follow elements between languages.) Instead the app's Debug build opens the screen a launch argument names, filled with fictional sample data:
+`back` uses the navigation bar's back button (or the edge swipe). Android-only members (`adb`, `shell`, `appFiles`,
+`resize`, `setClock`) say so when called on iOS.
+
+A capture or debug build can still open each screen itself from a launch argument, filled with fictional sample data,
+which keeps a tour to `launch` calls:
 
 ```swift
 #if DEBUG
@@ -225,9 +252,9 @@ if let scene = UserDefaults.standard.string(forKey: "screenshotScene") { router.
 #endif
 ```
 
-A URL scheme (`open_url('myapp://settings')`) works too, and keeps the running app's language.
-
-**Languages.** `launch` sets the app's language for that launch only; the simulator's system language stays as it is. So the app is in German, but text drawn by iOS outside the app (the iPad status bar's app name, a share sheet) is in the simulator's language. The clock shows 9:41 or 09:41 depending on the simulator's region format.
+**Languages.** The language arguments set the app's language for that launch only; the simulator's system language
+stays as it is. So the app is in German, but text drawn by iOS outside the app (the iPad status bar's app name, a share
+sheet) is in the simulator's language. The clock shows 9:41 or 09:41 depending on the simulator's region format.
 
 ### recapture
 
@@ -240,6 +267,10 @@ A URL scheme (`open_url('myapp://settings')`) works too, and keeps the running a
 }
 ```
 
-With `"platform": "ios"`, `recapture` builds, installs the `.app` on every simulator the capture profiles use, then runs `capture-simulator.py` (the default `script`) per language and profile, and exports. `--boot` boots those simulators first and leaves them running; `--simulator NAME` (or `capture.simulator`) is the simulator for profiles that name none. A failed run clears the status bar and appearance (`python3 the studio's `ios.py` reset --simulator NAME`) and tries again.
+With `"platform": "ios"`, `recapture` builds, installs the `.app` on every simulator the capture profiles use, runs the
+tour per language, and exports. `--boot` boots those simulators first and leaves them running; `--simulator NAME` (or
+`capture.simulator`) is the simulator for profiles that name none. A failed run resets the simulators (`npx
+screenshot-studio reset --simulator NAME` does the same by hand) and tries again. `npx screenshot-studio screen
+--simulator NAME` shows a booted simulator's screen and labels, as for the emulator.
 
 The exporter's store text checks and `export --fastlane` are still written for Google Play.

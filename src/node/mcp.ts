@@ -112,27 +112,31 @@ export function createTools(defaultListing?: string): Tool[] {
     },
     {
       name: 'emulator_screen',
-      description: 'Look at the capture emulator: a screenshot and every labelled element with its bounds, read exactly as a capture tour reads it. Use it to write or fix the tour (store-listing/capture.tour.mjs): each label is what d.tap("…") takes. Emulators only, never a phone.',
-      inputSchema: {type: 'object', properties: {serial: {type: 'string', description: 'The emulator (default: the capture emulator, emulator-5578).'}}},
+      description: 'Look at the capture emulator: a screenshot and every labelled element with its bounds, read exactly as a capture tour reads it. Use it to write or fix the tour (store-listing/capture.tour.mjs): each label is what d.tap("…") takes. An Android emulator, or a booted iOS simulator with `simulator`; never a phone.',
+      inputSchema: {type: 'object', properties: {serial: {type: 'string', description: 'The emulator (default: the capture emulator, emulator-5578).'},
+        simulator: {type: 'string', description: 'iOS instead: a booted simulator, by name or UDID.'},
+        app: {type: 'string', description: 'iOS: the app whose screen to read (default: the listing\'s iOS app).'}}},
       async call(args) {
         const {emulator, readScreen, formatScreen} = await import('./emulator');
-        const screen = await readScreen(emulator(typeof args.serial === 'string' ? args.serial : undefined));
+        const screen = await readScreen(emulator(typeof args.serial === 'string' ? args.serial : undefined, typeof args.simulator === 'string' ? args.simulator : undefined, typeof args.app === 'string' ? args.app : undefined));
         return [await image(screen.png, 1400), text(formatScreen(screen))];
       },
     },
     {
       name: 'emulator_tap',
-      description: 'Move around the app on the capture emulator, to find the screens a tour should capture: tap an element by its label (as emulator_screen lists it) or a point "x,y", or "back". Returns the screen after the tap.',
+      description: 'Move around the app on the capture emulator (or a simulator), to find the screens a tour should capture: tap an element by its label (as emulator_screen lists it) or a point "x,y", or "back". Returns the screen after the tap.',
       inputSchema: {type: 'object', properties: {
         target: {type: 'string', description: 'A label, "x,y" in screen pixels, or "back".'},
         serial: {type: 'string', description: 'The emulator (default: the capture emulator, emulator-5578).'},
+        simulator: {type: 'string', description: 'iOS instead: a booted simulator, by name or UDID.'},
+        app: {type: 'string', description: 'iOS: the app whose screen to read (default: the listing\'s iOS app).'},
       }, required: ['target']},
       async call(args) {
         const {emulator, readScreen, formatScreen, tapScreen} = await import('./emulator');
-        const serial = emulator(typeof args.serial === 'string' ? args.serial : undefined);
-        const tapped = await tapScreen(String(args.target), serial);
+        const device = emulator(typeof args.serial === 'string' ? args.serial : undefined, typeof args.simulator === 'string' ? args.simulator : undefined, typeof args.app === 'string' ? args.app : undefined);
+        const tapped = await tapScreen(String(args.target), device);
         await new Promise(resolve => setTimeout(resolve, 1200));
-        const screen = await readScreen(serial);
+        const screen = await readScreen(device);
         return [await image(screen.png, 1400), text(`tapped ${tapped}\n${formatScreen(screen)}`)];
       },
     },

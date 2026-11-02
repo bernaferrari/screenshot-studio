@@ -1,6 +1,6 @@
 /**
- * iOS: the App Store galleries, and the simulators that capture them (Xcode's `xcrun simctl`).
- * The capture itself is Python (capture/ios.py, copied into every app's studio/), like Android's capture.py.
+ * iOS: the App Store galleries, and the simulators that capture them (Xcode's `xcrun simctl`). Tours run on them like
+ * on the Android emulator (capture/tour.ts, capture/simulator.ts).
  */
 import {spawnSync} from 'node:child_process';
 import type {Profile, Profiles} from '../core/types';

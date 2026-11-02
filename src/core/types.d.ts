@@ -153,12 +153,13 @@ export interface CaptureInstall {
   app?: string;
   package: string;
 }
+/** One run of the tour (capture.tour.mjs). */
 export interface CaptureRun {
-  script?: string;
-  args?: string[];
-  /** For a capture.tour.mjs: values the tour reads as d.options. */
+  /** Values the tour reads as d.options; `${NAME}` in a string reads the environment. */
   options?: Record<string, unknown>;
-  profiles?: false | string[];
+  /** The capture profiles to run (default: every one). */
+  profiles?: string[];
+  /** The languages to run: every one (default), the default one, or a list. */
   locales?: 'all' | 'default' | Locale[];
 }
 
@@ -431,7 +432,7 @@ export interface Tour {
   battery?: number;
   /** Refuse a screen before it is saved: return false (a fixture that didn't load, say). Applies to every shot. */
   check?: (nodes: UiNode[], d: TourDevice) => boolean | void;
-  /** Milliseconds to let the screen settle before each scene is saved (default 1200). */
+  /** Extra milliseconds before each scene is saved, once the screen has settled (default 0). */
   settle?: number;
   /** Set the app's language for each capture (default true). */
   appLocale?: boolean;
@@ -447,6 +448,8 @@ export type TourStep = (d: TourDevice) => unknown;
 /** What a tour drives: the capture emulator, set up for one language, profile and theme. */
 export interface TourDevice {
   app: string;
+  /** Where the tour captures: an Android emulator, or iOS simulators (studio.json "capture": {"platform": "ios"}). */
+  platform: 'android' | 'ios';
   locale: string;
   defaultLocale: string;
   /** The profile being captured (phone, tablet7…) and its display size in pixels. */
@@ -454,42 +457,58 @@ export interface TourDevice {
   width: number;
   height: number;
   theme: 'light' | 'dark';
+  /** The emulator's serial, or the simulator's UDID. */
   serial: string;
   /** This language's capture folder, `<listing>/<locale>/raw`, for tours that pull their own captures. */
   raw: string;
   /** The run's options from studio.json ("capture": {"runs": [{"options": {...}}]}). */
   options: Record<string, unknown>;
-  /** Start the app fresh: force-stopped, data cleared when `clear` (its language set again), intent extras passed. */
-  launch(options?: {clear?: boolean; wait?: number; activity?: string; extras?: Record<string, string | number | boolean>}): Promise<void>;
+  // Like an e2e test: every action waits for what it needs (the element to show up, the app to come to the front),
+  // then for the screen to settle (two identical frames in a row), so a tour needs no sleeps.
+
+  /** Start the app, in front and settled; `clear` wipes its data first (its language is set again); extras become intent extras. */
+  launch(options?: {clear?: boolean; activity?: string; extras?: Record<string, string | number | boolean>; wait?: number}): Promise<void>;
   /**
-   * Tap the element whose text (or description, unless textOnly) is `label`, a regular expression matched whole.
-   * Write labels in the default language: tap, waitFor and scrollTo record where they found it there (the tap map)
-   * and find the same element in every other language.
+   * Tap the element whose text (or description, unless textOnly) is `label`, a regular expression matched whole,
+   * waiting up to `timeout` for it to show up. `above`/`below` keep to a band of the screen (fractions of its height).
+   * Write labels in the default language: tap, waitFor and scrollTo record where they found the element there (the tap
+   * map) and find the same element in every other language; `key` tells apart two taps on one label.
    */
-  tap(label: string | RegExp, options?: {textOnly?: boolean; wait?: number; attempts?: number; key?: string; within?: (bounds: [number, number, number, number]) => boolean}): Promise<void>;
-  tapAt(x: number, y: number, wait?: number): Promise<void>;
-  /** Whether `label` is on screen now (matched in every language as written, not through the tap map). */
-  present(label: string | RegExp, options?: {textOnly?: boolean}): Promise<boolean>;
-  /** Wait until `label` is on screen (any language, like tap). */
+  tap(label: string | RegExp, options?: {textOnly?: boolean; above?: number; below?: number; within?: (bounds: [number, number, number, number]) => boolean; timeout?: number; key?: string; wait?: number}): Promise<void>;
+  tapAt(x: number, y: number): Promise<void>;
+  /** Whether `label` is on screen now (as written, in every language: for checks, not for finding what to tap). */
+  isVisible(label: string | RegExp, options?: {textOnly?: boolean; above?: number; below?: number}): Promise<boolean>;
+  /** Wait until `label` is on screen (in every language, like tap). */
   waitFor(label: string | RegExp, options?: {textOnly?: boolean; timeout?: number; key?: string}): Promise<void>;
-  back(wait?: number): Promise<void>;
+  /** Wait until `test` holds (a seed marker written, say), checking every `interval`; fails with `message` after `timeout`. */
+  waitUntil(test: () => unknown, options?: {timeout?: number; interval?: number; message?: string}): Promise<void>;
+  /** Wait for the screen to stop changing (every action already does). */
+  settle(max?: number): Promise<void>;
+  back(): Promise<void>;
   /** Swipe up by `fraction` of the screen height from `start` (down with `up: true`). */
-  scroll(fraction?: number, options?: {start?: number; x?: number; up?: boolean; duration?: number; wait?: number}): Promise<void>;
-  swipe(x1: number, y1: number, x2: number, y2: number, options?: {duration?: number; wait?: number}): Promise<void>;
+  scroll(fraction?: number, options?: {start?: number; x?: number; up?: boolean; duration?: number}): Promise<void>;
+  swipe(x1: number, y1: number, x2: number, y2: number, options?: {duration?: number}): Promise<void>;
   /** Scroll exactly `distance` pixels with a slow drag (no fling); negative scrolls back. */
-  drag(distance: number, wait?: number): Promise<void>;
+  drag(distance: number): Promise<void>;
   /** Scroll until the element labelled `label` sits at `top` (a fraction of the screen height); any language, like tap. */
-  scrollTo(label: string | RegExp, top: number, options?: {textOnly?: boolean; attempts?: number; key?: string}): Promise<void>;
-  /** The app's files folder listing (run-as), to wait for a capture build's seed marker. */
+  scrollTo(label: string | RegExp, top: number, options?: {textOnly?: boolean; key?: string}): Promise<void>;
+  /** iOS: open a link in the app (its own scheme reaches the running app, in its language). */
+  openUrl(url: string): Promise<void>;
+  /** iOS: grant or revoke a permission up front, so no system alert covers a scene: d.privacy('grant', 'photos'). */
+  privacy(action: 'grant' | 'revoke' | 'reset', service: string): void;
+  /** iOS: xcrun simctl, for anything else: d.simctl('io', d.serial, 'recordVideo', …). */
+  simctl(...words: (string | number)[]): string;
+  /** Android: the app's files folder listing (run-as), to wait for a capture build's seed marker. */
   appFiles(): string;
-  /** The activity on top, from dumpsys. */
+  /** Android: the activity on top, from dumpsys. */
   topActivity(): string;
   type(text: string): Promise<void>;
   night(on: boolean): Promise<void>;
+  /** Android: rotate the display. */
   rotate(landscape: boolean): Promise<void>;
-  /** A display size other than the profile's (another orientation, say), with a fresh status bar; shots then expect it. */
+  /** Android: a display size other than the profile's (another orientation, say), with a fresh status bar; shots then expect it. */
   resize(width: number, height: number, density?: number): Promise<void>;
-  /** The emulator's clock at hh:mm today (default 9:41, matching the status bar). */
+  /** Android: the emulator's clock at hh:mm today (default 9:41, matching the status bar). */
   setClock(hhmm?: string): void;
   /**
    * Save the screen now as <locale>/raw/<profile>/<name>.png with its layout map (scenes do this for you). Returns that
@@ -500,7 +519,7 @@ export interface TourDevice {
   tree(): Promise<UiNode[]>;
   /** Run a Screenshot Studio command from the listing, e.g. d.studio('fixtures', 'fixture-apps.json', '--install', d.serial). */
   studio(...args: string[]): void;
-  /** adb on the emulator, for anything else: d.shell('pm', 'grant', d.app, 'android.permission.POST_NOTIFICATIONS'). */
+  /** Android: adb on the emulator, for anything else: d.shell('pm', 'grant', d.app, 'android.permission.POST_NOTIFICATIONS'). */
   shell(...words: (string | number)[]): string;
   adb(...words: (string | number)[]): string;
   sleep(ms: number): Promise<void>;

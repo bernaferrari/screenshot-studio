@@ -1,4 +1,4 @@
-// The capture engine's rules that need no emulator: which element a label names, and taps recorded in the default
+// The capture engine's rules that need no device: which element a label names, taps recorded in the default
 // language replayed by tree position in another.
 const test = require('node:test');
 const assert = require('node:assert/strict');
@@ -37,4 +37,23 @@ test('waits and scrolls record a value in the default language and replay it, nu
   assert.equal(replay.take('phone|light|scroll Most blocked'), '1800 1.0.4');
   assert.equal(replay.take('phone|light|scroll Most blocked'), '-120 1.0.2');
   assert.throws(() => replay.take('phone|light|scroll Most blocked'), /Nothing recorded for phone\|light\|scroll Most blocked#2/);
+});
+
+test('a listing still on a Python tour is told to write capture.tour.mjs', t => {
+  const {tourFile} = require('../studio/studio.cjs');
+  const fs = require('node:fs'), os = require('node:os'), path = require('node:path');
+  const listing = fs.mkdtempSync(path.join(os.tmpdir(), 'studio-tour-'));
+  t.after(() => fs.rmSync(listing, {recursive: true, force: true}));
+  assert.throws(() => tourFile(listing), /write store-listing\/capture\.tour\.mjs/);
+  fs.writeFileSync(path.join(listing, 'capture-emulator.py'), '');
+  assert.throws(() => tourFile(listing), /capture-emulator\.py is a Python tour, which this version no longer runs/);
+  fs.writeFileSync(path.join(listing, 'capture.tour.mjs'), 'export default {}');
+  assert.equal(tourFile(listing), path.join(listing, 'capture.tour.mjs'));
+});
+
+test('iOS launches in the capture language with the language and region iOS names', () => {
+  const {appleLanguage} = require('../studio/studio.cjs');
+  assert.deepEqual(appleLanguage('de-DE'), ['-AppleLanguages', '(de-DE)', '-AppleLocale', 'de_DE']);
+  assert.deepEqual(appleLanguage('zh-CN'), ['-AppleLanguages', '(zh-Hans)', '-AppleLocale', 'zh_CN']);
+  assert.deepEqual(appleLanguage('ja'), ['-AppleLanguages', '(ja)', '-AppleLocale', 'ja']);
 });

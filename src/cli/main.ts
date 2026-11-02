@@ -23,47 +23,52 @@ const COMMANDS: Record<string, Command> = {
     run: async argv => (await import('../node/export')).run(argv)},
   recapture: {summary: 'Build the app, capture on the emulator or simulator and export', usage: 'recapture [locale…] [--boot] [--profile phone] [--serial emulator-5578] [--simulator "iPhone 17 Pro Max"] [--no-build] [--no-capture] [--no-export] [--dry-run]',
     run: async argv => (await import('../node/recapture')).run(argv)},
-  tour: {summary: 'Run the capture tour by hand: one language, on the capture emulator', usage: 'tour [--locale en-US] [--profile phone,tablet7] [--only 01-home,02-log] [--serial emulator-5578] [--<option> value…]',
+  tour: {summary: 'Run the capture tour by hand: one language, on the capture emulator or simulators', usage: 'tour [--locale en-US] [--profile phone,tablet7] [--only 01-home,02-log] [--serial emulator-5578 | --simulator "iPhone 17 Pro Max"] [--<option> value…]',
     run: async argv => {
       const option = (name: string) => { const i = argv.indexOf(`--${name}`); return i >= 0 ? argv[i + 1] : undefined; };
       const {requireListing, loadListing} = await import('../node/project');
       const listing = requireListing();
-      const tourFile = path.join(listing, 'capture.tour.mjs');
-      if (fs.existsSync(tourFile)) {
+      const {tourFile} = await import('../node/recapture');
+      const list = (name: string) => option(name)?.split(',').map(s => s.trim()).filter(Boolean);
+      // Any other --name value is the tour's d.options.name (--some-flag alone is true), as studio.json runs' "options".
+      const options: Record<string, unknown> = {};
+      for (let i = 0; i < argv.length; i++) {
+        const name = argv[i].match(/^--(.+)$/)?.[1];
+        if (!name) continue;
+        const value = argv[i + 1] !== undefined && !argv[i + 1].startsWith('--') ? argv[++i] : true;
+        if (!['locale', 'profile', 'only', 'serial', 'simulator'].includes(name)) options[name.replace(/-(\w)/g, (_, c: string) => c.toUpperCase())] = value;
+      }
+      try {
+        const file = tourFile(listing);
         const {runTour} = await import('../node/capture/tour');
         const {DEFAULT_SERIAL} = await import('../node/recapture');
-        const list = (name: string) => option(name)?.split(',').map(s => s.trim()).filter(Boolean);
-        // Any other --name value is the tour's d.options.name (--some-flag alone is true), as studio.json runs' "options".
-        const options: Record<string, unknown> = {};
-        for (let i = 0; i < argv.length; i++) {
-          const name = argv[i].match(/^--(.+)$/)?.[1];
-          if (!name) continue;
-          const value = argv[i + 1] !== undefined && !argv[i + 1].startsWith('--') ? argv[++i] : true;
-          if (!['locale', 'profile', 'only', 'serial'].includes(name)) options[name.replace(/-(\w)/g, (_, c: string) => c.toUpperCase())] = value;
-        }
-        try {
-          const written = await runTour(tourFile, {listing, locale: option('locale') || loadListing(listing).defaultLocale, profiles: list('profile'), only: list('only'),
-            serial: option('serial') || process.env.CAPTURE_SERIAL || DEFAULT_SERIAL, options});
-          console.log(`${written.length} capture(s) written`);
-          return 0;
-        } catch (error) { console.error((error as Error).message); return 1; }
-      }
-      // A Python tour (capture-emulator.py), until the app moves to capture.tour.mjs.
-      const {spawnSync} = await import('node:child_process');
-      const {tourEnvironment} = await import('../node/recapture');
-      const script = argv[0] && !argv[0].startsWith('--') ? argv.shift()! : ['capture-emulator.py', 'capture-simulator.py'].map(f => path.join(listing, f)).find(f => fs.existsSync(f));
-      if (!script) { console.error('No capture tour in store-listing/. Write store-listing/capture.tour.mjs (docs/capture.md).'); return 1; }
-      const python = spawnSync('sh', ['-c', 'command -v uv'], {stdio: 'ignore'}).status === 0 ? ['uv', 'run', '-q', '--with', 'pillow', 'python3'] : ['python3'];
-      return spawnSync(python[0], [...python.slice(1), script, ...argv], {stdio: 'inherit', env: {...process.env, ...tourEnvironment(listing)}}).status ?? 1;
+        const written = await runTour(file, {listing, locale: option('locale') || loadListing(listing).defaultLocale, profiles: list('profile'), only: list('only'),
+          serial: option('serial') || process.env.CAPTURE_SERIAL || DEFAULT_SERIAL, simulator: option('simulator') || process.env.CAPTURE_SIMULATOR, options});
+        console.log(`${written.length} capture(s) written`);
+        return 0;
+      } catch (error) { console.error((error as Error).message); return 1; }
     }},
-  screen: {summary: 'What the capture emulator shows: a screenshot and every element to tap, for writing a tour', usage: 'screen [--serial emulator-5578] [--out screen.png] [--json] [--tap "Settings" | --tap 540,1200 | --back]',
+  screen: {summary: 'What the capture emulator (or a simulator) shows: a screenshot and every element to tap, for writing a tour', usage: 'screen [--serial emulator-5578 | --simulator "iPhone 17 Pro Max"] [--out screen.png] [--json] [--tap "Settings" | --tap 540,1200 | --back]',
     run: async argv => (await import('../node/emulator')).run(argv)},
-  reset: {summary: 'Undo a capture that was interrupted (display size, density, demo mode on the emulator)', usage: 'reset [--serial emulator-5578]',
+  reset: {summary: 'Undo a capture that was interrupted (display size, density, demo mode; a simulator\'s status bar and appearance)', usage: 'reset [--serial emulator-5578 | --simulator "iPhone 17 Pro Max"]',
     run: async argv => {
-      const {Emulator} = await import('../node/capture/emulator');
-      const {DEFAULT_SERIAL} = await import('../node/recapture');
-      const at = argv.indexOf('--serial'), serial = at >= 0 ? argv[at + 1] : process.env.CAPTURE_SERIAL || DEFAULT_SERIAL;
-      try { new Emulator(serial).reset(); console.log(`${serial} reset`); return 0; } catch (error) { console.error((error as Error).message); return 1; }
+      const option = (name: string) => { const i = argv.indexOf(`--${name}`); return i >= 0 ? argv[i + 1] : undefined; };
+      try {
+        if (option('simulator')) {
+          const {findSimulator} = await import('../node/ios');
+          const {Simulator} = await import('../node/capture/simulator');
+          const found = findSimulator(option('simulator')!);
+          new Simulator(found.udid, found.name).reset();
+          console.log(`${found.name} reset`);
+          return 0;
+        }
+        const {Emulator} = await import('../node/capture/emulator');
+        const {DEFAULT_SERIAL} = await import('../node/recapture');
+        const serial = option('serial') || process.env.CAPTURE_SERIAL || DEFAULT_SERIAL;
+        new Emulator(serial).reset();
+        console.log(`${serial} reset`);
+        return 0;
+      } catch (error) { console.error((error as Error).message); return 1; }
     }},
   locales: {summary: 'Language coverage, or add a language', usage: 'locales [--init de-DE]',
     run: async argv => (await import('../node/locales')).run(argv)},
@@ -109,7 +114,9 @@ export async function main(argv: string[]): Promise<number> {
 
 // The library, for tools and tests: `require('screenshot-studio')`.
 export {exportListing, formatSummary} from '../node/export';
-export {recapture, bootEmulator} from '../node/recapture';
+export {recapture, bootEmulator, tourFile} from '../node/recapture';
+export {runTour} from '../node/capture/tour';
+export {appleLanguage} from '../node/capture/simulator';
 export {checkListing, formatIssues, imageSize} from '../node/check';
 export {loadListing, findListing, requireListing, readJson, writeJson} from '../node/project';
 export {serve} from '../node/server';

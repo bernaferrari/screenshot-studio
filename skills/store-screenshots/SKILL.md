@@ -21,6 +21,7 @@ to section 2. Otherwise pick the first path that fits:
 | Screenshots per language (`./folder/en-US/`, `./folder/de-DE/`…) | the same: every language lands on the same cards |
 | fastlane's screenshots | `npx screenshot-studio init --theme aurora`: it finds them in every language, and the app's name |
 | An Android app and no screenshots | `npx screenshot-studio init --name "App" --package com.example.app`, then section 6 |
+| An iOS app and no screenshots | the same with `--platform ios` (App Store sizes, a simulator tour), then section 6 |
 | Nothing yet, wants to see it | `npx screenshot-studio demo` (a finished example; `--theme paper`, `--3d`) |
 
 `npx screenshot-studio themes` lists the looks. `init` prints what to do next; do it.
@@ -85,18 +86,20 @@ Every issue carries a fix; do what it says. The common ones:
 as the original, and keep names and sample data unchanged. Then `check` until no field is listed, and look at the
 contact sheet in that language: long languages (German, Finnish) are where copy stops fitting.
 
-## 6. Capturing the app (Android)
+## 6. Capturing the app
 
-Captures come from a dedicated emulator (`emulator-5578`), never a phone. If it isn't running, the error says how to
-start it (`recapture --boot`) or which running emulator to use (`--serial`).
+Android captures come from a dedicated emulator (`emulator-5578`), never a phone; iOS ones from the simulator each
+profile names. If one isn't running, the error says how to start it (`recapture --boot`) or which to use (`--serial`,
+`--simulator`). The same tour file and calls drive both.
 
 1. The app needs a capture build that opens on believable, fictional sample data (`docs/playbook.md`, section 1).
 2. Look at the app: `emulator_screen` shows the screen and every element's label; `emulator_tap` taps a label, a point
-   or `back`. Find each screen the cards need.
+   or `back` (both take `simulator` for iOS). Find each screen the cards need.
 3. Write what you did as the scenes of `store-listing/capture.tour.mjs`, each named for the capture it saves and
    saying how to reach it from the one before: `'02-settings': d => d.tap('Settings')`, with the labels you saw in
    the default language (other languages replay the same taps). `null` saves the screen as it is; returning `false`
-   skips a scene on that device. The `Tour` type in `studio/types.d.ts` lists everything (`docs/capture.md`).
+   skips a scene on that device. Like an e2e test, every action waits for its element and for the screen to settle:
+   write no sleeps or retries. The `Tour` type in `studio/types.d.ts` lists everything (`docs/capture.md`).
 4. `npx screenshot-studio tour --profile phone` runs it once to check; then `npx screenshot-studio recapture` builds,
    captures every language and every device size, and exports.
 

@@ -407,32 +407,17 @@
     "CaptureRun": {
       "type": "object",
       "properties": {
-        "script": {
-          "type": "string"
-        },
-        "args": {
-          "type": "array",
-          "items": {
-            "type": "string"
-          }
-        },
         "options": {
           "type": "object",
           "additionalProperties": true,
-          "description": "For a capture.tour.mjs: values the tour reads as d.options."
+          "description": "Values the tour reads as d.options; `${NAME}` in a string reads the environment."
         },
         "profiles": {
-          "anyOf": [
-            {
-              "const": false
-            },
-            {
-              "type": "array",
-              "items": {
-                "type": "string"
-              }
-            }
-          ]
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "description": "The capture profiles to run (default: every one)."
         },
         "locales": {
           "anyOf": [
@@ -448,10 +433,12 @@
                 "$ref": "#/$defs/Locale"
               }
             }
-          ]
+          ],
+          "description": "The languages to run: every one (default), the default one, or a list."
         }
       },
-      "additionalProperties": false
+      "additionalProperties": false,
+      "description": "One run of the tour (capture.tour.mjs)."
     }
   }
 }

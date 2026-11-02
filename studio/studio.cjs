@@ -2615,413 +2615,20 @@ var init_emulator$1 = __esmMin((() => {
 		}
 	};
 }));
-// src/node/capture/screen.ts
-/** One agent-device client for the run, in a session of its own. */
-function agentDevice() {
-	return client ||= import("agent-device").then(({ createAgentDeviceClient }) => createAgentDeviceClient({ session: "screenshot-studio" }));
-}
-/** The app's UI tree, without the system bars, each element with its path among its siblings. */
-async function readTree(serial) {
-	const snapshot = await (await agentDevice()).capture.snapshot({
-		platform: "android",
-		serial,
-		raw: true
-	});
-	const { width = Infinity, height = Infinity } = snapshot.viewport || {};
-	const onScreen = (node) => !node.rect || node.rect.x < width && node.rect.y < height && node.rect.x + node.rect.width > 0 && node.rect.y + node.rect.height > 0;
-	const kept = snapshot.nodes.filter((node) => !node.systemBar && node.visibleToUser !== false && onScreen(node));
-	const keptIndex = new Set(kept.map((node) => node.index));
-	const children = /* @__PURE__ */ new Map();
-	for (const node of kept) {
-		const parent = node.parentIndex !== void 0 && keptIndex.has(node.parentIndex) ? node.parentIndex : void 0;
-		if (!children.has(parent)) children.set(parent, []);
-		children.get(parent).push(node);
-	}
-	const nodes = [];
-	const visit = (parent, path) => (children.get(parent) || []).forEach((node, i) => {
-		const here = path ? `${path}.${i}` : String(i);
-		if (node.rect) {
-			const { x, y, width, height } = node.rect;
-			const text = node.label && TEXT_CLASS.test(node.type || "") ? node.label : void 0;
-			const desc = node.contentDescription || (node.label && !text ? node.label : void 0);
-			nodes.push({
-				path: here,
-				b: [
-					Math.round(x),
-					Math.round(y),
-					Math.round(x + width),
-					Math.round(y + height)
-				],
-				...text && { text },
-				...desc && { desc },
-				...node.identifier && { id: node.identifier },
-				...node.type && { cls: node.type }
-			});
-		}
-		visit(node.index, here);
-	});
-	visit(void 0, "");
-	const dialog = snapshot.nodes.find((node) => node.bundleId === "android" && /isn't responding|keeps stopping|has stopped/.test(node.label || ""))?.label;
-	return {
-		width: snapshot.viewport?.width || 0,
-		height: snapshot.viewport?.height || 0,
-		nodes,
-		...dialog && { dialog }
-	};
-}
-/** Whether an element matches a label: its whole text, or its description unless textOnly. A string is a regular expression. */
-function matcher(label, textOnly = false, within) {
-	const pattern = typeof label === "string" ? new RegExp(`^(?:${label})$`) : new RegExp(`^(?:${label.source})$`, label.flags);
-	return (node) => (!within || within(node.b)) && (pattern.test(node.text || "") || !textOnly && pattern.test(node.desc || ""));
-}
-/** Tap the middle of an element's bounds. */
-async function tapNode(serial, node) {
-	const [l, t, r, b] = node.b;
-	await (await agentDevice()).interactions.press({
-		platform: "android",
-		serial,
-		x: Math.round((l + r) / 2),
-		y: Math.round((t + b) / 2)
-	});
-}
-var TEXT_CLASS, client, TapMap;
-var init_screen = __esmMin((() => {
-	TEXT_CLASS = /(TextView|Button|EditText|CheckBox|RadioButton|Switch|Chip)$/;
-	client = null;
-	TapMap = class {
-		recording;
-		paths;
-		seen = /* @__PURE__ */ new Map();
-		constructor(file, recording, read) {
-			this.recording = recording;
-			const text = read(file);
-			this.paths = text ? JSON.parse(text) : {};
-			if (!recording && !text) throw new Error(`No tap map at ${file}: capture the default language first.`);
-		}
-		/** The next numbered slot for a key: taps with the same key are numbered in order. */
-		slot(key) {
-			const n = this.seen.get(key) || 0;
-			this.seen.set(key, n + 1);
-			return `${key}#${n}`;
-		}
-		resolve(key, nodes, matches) {
-			const n = this.seen.get(key) || 0, slot = `${key}#${n}`;
-			let node;
-			if (this.recording) {
-				node = nodes.find(matches);
-				if (!node) throw new Error(`Nothing on screen matches "${key.split("|").pop()}"`);
-				this.paths[slot] = node.path;
-			} else {
-				const path = this.paths[slot];
-				if (!path) throw new Error(`No recorded tap for ${slot}: capture this scene in the default language first.`);
-				node = nodes.find((candidate) => candidate.path === path);
-				if (!node) throw new Error(`The recorded tap ${slot} has no element at ${path} here: the screen differs from the default language.`);
-			}
-			this.seen.set(key, n + 1);
-			return node;
-		}
-		/** Record a value under a key (default language), e.g. how far a scroll went. */
-		put(key, value) {
-			this.paths[this.slot(key)] = value;
-		}
-		/** The value recorded under a key, replayed in another language. */
-		take(key) {
-			const slot = this.slot(key), value = this.paths[slot];
-			if (value === void 0) throw new Error(`Nothing recorded for ${slot}: capture this scene in the default language first.`);
-			return value;
-		}
-		json() {
-			return JSON.stringify(Object.fromEntries(Object.entries(this.paths).sort(([a], [b]) => a.localeCompare(b))), null, 1) + "\n";
-		}
-	};
-}));
-// src/node/capture/tour.ts
-var tour_exports = /* @__PURE__ */ __exportAll({
-	loadTour: () => loadTour,
-	runTour: () => runTour
-});
-async function loadTour(file) {
-	const tour = (await import(`${(0, node_url.pathToFileURL)(node_path.default.resolve(file)).href}?${node_fs.default.statSync(file).mtimeMs}`)).default;
-	if (!tour?.app || !tour.scenes && !tour.run) throw new Error(`${file} must export default {app, scenes} (see the Tour type in studio/types.d.ts).`);
-	return tour;
-}
-/** Run a tour for one language; returns the captures written, relative to the listing. */
-async function runTour(file, options) {
-	const log = options.log || ((line) => console.log(line));
-	const tour = await loadTour(file);
-	const read = (relative) => JSON.parse(node_fs.default.readFileSync(node_path.default.join(options.listing, relative), "utf8"));
-	const config = read("studio.json"), profiles = read("profiles.json");
-	const defaultLocale = config.defaultLocale || "en-US";
-	const sizes = Object.entries(profiles).filter(([name, p]) => p.captureWidth && p.captureHeight && p.captureDensity && (!options.profiles?.length || options.profiles.includes(name)));
-	if (!sizes.length) throw new Error(`No profile to capture${options.profiles?.length ? ` among ${options.profiles.join(", ")}` : ""}: give one captureWidth, captureHeight and captureDensity in profiles.json.`);
-	const problem = missingEmulator(options.serial);
-	if (problem) throw new Error(problem);
-	const emu = new Emulator(options.serial);
-	if (tour.battery !== void 0) emu.battery = tour.battery;
-	if (!emu.isEmulator()) throw new Error(`${options.serial} is not an emulator. Captures run only on emulators, never on a phone.`);
-	const appLocale = tour.appLocale !== false, offline = tour.offline !== false;
-	const recording = options.locale === defaultLocale;
-	const mapFile = node_path.default.join(options.listing, defaultLocale, "raw", "tap-map.json");
-	const taps = tour.tapMap === false ? null : new TapMap(mapFile, recording, (file) => node_fs.default.existsSync(file) ? node_fs.default.readFileSync(file, "utf8") : null);
-	const written = [];
-	let profile = "";
-	const d = {
-		app: tour.app,
-		locale: options.locale,
-		defaultLocale,
-		profile: "",
-		width: 0,
-		height: 0,
-		theme: "light",
-		serial: options.serial,
-		options: options.options || {},
-		raw: node_path.default.join(options.listing, options.locale, "raw"),
-		async launch({ clear = false, wait = 4e3, activity = tour.activity, extras = {} } = {}) {
-			emu.shell("am", "force-stop", tour.app);
-			if (clear) {
-				emu.shell("pm", "clear", tour.app);
-				if (appLocale) emu.appLocale(tour.app, options.locale);
-			}
-			const component = activity ? activity.includes("/") ? activity : `${tour.app}/${activity}` : null;
-			const flags = Object.entries(extras).flatMap(([key, value]) => [
-				typeof value === "boolean" ? "--ez" : typeof value === "number" ? "--ei" : "--es",
-				key,
-				String(value)
-			]);
-			if (component) emu.shell("am", "start", "-W", "-n", component, ...flags);
-			else emu.shell("monkey", "-p", tour.app, "-c", "android.intent.category.LAUNCHER", "1");
-			await sleep(wait);
-		},
-		async tap(label, { textOnly = false, wait = 1500, attempts = 6, key, within } = {}) {
-			const matches = matcher(label, textOnly, within);
-			const slot = `${profile}|${d.theme}|${key || (typeof label === "string" ? label : label.source)}`;
-			let node, last;
-			for (let attempt = 0; attempt < attempts && !node; attempt++) try {
-				const { nodes } = await readTree(options.serial);
-				node = taps ? taps.resolve(slot, nodes, matches) : nodes.find(matches);
-				if (!node) throw new Error(`Nothing on screen matches "${label}"`);
-			} catch (error) {
-				last = error;
-				await sleep(1200);
-			}
-			if (!node) throw new Error(`${last.message} (${options.locale}, ${profile}, ${d.theme}). npx screenshot-studio screen shows what is there.`);
-			await tapNode(options.serial, node);
-			await sleep(wait);
-		},
-		async tapAt(x, y, wait = 1500) {
-			emu.shell("input", "tap", Math.round(x), Math.round(y));
-			await sleep(wait);
-		},
-		async present(label, { textOnly = false } = {}) {
-			return (await readTree(options.serial)).nodes.some(matcher(label, textOnly));
-		},
-		async waitFor(label, { textOnly = false, timeout = 1e4, key } = {}) {
-			const slot = `${profile}|${d.theme}|wait ${key || (typeof label === "string" ? label : label.source)}`;
-			const path = taps && !taps.recording ? taps.take(slot) : void 0;
-			const matches = path ? (node) => node.path === path : matcher(label, textOnly);
-			for (const end = Date.now() + timeout; Date.now() < end; await sleep(500)) {
-				const node = (await readTree(options.serial)).nodes.find(matches);
-				if (node) {
-					if (taps?.recording) taps.put(slot, node.path);
-					return;
-				}
-			}
-			throw new Error(`"${label}" never appeared (${options.locale}, ${profile}, ${d.theme}).`);
-		},
-		async back(wait = 1200) {
-			emu.shell("input", "keyevent", "KEYCODE_BACK");
-			await sleep(wait);
-		},
-		async scroll(fraction = .5, { start = .8, x = .5, up = false, duration = 300, wait = 1200 } = {}) {
-			const [a, b] = up ? [start - fraction, start] : [start, start - fraction];
-			await d.swipe(d.width * x, d.height * a, d.width * x, d.height * b, {
-				duration,
-				wait
-			});
-		},
-		async drag(distance, wait = 1200) {
-			const start = Math.floor(d.height * .8);
-			await d.swipe(Math.floor(d.width / 2), start, Math.floor(d.width / 2), start - distance, {
-				duration: 1400,
-				wait
-			});
-		},
-		async scrollTo(label, top, { textOnly = false, attempts = 12, key } = {}) {
-			const slop = Math.round(8 * emu.density / 160), target = d.height * top;
-			let scrolled = 0;
-			const move = async (distance) => {
-				if (distance > 0) await d.drag(Math.min(Math.floor(distance), Math.floor(d.height * .55)) + slop);
-				else await d.swipe(d.width / 2, d.height * .3, d.width / 2, d.height * .3 - distance + slop, { duration: 1400 });
-				scrolled += distance > 0 ? Math.min(Math.floor(distance), Math.floor(d.height * .55)) : distance;
-			};
-			const align = async (matches, search) => {
-				let last;
-				for (let i = 0; i < attempts; i++) {
-					const node = (await readTree(options.serial)).nodes.find(matches);
-					if (!node) {
-						if (!search) return null;
-						await move(d.height * .5);
-						continue;
-					}
-					const y = node.b[1];
-					if (Math.abs(y - target) <= 8 || y === last) return node;
-					last = y;
-					await move(y - target);
-				}
-				return null;
-			};
-			const slot = `${profile}|${d.theme}|scroll ${key || (typeof label === "string" ? label : label.source)}`;
-			if (taps && !taps.recording) {
-				const [distance, path] = taps.take(slot).split(" ");
-				for (let left = Number(distance); Math.abs(left) > 8;) {
-					const step = left > 0 ? Math.min(left, Math.floor(d.height * .55)) : left;
-					await move(step);
-					left -= step;
-				}
-				await align((node) => node.path === path, false);
-				return;
-			}
-			const node = await align(matcher(label, textOnly), true);
-			if (!node) throw new Error(`Could not scroll to "${label}" (${options.locale}, ${profile}, ${d.theme}).`);
-			taps?.put(slot, `${scrolled} ${node.path}`);
-		},
-		appFiles: () => emu.try("run-as", tour.app, "ls", "files"),
-		topActivity: () => emu.try("dumpsys", "activity", "activities").split("topResumedActivity=").slice(1).join("").slice(0, 200),
-		async swipe(x1, y1, x2, y2, { duration = 300, wait = 1200 } = {}) {
-			emu.shell("input", "swipe", ...[
-				x1,
-				y1,
-				x2,
-				y2
-			].map(Math.round), duration);
-			await sleep(wait);
-		},
-		async type(text) {
-			emu.shell("input", "text", text.replace(/ /g, "%s").replace(/([\\'"&|<>;()$`])/g, "\\$1"));
-			await sleep(500);
-		},
-		async night(on) {
-			await emu.night(on);
-			d.theme = emu.theme;
-			emu.statusBar();
-		},
-		async rotate(landscape) {
-			await emu.rotate(landscape);
-		},
-		async resize(width, height, density = emu.density) {
-			await emu.resize(width, height, density);
-			d.width = width;
-			d.height = height;
-		},
-		setClock(hhmm) {
-			emu.setClock(hhmm);
-		},
-		async shot(name, { settle = 1200, animated = false, check } = {}) {
-			await sleep(settle);
-			const relative = node_path.default.posix.join(options.locale, "raw", profile, `${name}.png`);
-			if (options.only?.length && !options.only.includes(name)) return null;
-			const tree = await readTree(options.serial);
-			if (tree.dialog) throw new Error(`${relative}: a system dialog is on screen: ${tree.dialog}`);
-			if (check && check(tree.nodes) === false) throw new Error(`${relative}: the screen failed its check`);
-			if (tour.check && tour.check(tree.nodes, d) === false) throw new Error(`${relative}: the screen failed the tour's check`);
-			if (animated) {
-				for (const key of SCALES) emu.setting("global", key, "1");
-				await sleep(4500);
-			}
-			let png;
-			try {
-				png = emu.screenshot();
-			} finally {
-				if (animated) for (const key of SCALES) emu.setting("global", key, "0");
-			}
-			const size = {
-				width: png.readUInt32BE(16),
-				height: png.readUInt32BE(20)
-			};
-			if (size.width !== d.width || size.height !== d.height) throw new Error(`${relative} came out ${size.width}×${size.height}, not the ${profile} size ${d.width}×${d.height}: the display did not take the profile's size.`);
-			const target = node_path.default.join(options.listing, relative);
-			node_fs.default.mkdirSync(node_path.default.dirname(target), { recursive: true });
-			node_fs.default.writeFileSync(target, png);
-			node_fs.default.writeFileSync(target.replace(/\.png$/, ".nodes.json"), JSON.stringify({
-				source: "agent-device",
-				width: size.width,
-				height: size.height,
-				nodes: tree.nodes
-			}) + "\n");
-			written.push(relative);
-			log(`captured  ${relative}`);
-			return relative;
-		},
-		async tree() {
-			return (await readTree(options.serial)).nodes;
-		},
-		studio(...args) {
-			if ((0, node_child_process.spawnSync)(process.execPath, [node_path.default.join(STUDIO_DIR, "studio.cjs"), ...args], {
-				cwd: options.listing,
-				stdio: "inherit"
-			}).status !== 0) throw new Error(`screenshot-studio ${args.join(" ")} failed`);
-		},
-		shell: (...words) => emu.shell(...words),
-		adb: (...words) => emu.adb(...words),
-		sleep: (ms) => sleep(ms).then(() => void 0)
-	};
-	const step = async (fn) => fn ? fn(d) : void 0;
-	try {
-		emu.prepare({
-			offline,
-			animations: tour.animations !== false
-		});
-		if (tour.install) emu.install(node_path.default.resolve(options.listing, tour.install), tour.app);
-		if (appLocale) emu.appLocale(tour.app, options.locale);
-		await step(tour.setup);
-		for (const [name, p] of sizes) {
-			profile = d.profile = name;
-			await emu.resize(p.captureWidth, p.captureHeight, p.captureDensity);
-			d.width = p.captureWidth;
-			d.height = p.captureHeight;
-			if (tour.run) {
-				await step(tour.run);
-				continue;
-			}
-			const scenesHere = tour.profiles?.[name] || tour.scenes;
-			for (const theme of ["light", "dark"]) {
-				const scenes = scenesHere[theme];
-				if (!scenes) continue;
-				await d.night(theme === "dark");
-				await (tour.start ? step(tour.start) : d.launch({ clear: true }));
-				for (const [scene, reach] of Object.entries(scenes)) if (await step(reach) !== false) await d.shot(scene, {
-					settle: tour.settle,
-					animated: tour.animated?.includes(scene)
-				});
-			}
-		}
-	} finally {
-		try {
-			await step(tour.teardown);
-		} catch (error) {
-			log(`teardown: ${error.message}`);
-		}
-		if (taps?.recording) node_fs.default.writeFileSync(mapFile, taps.json());
-		for (const failure of emu.restore({
-			pkg: tour.app,
-			appLocale,
-			offline,
-			uninstall: tour.uninstall
-		})) log(`cleanup: ${failure}`);
-	}
-	return written;
-}
-var init_tour = __esmMin((() => {
-	init_recapture();
-	init_project();
-	init_emulator$1();
-	init_screen();
-}));
 // src/node/ios.ts
 /**
-* iOS: the App Store galleries, and the simulators that capture them (Xcode's `xcrun simctl`).
-* The capture itself is Python (capture/ios.py, copied into every app's studio/), like Android's capture.py.
+* iOS: the App Store galleries, and the simulators that capture them (Xcode's `xcrun simctl`). Tours run on them like
+* on the Android emulator (capture/tour.ts, capture/simulator.ts).
 */
+var ios_exports = /* @__PURE__ */ __exportAll({
+	APP_STORE: () => APP_STORE,
+	bootSimulator: () => bootSimulator,
+	defaultSimulators: () => defaultSimulators,
+	findSimulator: () => findSimulator,
+	iosGalleryFor: () => iosGalleryFor,
+	simulators: () => simulators,
+	simulatorsFor: () => simulatorsFor
+});
 /** Which App Store gallery an image belongs to, by its shape. */
 function iosGalleryFor(width, height) {
 	const ratio = height / width;
@@ -3136,6 +2743,715 @@ var init_ios = __esmMin((() => {
 		}
 	};
 }));
+// src/node/capture/simulator.ts
+var simulator_exports = /* @__PURE__ */ __exportAll({
+	Simulator: () => Simulator,
+	appleLanguage: () => appleLanguage
+});
+/** A store locale (de-DE) as iOS launch arguments: -AppleLanguages (de-DE) -AppleLocale de_DE. */
+function appleLanguage(locale) {
+	const parts = locale.split("-"), region = parts.slice(1).find((part) => /^([A-Z]{2}|\d{3})$/.test(part));
+	return [
+		"-AppleLanguages",
+		`(${LANGUAGES[locale] || locale})`,
+		"-AppleLocale",
+		region ? `${parts[0]}_${region}` : parts[0]
+	];
+}
+var LANGUAGES, NINE_FORTY_ONE, Simulator;
+var init_simulator = __esmMin((() => {
+	init_ios();
+	init_emulator$1();
+	LANGUAGES = {
+		"zh-CN": "zh-Hans",
+		"zh-SG": "zh-Hans",
+		"zh-TW": "zh-Hant",
+		"zh-HK": "zh-HK",
+		"iw-IL": "he",
+		"in-ID": "id"
+	};
+	NINE_FORTY_ONE = new Date(2007, 0, 9, 9, 41).toISOString();
+	Simulator = class Simulator {
+		udid;
+		name;
+		bootedHere;
+		theme = "light";
+		battery = 100;
+		saved = null;
+		constructor(udid, name, bootedHere = false) {
+			this.udid = udid;
+			this.name = name;
+			this.bootedHere = bootedHere;
+		}
+		/** The simulator a name or UDID means, booted (headless) if it isn't running. */
+		static open(name) {
+			const device = findSimulator(name);
+			if (device.state === "Booted") return new Simulator(device.udid, device.name);
+			const run = (0, node_child_process.spawnSync)("xcrun", [
+				"simctl",
+				"bootstatus",
+				device.udid,
+				"-b"
+			], {
+				encoding: "utf8",
+				timeout: 6e5
+			});
+			if (run.status !== 0) throw new Error(`${device.name} did not boot: ${(run.stderr || run.stdout || "").trim()}`);
+			return new Simulator(device.udid, device.name, true);
+		}
+		simctl(...words) {
+			const run = (0, node_child_process.spawnSync)("xcrun", ["simctl", ...words.map(String)], {
+				encoding: "utf8",
+				maxBuffer: 67108864,
+				timeout: 3e5
+			});
+			if (run.error) throw new Error("xcrun not found: iOS capture needs Xcode with a simulator runtime.");
+			if (run.status !== 0) throw new Error(`simctl ${words.join(" ")} failed: ${(run.stderr || run.stdout || "").trim()}`);
+			return run.stdout;
+		}
+		/** A simctl command that may fail without stopping the capture. */
+		try(...words) {
+			try {
+				return this.simctl(...words);
+			} catch {
+				return "";
+			}
+		}
+		/** Prepare for a capture: the current appearance and text size remembered, the default text size, the status bar. */
+		prepare() {
+			if (!this.saved) this.saved = {
+				appearance: this.try("ui", this.udid, "appearance").trim(),
+				contentSize: this.try("ui", this.udid, "content_size").trim()
+			};
+			this.try("ui", this.udid, "content_size", "large");
+			this.statusBar();
+		}
+		/** 9:41, the battery full (or at `battery`), full Wi-Fi and signal, no carrier name. */
+		statusBar() {
+			this.simctl("status_bar", this.udid, "override", "--time", NINE_FORTY_ONE, "--batteryState", this.battery >= 100 ? "charged" : "discharging", "--batteryLevel", this.battery, "--cellularMode", "active", "--cellularBars", 4, "--wifiMode", "active", "--wifiBars", 3, "--dataNetwork", "wifi", "--operatorName", "");
+		}
+		async night(on, settle = 1500) {
+			this.simctl("ui", this.udid, "appearance", on ? "dark" : "light");
+			this.theme = on ? "dark" : "light";
+			await sleep(settle);
+		}
+		/** The display as PNG, square-cornered (the frame rounds it). */
+		screenshot() {
+			const file = node_path.default.join(node_fs.default.mkdtempSync(node_path.default.join(node_os.default.tmpdir(), "studio-sim-")), "screen.png");
+			try {
+				this.simctl("io", this.udid, "screenshot", "--type=png", "--mask=ignored", file);
+				return node_fs.default.readFileSync(file);
+			} finally {
+				node_fs.default.rmSync(node_path.default.dirname(file), {
+					recursive: true,
+					force: true
+				});
+			}
+		}
+		install(app) {
+			if (!node_fs.default.existsSync(app)) throw new Error(`No .app at ${app}: build it for the simulator first (studio.json capture.build)`);
+			this.simctl("install", this.udid, app);
+		}
+		/** Undo what an interrupted run can leave behind: the status bar, dark mode, a text size. */
+		reset() {
+			this.try("status_bar", this.udid, "clear");
+			this.try("ui", this.udid, "appearance", "light");
+			this.try("ui", this.udid, "content_size", "large");
+		}
+		/** Put everything back, even after a failure, and shut the simulator down if this run booted it; returns what could not be. */
+		restore({ bundle, uninstall = false, keep = false }) {
+			const failed = [];
+			const step = (name, run) => {
+				try {
+					run();
+				} catch (error) {
+					failed.push(`${name}: ${error.message}`);
+				}
+			};
+			if (bundle) step("stop the app", () => this.try("terminate", this.udid, bundle));
+			if (bundle && uninstall) step("uninstall", () => this.simctl("uninstall", this.udid, bundle));
+			step("status bar", () => this.simctl("status_bar", this.udid, "clear"));
+			if (this.saved && /^(light|dark)$/.test(this.saved.appearance)) step("appearance", () => this.simctl("ui", this.udid, "appearance", this.saved.appearance));
+			if (this.saved?.contentSize && !/unknown|unsupported/.test(this.saved.contentSize)) step("text size", () => this.simctl("ui", this.udid, "content_size", this.saved.contentSize));
+			if (this.bootedHere && !keep) step("shut down", () => this.simctl("shutdown", this.udid));
+			return failed;
+		}
+	};
+}));
+// src/node/capture/screen.ts
+/** An agent-device client per device, each in a session of its own (a session belongs to one device). */
+function agentDevice(target) {
+	const session = `screenshot-studio-${target.platform === "ios" ? target.udid : target.serial}`;
+	if (!clients.has(session)) clients.set(session, import("agent-device").then(({ createAgentDeviceClient }) => createAgentDeviceClient({ session })));
+	return clients.get(session);
+}
+/** The app's UI tree, without the system bars, each element with its path among its siblings. */
+async function readTree(target) {
+	const snapshot = await (await agentDevice(target)).capture.snapshot({
+		...selector(target),
+		raw: true
+	});
+	const root = snapshot.nodes.find((node) => node.rect && node.parentIndex === void 0)?.rect;
+	const { width = root?.width ?? Infinity, height = root?.height ?? Infinity } = snapshot.viewport || {};
+	const scale = target.platform === "ios" && target.width && Number.isFinite(width) ? target.width / width : 1;
+	scales.set(target, scale);
+	const onScreen = (node) => !node.rect || node.rect.x < width && node.rect.y < height && node.rect.x + node.rect.width > 0 && node.rect.y + node.rect.height > 0;
+	const kept = snapshot.nodes.filter((node) => !node.systemBar && node.visibleToUser !== false && onScreen(node));
+	const keptIndex = new Set(kept.map((node) => node.index));
+	const children = /* @__PURE__ */ new Map();
+	for (const node of kept) {
+		const parent = node.parentIndex !== void 0 && keptIndex.has(node.parentIndex) ? node.parentIndex : void 0;
+		if (!children.has(parent)) children.set(parent, []);
+		children.get(parent).push(node);
+	}
+	const nodes = [];
+	const visit = (parent, path) => (children.get(parent) || []).forEach((node, i) => {
+		const here = path ? `${path}.${i}` : String(i);
+		if (node.rect) {
+			const { x, y, width, height } = node.rect;
+			const text = node.label && TEXT_CLASS.test(node.type || "") ? node.label : void 0;
+			const desc = node.contentDescription || (node.label && !text ? node.label : void 0);
+			nodes.push({
+				path: here,
+				b: [
+					Math.round(x * scale),
+					Math.round(y * scale),
+					Math.round((x + width) * scale),
+					Math.round((y + height) * scale)
+				],
+				...text && { text },
+				...desc && { desc },
+				...node.identifier && { id: node.identifier },
+				...node.type && { cls: node.type }
+			});
+		}
+		visit(node.index, here);
+	});
+	visit(void 0, "");
+	const dialog = snapshot.nodes.find((node) => target.platform === "ios" ? node.type === "Alert" : node.bundleId === "android" && /isn't responding|keeps stopping|has stopped/.test(node.label || ""))?.label;
+	return {
+		width: Number.isFinite(width) ? Math.round(width * scale) : 0,
+		height: Number.isFinite(height) ? Math.round(height * scale) : 0,
+		nodes,
+		...dialog && { dialog }
+	};
+}
+/** Whether an element matches a label: its whole text, or its description unless textOnly. A string is a regular expression. */
+function matcher(label, textOnly = false, within) {
+	const pattern = typeof label === "string" ? new RegExp(`^(?:${label})$`) : new RegExp(`^(?:${label.source})$`, label.flags);
+	return (node) => (!within || within(node.b)) && (pattern.test(node.text || "") || !textOnly && pattern.test(node.desc || ""));
+}
+/** Tap the middle of an element's bounds. */
+async function tapNode(target, node) {
+	const [l, t, r, b] = node.b;
+	await tapPoint(target, (l + r) / 2, (t + b) / 2);
+}
+/** Tap a point given in screenshot pixels. */
+async function tapPoint(target, x, y) {
+	const scale = scales.get(target) || 1;
+	await (await agentDevice(target)).interactions.press({
+		...selector(target),
+		x: Math.round(x / scale),
+		y: Math.round(y / scale)
+	});
+}
+/** Swipe between two points in screenshot pixels. */
+async function swipePoints(target, x1, y1, x2, y2, durationMs) {
+	const scale = scales.get(target) || 1;
+	await (await agentDevice(target)).interactions.pan({
+		...selector(target),
+		x: Math.round(x1 / scale),
+		y: Math.round(y1 / scale),
+		dx: Math.round((x2 - x1) / scale),
+		dy: Math.round((y2 - y1) / scale),
+		durationMs
+	});
+}
+/** Back: Android's back key; on iOS, agent-device's back (the navigation bar's back button, or the edge swipe). */
+async function goBack(target) {
+	await (await agentDevice(target)).command.back(selector(target));
+}
+/** iOS: start the app afresh with launch arguments, through agent-device (which reads the screen within that session). */
+async function openApp(target, app, launchArgs = [], relaunch = true) {
+	await (await agentDevice(target)).apps.open({
+		...selector(target),
+		app,
+		launchArgs,
+		relaunch
+	});
+}
+/** Type into the focused field. */
+async function typeText(target, text) {
+	await (await agentDevice(target)).interactions.type({
+		...selector(target),
+		text
+	});
+}
+var TEXT_CLASS, selector, scales, clients, TapMap;
+var init_screen = __esmMin((() => {
+	TEXT_CLASS = /(TextView|Button|EditText|CheckBox|RadioButton|Switch|Chip|StaticText|TextField|TextView|Link|Cell)$/;
+	selector = (target) => target.platform === "ios" ? {
+		platform: "ios",
+		udid: target.udid
+	} : {
+		platform: "android",
+		serial: target.serial
+	};
+	scales = /* @__PURE__ */ new WeakMap();
+	clients = /* @__PURE__ */ new Map();
+	TapMap = class {
+		recording;
+		paths;
+		seen = /* @__PURE__ */ new Map();
+		constructor(file, recording, read) {
+			this.recording = recording;
+			const text = read(file);
+			this.paths = text ? JSON.parse(text) : {};
+			if (!recording && !text) throw new Error(`No tap map at ${file}: capture the default language first.`);
+		}
+		/** The next numbered slot for a key: taps with the same key are numbered in order. */
+		slot(key) {
+			const n = this.seen.get(key) || 0;
+			this.seen.set(key, n + 1);
+			return `${key}#${n}`;
+		}
+		resolve(key, nodes, matches) {
+			const n = this.seen.get(key) || 0, slot = `${key}#${n}`;
+			let node;
+			if (this.recording) {
+				node = nodes.find(matches);
+				if (!node) throw new Error(`Nothing on screen matches "${key.split("|").pop()}"`);
+				this.paths[slot] = node.path;
+			} else {
+				const path = this.paths[slot];
+				if (!path) throw new Error(`No recorded tap for ${slot}: capture this scene in the default language first.`);
+				node = nodes.find((candidate) => candidate.path === path);
+				if (!node) throw new Error(`The recorded tap ${slot} has no element at ${path} here: the screen differs from the default language.`);
+			}
+			this.seen.set(key, n + 1);
+			return node;
+		}
+		/** Record a value under a key (default language), e.g. how far a scroll went. */
+		put(key, value) {
+			this.paths[this.slot(key)] = value;
+		}
+		/** The value recorded under a key, replayed in another language. */
+		take(key) {
+			const slot = this.slot(key), value = this.paths[slot];
+			if (value === void 0) throw new Error(`Nothing recorded for ${slot}: capture this scene in the default language first.`);
+			return value;
+		}
+		json() {
+			return JSON.stringify(Object.fromEntries(Object.entries(this.paths).sort(([a], [b]) => a.localeCompare(b))), null, 1) + "\n";
+		}
+	};
+}));
+// src/node/capture/tour.ts
+var tour_exports = /* @__PURE__ */ __exportAll({
+	loadTour: () => loadTour,
+	runTour: () => runTour
+});
+async function loadTour(file) {
+	const tour = (await import(`${(0, node_url.pathToFileURL)(node_path.default.resolve(file)).href}?${node_fs.default.statSync(file).mtimeMs}`)).default;
+	if (!tour?.app || !tour.scenes && !tour.run) throw new Error(`${file} must export default {app, scenes} (see the Tour type in studio/types.d.ts).`);
+	return tour;
+}
+/** Run a tour for one language; returns the captures written, relative to the listing. */
+async function runTour(file, options) {
+	const log = options.log || ((line) => console.log(line));
+	const tour = await loadTour(file);
+	const read = (relative) => JSON.parse(node_fs.default.readFileSync(node_path.default.join(options.listing, relative), "utf8"));
+	const config = read("studio.json"), profiles = read("profiles.json");
+	const defaultLocale = config.defaultLocale || "en-US";
+	const ios = config.capture?.platform === "ios";
+	const sizes = Object.entries(profiles).filter(([name, p]) => p.captureWidth && p.captureHeight && (ios ? p.platform === "ios" : p.captureDensity && p.platform !== "ios") && (!options.profiles?.length || options.profiles.includes(name)));
+	if (!sizes.length) throw new Error(`No profile to capture${options.profiles?.length ? ` among ${options.profiles.join(", ")}` : ""}: give one captureWidth and captureHeight, ` + (ios ? "with \"platform\": \"ios\" and its \"simulator\"," : "and captureDensity,") + " in profiles.json.");
+	let emu = null;
+	const sims = /* @__PURE__ */ new Map();
+	let sim = null;
+	if (!ios) {
+		const serial = options.serial || "";
+		const problem = missingEmulator(serial);
+		if (problem) throw new Error(problem);
+		emu = new Emulator(serial);
+		if (tour.battery !== void 0) emu.battery = tour.battery;
+		if (!emu.isEmulator()) throw new Error(`${serial} is not an emulator. Captures run only on emulators, never on a phone.`);
+	}
+	const android = () => {
+		if (!emu) throw new Error("This is Android only: the tour is capturing on iOS simulators.");
+		return emu;
+	};
+	const simulator = () => {
+		if (!sim) throw new Error("This is iOS only: the tour is capturing on an Android emulator.");
+		return sim;
+	};
+	/** The device agent-device reads and drives, for the profile being captured. */
+	let target = ios ? {
+		platform: "ios",
+		udid: ""
+	} : {
+		platform: "android",
+		serial: options.serial || ""
+	};
+	const screenshot = () => ios ? simulator().screenshot() : android().screenshot();
+	/** iOS: the .app the tour or studio.json installs, to install on each simulator and to start afresh from. */
+	const apps = [...options.install || [], ...tour.install ? [node_path.default.resolve(options.listing, tour.install)] : []];
+	const appLocale = tour.appLocale !== false, offline = tour.offline !== false;
+	const recording = options.locale === defaultLocale;
+	const mapFile = node_path.default.join(options.listing, defaultLocale, "raw", "tap-map.json");
+	const taps = tour.tapMap === false ? null : new TapMap(mapFile, recording, (file) => node_fs.default.existsSync(file) ? node_fs.default.readFileSync(file, "utf8") : null);
+	const written = [];
+	let profile = "";
+	/** Where a label may be: a band of the screen (fractions of its height) and any test of the bounds. */
+	const region = ({ above, below, within }) => above === void 0 && below === void 0 && !within ? void 0 : (b) => (above === void 0 || b[1] < d.height * above) && (below === void 0 || b[1] >= d.height * below) && (!within || within(b));
+	const slotOf = (kind, label, key) => `${profile}|${d.theme}|${kind}${key || (typeof label === "string" ? label : label.source)}`;
+	const where = () => `(${options.locale}, ${profile}, ${d.theme})`;
+	const d = {
+		app: tour.app,
+		platform: ios ? "ios" : "android",
+		locale: options.locale,
+		defaultLocale,
+		profile: "",
+		width: 0,
+		height: 0,
+		theme: "light",
+		serial: options.serial || "",
+		options: options.options || {},
+		raw: node_path.default.join(options.listing, options.locale, "raw"),
+		async settle(max = 4e3) {
+			let last = screenshot();
+			for (const end = Date.now() + max; Date.now() < end;) {
+				await sleep(250);
+				const frame = screenshot();
+				if (frame.equals(last)) return;
+				last = frame;
+			}
+		},
+		async waitUntil(test, { timeout = 3e4, interval = 1e3, message } = {}) {
+			for (const end = Date.now() + timeout;; await sleep(interval)) {
+				if (await test()) return;
+				if (Date.now() > end) throw new Error(`${message || "What the tour waits for never happened"} ${where()}`);
+			}
+		},
+		async launch({ clear = false, wait = 0, activity = tour.activity, extras = {} } = {}) {
+			if (ios) {
+				const device = simulator();
+				if (clear && apps.length) {
+					device.try("uninstall", device.udid, tour.app);
+					for (const app of apps) device.install(app);
+				}
+				const args = Object.entries(extras).flatMap(([key, value]) => [`-${key}`, typeof value === "boolean" ? value ? "YES" : "NO" : String(value)]);
+				await openApp(target, tour.app, [...args, ...appLocale ? appleLanguage(options.locale) : []]);
+			} else {
+				const emu = android();
+				if (clear) {
+					emu.shell("am", "force-stop", tour.app);
+					emu.shell("pm", "clear", tour.app);
+					if (appLocale) emu.appLocale(tour.app, options.locale);
+				}
+				const component = activity ? activity.includes("/") ? activity : `${tour.app}/${activity}` : null;
+				const flags = Object.entries(extras).flatMap(([key, value]) => [
+					typeof value === "boolean" ? "--ez" : typeof value === "number" ? "--ei" : "--es",
+					key,
+					String(value)
+				]);
+				for (let attempt = 0;; attempt++) {
+					emu.shell("am", "force-stop", tour.app);
+					if (component) emu.shell("am", "start", "-W", "-n", component, ...flags);
+					else emu.shell("monkey", "-p", tour.app, "-c", "android.intent.category.LAUNCHER", "1");
+					try {
+						await d.waitUntil(() => d.topActivity().includes(tour.app), {
+							timeout: 15e3,
+							interval: 500
+						});
+						break;
+					} catch {
+						if (attempt === 2) throw new Error(`${tour.app} did not come to the front ${where()}`);
+					}
+				}
+			}
+			await sleep(wait);
+			await d.settle(6e3);
+		},
+		async tap(label, { textOnly = false, timeout = 1e4, wait = 0, key, above, below, within } = {}) {
+			const matches = matcher(label, textOnly, region({
+				above,
+				below,
+				within
+			}));
+			const slot = slotOf("", label, key);
+			let node;
+			for (const end = Date.now() + timeout; !node; await sleep(500)) try {
+				const { nodes } = await readTree(target);
+				node = taps ? taps.resolve(slot, nodes, matches) : nodes.find(matches);
+				if (!node) throw new Error(`Nothing on screen matches "${label}"`);
+			} catch (error) {
+				if (Date.now() > end) throw new Error(`${error.message} ${where()}. npx screenshot-studio screen shows what is there.`);
+			}
+			await tapNode(target, node);
+			await sleep(wait);
+			await d.settle();
+		},
+		async tapAt(x, y) {
+			if (ios) await tapPoint(target, x, y);
+			else android().shell("input", "tap", Math.round(x), Math.round(y));
+			await d.settle();
+		},
+		async isVisible(label, { textOnly = false, above, below } = {}) {
+			return (await readTree(target)).nodes.some(matcher(label, textOnly, region({
+				above,
+				below
+			})));
+		},
+		async waitFor(label, { textOnly = false, timeout = 1e4, key } = {}) {
+			const slot = slotOf("wait ", label, key);
+			const path = taps && !taps.recording ? taps.take(slot) : void 0;
+			const matches = path ? (node) => node.path === path : matcher(label, textOnly);
+			for (const end = Date.now() + timeout; Date.now() < end; await sleep(500)) {
+				const node = (await readTree(target)).nodes.find(matches);
+				if (node) {
+					if (taps?.recording) taps.put(slot, node.path);
+					return;
+				}
+			}
+			throw new Error(`"${label}" never appeared ${where()}.`);
+		},
+		async back() {
+			if (ios) await goBack(target);
+			else android().shell("input", "keyevent", "KEYCODE_BACK");
+			await d.settle();
+		},
+		async scroll(fraction = .5, { start = .8, x = .5, up = false, duration = 300 } = {}) {
+			const [a, b] = up ? [start - fraction, start] : [start, start - fraction];
+			await d.swipe(d.width * x, d.height * a, d.width * x, d.height * b, { duration });
+		},
+		async drag(distance) {
+			const start = Math.floor(d.height * .8);
+			await d.swipe(Math.floor(d.width / 2), start, Math.floor(d.width / 2), start - distance, { duration: 1400 });
+		},
+		async scrollTo(label, top, { textOnly = false, key } = {}) {
+			const attempts = 12;
+			const slop = ios ? Math.round(10 * d.width / 400) : Math.round(8 * android().density / 160), goal = d.height * top;
+			let scrolled = 0;
+			const move = async (distance) => {
+				if (distance > 0) await d.drag(Math.min(Math.floor(distance), Math.floor(d.height * .55)) + slop);
+				else await d.swipe(d.width / 2, d.height * .3, d.width / 2, d.height * .3 - distance + slop, { duration: 1400 });
+				scrolled += distance > 0 ? Math.min(Math.floor(distance), Math.floor(d.height * .55)) : distance;
+			};
+			const align = async (matches, search) => {
+				let last;
+				for (let i = 0; i < attempts; i++) {
+					const node = (await readTree(target)).nodes.find(matches);
+					if (!node) {
+						if (!search) return null;
+						await move(d.height * .5);
+						continue;
+					}
+					const y = node.b[1];
+					if (Math.abs(y - goal) <= 8 || y === last) return node;
+					last = y;
+					await move(y - goal);
+				}
+				return null;
+			};
+			const slot = slotOf("scroll ", label, key);
+			if (taps && !taps.recording) {
+				const [distance, path] = taps.take(slot).split(" ");
+				for (let left = Number(distance); Math.abs(left) > 8;) {
+					const step = left > 0 ? Math.min(left, Math.floor(d.height * .55)) : left;
+					await move(step);
+					left -= step;
+				}
+				await align((node) => node.path === path, false);
+				return;
+			}
+			const node = await align(matcher(label, textOnly), true);
+			if (!node) throw new Error(`Could not scroll to "${label}" ${where()}.`);
+			taps?.put(slot, `${scrolled} ${node.path}`);
+		},
+		appFiles: () => android().try("run-as", tour.app, "ls", "files"),
+		topActivity: () => android().try("dumpsys", "activity", "activities").split("topResumedActivity=").slice(1).join("").slice(0, 200),
+		async swipe(x1, y1, x2, y2, { duration = 300 } = {}) {
+			if (ios) await swipePoints(target, x1, y1, x2, y2, duration);
+			else android().shell("input", "swipe", ...[
+				x1,
+				y1,
+				x2,
+				y2
+			].map(Math.round), duration);
+			await d.settle();
+		},
+		async type(text) {
+			if (ios) await typeText(target, text);
+			else android().shell("input", "text", text.replace(/ /g, "%s").replace(/([\\'"&|<>;()$`])/g, "\\$1"));
+			await d.settle();
+		},
+		async night(on) {
+			const device = ios ? simulator() : android();
+			await device.night(on);
+			d.theme = device.theme;
+			device.statusBar();
+		},
+		async rotate(landscape) {
+			await android().rotate(landscape);
+		},
+		async resize(width, height, density) {
+			const emu = android();
+			await emu.resize(width, height, density ?? emu.density);
+			d.width = width;
+			d.height = height;
+			target = {
+				...target,
+				width
+			};
+		},
+		setClock(hhmm) {
+			android().setClock(hhmm);
+		},
+		async openUrl(url) {
+			simulator().simctl("openurl", simulator().udid, url);
+			await d.settle();
+		},
+		privacy(action, service) {
+			simulator().simctl("privacy", simulator().udid, action, service, tour.app);
+		},
+		simctl: (...words) => simulator().simctl(...words),
+		async shot(name, { settle = 0, animated = false, check } = {}) {
+			await d.settle();
+			await sleep(settle);
+			const relative = node_path.default.posix.join(options.locale, "raw", profile, `${name}.png`);
+			if (options.only?.length && !options.only.includes(name)) return null;
+			const tree = await readTree(target);
+			if (tree.dialog) throw new Error(`${relative}: a system dialog is on screen: ${tree.dialog}`);
+			if (check && check(tree.nodes) === false) throw new Error(`${relative}: the screen failed its check`);
+			if (tour.check && tour.check(tree.nodes, d) === false) throw new Error(`${relative}: the screen failed the tour's check`);
+			const motion = animated && emu;
+			if (motion) for (const key of SCALES) emu.setting("global", key, "1");
+			if (animated) await sleep(4500);
+			let png;
+			try {
+				png = screenshot();
+			} finally {
+				if (motion) for (const key of SCALES) emu.setting("global", key, "0");
+			}
+			const size = {
+				width: png.readUInt32BE(16),
+				height: png.readUInt32BE(20)
+			};
+			if (size.width !== d.width || size.height !== d.height) throw new Error(`${relative} came out ${size.width}×${size.height}, not the ${profile} size ${d.width}×${d.height}: the display did not take the profile's size.`);
+			const file = node_path.default.join(options.listing, relative);
+			node_fs.default.mkdirSync(node_path.default.dirname(file), { recursive: true });
+			node_fs.default.writeFileSync(file, png);
+			node_fs.default.writeFileSync(file.replace(/\.png$/, ".nodes.json"), JSON.stringify({
+				source: "agent-device",
+				width: size.width,
+				height: size.height,
+				nodes: tree.nodes
+			}) + "\n");
+			written.push(relative);
+			log(`captured  ${relative}`);
+			return relative;
+		},
+		async tree() {
+			return (await readTree(target)).nodes;
+		},
+		studio(...args) {
+			if ((0, node_child_process.spawnSync)(process.execPath, [node_path.default.join(STUDIO_DIR, "studio.cjs"), ...args], {
+				cwd: options.listing,
+				stdio: "inherit"
+			}).status !== 0) throw new Error(`screenshot-studio ${args.join(" ")} failed`);
+		},
+		shell: (...words) => android().shell(...words),
+		adb: (...words) => android().adb(...words),
+		sleep: (ms) => sleep(ms).then(() => void 0)
+	};
+	const step = async (fn) => fn ? fn(d) : void 0;
+	try {
+		if (emu) {
+			emu.prepare({
+				offline,
+				animations: tour.animations !== false
+			});
+			if (tour.install) emu.install(node_path.default.resolve(options.listing, tour.install), tour.app);
+			if (appLocale) emu.appLocale(tour.app, options.locale);
+		}
+		await step(tour.setup);
+		for (const [name, p] of sizes) {
+			profile = d.profile = name;
+			d.width = p.captureWidth;
+			d.height = p.captureHeight;
+			if (emu) {
+				await emu.resize(p.captureWidth, p.captureHeight, p.captureDensity);
+				target = {
+					platform: "android",
+					serial: emu.serial,
+					width: d.width
+				};
+			} else {
+				const wanted = p.simulator || options.simulator || config.capture?.simulator;
+				if (!wanted) throw new Error(`No simulator for ${name}: set "simulator" on the profile in profiles.json, or "capture": {"simulator": "…"} in studio.json`);
+				if (!sims.has(wanted)) {
+					log(`simulator ${wanted}`);
+					const opened = Simulator.open(wanted);
+					if (tour.battery !== void 0) opened.battery = tour.battery;
+					sims.set(wanted, opened);
+					opened.prepare();
+					for (const app of apps) opened.install(app);
+				}
+				sim = sims.get(wanted);
+				d.serial = sim.udid;
+				target = {
+					platform: "ios",
+					udid: sim.udid,
+					width: d.width
+				};
+			}
+			if (tour.run) {
+				await step(tour.run);
+				continue;
+			}
+			const scenesHere = tour.profiles?.[name] || tour.scenes;
+			for (const theme of ["light", "dark"]) {
+				const scenes = scenesHere[theme];
+				if (!scenes) continue;
+				await d.night(theme === "dark");
+				await (tour.start ? step(tour.start) : d.launch({ clear: true }));
+				for (const [scene, reach] of Object.entries(scenes)) if (await step(reach) !== false) await d.shot(scene, {
+					settle: tour.settle,
+					animated: tour.animated?.includes(scene)
+				});
+			}
+		}
+	} finally {
+		try {
+			await step(tour.teardown);
+		} catch (error) {
+			log(`teardown: ${error.message}`);
+		}
+		if (taps?.recording) {
+			node_fs.default.mkdirSync(node_path.default.dirname(mapFile), { recursive: true });
+			node_fs.default.writeFileSync(mapFile, taps.json());
+		}
+		const failures = [...emu ? emu.restore({
+			pkg: tour.app,
+			appLocale,
+			offline,
+			uninstall: tour.uninstall
+		}) : [], ...[...sims.values()].flatMap((device) => device.restore({
+			bundle: tour.app,
+			uninstall: tour.uninstall
+		}))];
+		for (const failure of failures) log(`cleanup: ${failure}`);
+	}
+	return written;
+}
+var init_tour = __esmMin((() => {
+	init_recapture();
+	init_project();
+	init_emulator$1();
+	init_screen();
+	init_simulator();
+}));
 // src/node/recapture.ts
 /**
 * Rebuild the capture app, capture on the emulator or simulator, and export, as studio.json's "capture" block says:
@@ -3157,34 +3473,39 @@ var init_ios = __esmMin((() => {
 *     "after": ["node scripts/refresh-readme.mjs"]                   shell commands once everything is exported
 *   }
 *
-* Android runs store-listing/capture.tour.mjs in the studio itself (capture/tour.ts), per run and locale. The default
-* locale goes first, since it records the tap map other locales replay. A listing still on a Python tour
-* (capture-emulator.py, a run's "script") runs `python3 <script> --serial <emulator> --locale <locale> [--profile
-* <profile>] <args>`, through `uv run --with pillow` when uv is installed, until those go away. --boot starts the
+* Both platforms run store-listing/capture.tour.mjs in the studio itself (capture/tour.ts, on agent-device), per run
+* and locale. The default locale goes first, since it records the tap map other locales replay. --boot starts the
 * capture emulator headless when it isn't running and waits for it.
 *
-* iOS ("platform": "ios"): install entries are {"app": "build/…/App.app", "package": "<bundle ID>"}, the default
-* script is store-listing/capture-simulator.py, the capture profiles are profiles.json's "platform": "ios" ones with
-* a capture size, each on its "simulator", and --boot boots those simulators. Each run is
-* `python3 <script> --locale <locale> [--profile <profile>] [--simulator <default>] <args>`.
+* iOS ("platform": "ios"): install entries are {"app": "build/…/App.app", "package": "<bundle ID>"}, installed on each
+* simulator the capture profiles use (profiles.json's "platform": "ios" ones with a capture size, each on its
+* "simulator"); --boot boots those simulators first and leaves them running.
 */
 var recapture_exports = /* @__PURE__ */ __exportAll({
 	DEFAULT_SERIAL: () => DEFAULT_SERIAL,
 	bootEmulator: () => bootEmulator,
 	booted: () => booted,
+	commandEnvironment: () => commandEnvironment,
 	missingEmulator: () => missingEmulator,
 	recapture: () => recapture,
 	run: () => run$8,
-	tourEnvironment: () => tourEnvironment
+	tourFile: () => tourFile
 });
-/** What a capture tour gets from the studio: its capture module on PYTHONPATH, the app's listing, the CLI, Playwright. */
-function tourEnvironment(listing) {
+/** What the build, export and after commands get from the studio: the app's listing, the CLI, Playwright. */
+function commandEnvironment(listing) {
 	return {
-		PYTHONPATH: [STUDIO_DIR, process.env.PYTHONPATH].filter(Boolean).join(node_path.default.delimiter),
 		SCREENSHOT_STUDIO_LISTING: listing,
 		SCREENSHOT_STUDIO: node_path.default.join(STUDIO_DIR, "studio.cjs"),
 		...findPlaywright() ? { PLAYWRIGHT_MODULE: process.env.PLAYWRIGHT_MODULE || findPlaywright() } : {}
 	};
+}
+/** The listing's tour, store-listing/capture.tour.mjs; a Python tour from older versions is named, with what to do. */
+function tourFile(listing) {
+	const file = node_path.default.join(listing, "capture.tour.mjs");
+	if (node_fs.default.existsSync(file)) return file;
+	const old = ["capture-emulator.py", "capture-simulator.py"].find((name) => node_fs.default.existsSync(node_path.default.join(listing, name)));
+	if (old) throw new Error(`store-listing/${old} is a Python tour, which this version no longer runs. Write its scenes as store-listing/capture.tour.mjs (docs/capture.md shows the shape), then delete ${old}.`);
+	throw new Error("No capture tour: write store-listing/capture.tour.mjs (docs/capture.md shows the shape).");
 }
 /** Whether the emulator is attached and has finished booting. */
 function booted(serial) {
@@ -3272,50 +3593,33 @@ async function recapture(options = {}) {
 		locales.sort((a, b) => Number(b === defaultLocale) - Number(a === defaultLocale));
 		const captureProfiles = Object.keys(profiles).filter((name) => ios ? profiles[name].platform === "ios" && profiles[name].captureWidth : profiles[name].captureDensity);
 		if (options.profile && !profiles[options.profile]?.captureWidth) throw new Error(`No capture profile ${options.profile} in profiles.json`);
-		const python = has("uv") ? [
-			"uv",
-			"run",
-			"-q",
-			"--with",
-			"pillow",
-			"python3"
-		] : ["python3"];
-		const studioEnv = tourEnvironment(listing);
-		const env = ios ? {
+		const env = {
 			...process.env,
-			...studioEnv,
-			...simulator ? { CAPTURE_SIMULATOR: simulator } : {}
-		} : {
-			...process.env,
-			...studioEnv,
-			CAPTURE_SERIAL: serial,
-			ANDROID_SERIAL: serial
+			...commandEnvironment(listing),
+			...ios ? {} : {
+				CAPTURE_SERIAL: serial,
+				ANDROID_SERIAL: serial
+			}
 		};
 		const expand = (word) => String(word).replace(/\$\{(\w+)\}/g, (_, name) => {
-			if (env[name] === void 0) throw new Error(`Set ${name} for this capture (studio.json capture args or options use it)`);
+			if (env[name] === void 0) throw new Error(`Set ${name} for this capture (studio.json capture options use it)`);
 			return env[name];
 		});
-		const run = (command, args = [], { shell = false, check = true } = {}) => {
-			const line = shell ? command : [command, ...args].map((word) => /\s/.test(word) ? JSON.stringify(word) : word).join(" ");
-			log(`\n$ ${line}`);
+		const run = (command, { check = true } = {}) => {
+			log(`\n$ ${command}`);
 			if (options.dryRun) return true;
-			const done = shell ? (0, node_child_process.spawnSync)("sh", ["-c", command], {
-				cwd: repo,
-				env,
-				stdio: "inherit"
-			}) : (0, node_child_process.spawnSync)(command, args, {
+			const done = (0, node_child_process.spawnSync)("sh", ["-c", command], {
 				cwd: repo,
 				env,
 				stdio: "inherit"
 			});
-			if (done.status !== 0 && check) throw new Error(`Failed (${done.status ?? done.signal}): ${line}`);
+			if (done.status !== 0 && check) throw new Error(`Failed (${done.status ?? done.signal}): ${command}`);
 			return done.status === 0;
 		};
-		const studioPy = node_path.default.join(STUDIO_DIR, ios ? "ios.py" : "capture.py");
 		const sims = ios && options.capture !== false ? simulatorsFor(profiles, captureProfiles.filter((name) => !options.profile || name === options.profile), simulator) : [];
-		const device = (sim) => ios ? ["--simulator", sim] : ["--serial", serial];
-		if (options.build !== false && capture.build) run(capture.build, [], { shell: true });
+		if (options.build !== false && capture.build) run(capture.build);
 		if (options.capture !== false) {
+			const tour = tourFile(listing);
 			if (options.boot && !options.dryRun) {
 				if (ios) for (const sim of sims) await bootSimulator(sim, log);
 				else await bootEmulator(serial, capture.avd, log);
@@ -3324,96 +3628,62 @@ async function recapture(options = {}) {
 				const problem = missingEmulator(serial);
 				if (problem) throw new Error(problem);
 			}
-			const tourFile = node_path.default.join(listing, "capture.tour.mjs");
-			const typescriptTour = !ios && node_fs.default.existsSync(tourFile);
+			const apps = [];
 			for (const { apk, app, package: id } of capture.install || []) {
 				const file = ios ? app : apk;
 				if (!file) throw new Error(`capture.install needs ${ios ? "\"app\" (a simulator .app)" : "\"apk\""} for ${id}`);
-				if (typescriptTour) {
-					if (!options.dryRun) {
-						new Emulator(serial).install(node_path.default.resolve(repo, file), id);
-						log(`installed ${id}`);
-					} else log(`$ install ${file}`);
-					continue;
+				if (ios) apps.push(node_path.default.resolve(repo, file));
+				else if (options.dryRun) log(`$ install ${file}`);
+				else {
+					new Emulator(serial).install(node_path.default.resolve(repo, file), id);
+					log(`installed ${id}`);
 				}
-				for (const sim of ios ? sims : [void 0]) run(python[0], [
-					...python.slice(1),
-					studioPy,
-					"install",
-					file,
-					"--package",
-					id,
-					...device(sim)
-				]);
 			}
-			if (typescriptTour) for (const locale of locales) for (const spec of capture.runs || [{}]) {
+			for (const locale of locales) for (const spec of capture.runs || [{}]) {
 				const wanted = spec.locales || "all";
 				if (wanted === "default" ? locale !== defaultLocale : Array.isArray(wanted) && !wanted.includes(locale)) continue;
-				const runProfiles = spec.profiles === false ? void 0 : (spec.profiles || captureProfiles).filter((name) => !options.profile || name === options.profile);
+				const runProfiles = (spec.profiles || captureProfiles).filter((name) => !options.profile || name === options.profile);
 				if (options.dryRun) {
-					log(`$ tour ${node_path.default.relative(repo, tourFile)} --locale ${locale}${runProfiles ? ` --profile ${runProfiles.join(",")}` : ""}`);
+					log(`$ tour ${node_path.default.relative(repo, tour)} --locale ${locale} --profile ${runProfiles.join(",")}`);
 					continue;
 				}
+				const tourOptions = Object.fromEntries(Object.entries(spec.options || {}).map(([key, value]) => [key, typeof value === "string" ? expand(value) : value]));
 				const attempts = (capture.retries ?? 2) + 1;
 				for (let attempt = 1;; attempt++) try {
-					await runTour(tourFile, {
+					await runTour(tour, {
 						listing,
 						locale,
 						profiles: runProfiles,
 						serial,
-						options: Object.fromEntries(Object.entries(spec.options || {}).map(([key, value]) => [key, typeof value === "string" ? expand(value) : value])),
+						simulator,
+						install: apps,
+						options: tourOptions,
 						log
 					});
 					break;
 				} catch (error) {
 					if (attempt === attempts) throw error;
-					log(`Capture failed (${error.message.split("\n")[0]}); reset the emulator and try again (${attempt + 1}/${attempts})`);
-					new Emulator(serial).reset();
-				}
-			}
-			for (const locale of typescriptTour ? [] : locales) for (const spec of capture.runs || [{}]) {
-				const wanted = spec.locales || "all";
-				if (wanted === "default" ? locale !== defaultLocale : Array.isArray(wanted) && !wanted.includes(locale)) continue;
-				const runProfiles = spec.profiles === false ? [null] : (spec.profiles || captureProfiles).filter((name) => !options.profile || name === options.profile);
-				for (const profile of runProfiles) {
-					const script = spec.script || node_path.default.relative(repo, node_path.default.join(listing, ios ? "capture-simulator.py" : "capture-emulator.py"));
-					const args = [
-						...python.slice(1),
-						script,
-						...ios ? simulator ? ["--simulator", simulator] : [] : ["--serial", serial],
-						"--locale",
-						locale,
-						...profile ? ["--profile", profile] : [],
-						...(spec.args || []).map(expand)
-					];
-					const attempts = (capture.retries ?? 2) + 1;
-					for (let attempt = 1;; attempt++) {
-						if (run(python[0], args, { check: attempt === attempts })) break;
-						log(`Capture failed; reset the ${ios ? "simulator" : "emulator"} and try again (${attempt + 1}/${attempts})`);
-						for (const sim of ios ? sims : [void 0]) run(python[0], [
-							...python.slice(1),
-							studioPy,
-							"reset",
-							...device(sim)
-						]);
+					log(`Capture failed (${error.message.split("\n")[0]}); reset the ${ios ? "simulators" : "emulator"} and try again (${attempt + 1}/${attempts})`);
+					if (ios) for (const sim of sims) {
+						const found = findSimulator(sim);
+						new Simulator(found.udid, found.name).reset();
 					}
+					else new Emulator(serial).reset();
 				}
 			}
 		}
 		if (options.export !== false) {
-			result.failedExports = locales.filter((locale) => !(capture.export ? run(capture.export.replaceAll("{locale}", locale), [], {
-				shell: true,
-				check: false
-			}) : run(process.execPath, [
+			result.failedExports = locales.filter((locale) => !run(capture.export ? capture.export.replaceAll("{locale}", locale) : [
+				process.execPath,
 				node_path.default.join(STUDIO_DIR, "studio.cjs"),
 				"export",
 				"--listing",
 				listing,
 				"--locale",
 				locale
-			], { check: false })));
+			].map((word) => JSON.stringify(word)).join(" "), { check: false }));
 			if (result.failedExports.length) throw new Error(`Export failed for ${result.failedExports.join(", ")}; captures are in place. Fix those and export again.`);
-			for (const command of capture.after || []) run(command, [], { shell: true });
+			for (const command of capture.after || []) run(command);
 		}
 		log(`\nRecaptured ${locales.join(", ")}${options.dryRun ? " (dry run)" : ""}.`);
 		result.ok = true;
@@ -3450,16 +3720,16 @@ async function run$8(argv) {
 	if (result.error) console.error(result.error);
 	return result.ok ? 0 : 1;
 }
-var DEFAULT_SERIAL, sdkRoot, has, adb;
+var DEFAULT_SERIAL, sdkRoot, adb;
 var init_recapture = __esmMin((() => {
 	init_emulator$1();
+	init_simulator();
 	init_tour();
 	init_project();
 	init_ios();
 	init_playwright();
 	DEFAULT_SERIAL = "emulator-5578";
 	sdkRoot = () => process.env.ANDROID_HOME || process.env.ANDROID_SDK_ROOT || [node_path.default.join(node_os.default.homedir(), "Library/Android/sdk"), node_path.default.join(node_os.default.homedir(), "Android/Sdk")].find((dir) => node_fs.default.existsSync(dir)) || "";
-	has = (command) => (0, node_child_process.spawnSync)("sh", ["-c", `command -v ${command}`], { stdio: "ignore" }).status === 0;
 	adb = (serial, ...args) => (0, node_child_process.spawnSync)("adb", [
 		"-s",
 		serial,
@@ -3931,7 +4201,7 @@ function init(options = {}) {
 		if (pkg && !ios) template("capture.tour.mjs");
 		result.cards = ios ? 5 : 4;
 	}
-	if (ios) template("capture-simulator.py");
+	if (ios) template("capture.tour.mjs");
 	template("en-US/listing.json", `${reference}/listing.json`);
 	template("gitignore", ".gitignore");
 	template("README.md");
@@ -4001,7 +4271,7 @@ async function run$7(argv) {
 		const cd = where === "." ? "" : `cd ${where} && `;
 		console.log(`\nReady: ${result.cards} card(s) with the ${result.theme} theme.\n`);
 		const others = result.locales.slice(1);
-		console.log(option("screenshots") || result.cards ? `Next:\n  1. Write the headlines in store-listing/${result.locales[0]}/copy.json (one per card, *highlight* a key word)${others.length ? `\n  2. Translate them into the empty fields of ${others.map((l) => `${l}/copy.json`).join(", ")}` : ""}\n  ${others.length ? 3 : 2}. ${cd}npx screenshot-studio check, then export (or studio --open for the editor)` : option("platform") === "ios" ? `Next:\n  1. Make the app's Debug build open each screen from a launch argument (-screenshotScene) with sample data (docs/capture.md, iOS)\n  2. Write the tour in store-listing/capture-simulator.py; check capture.build in studio.json\n  3. ${cd}npx screenshot-studio recapture --boot` : `Next:\n  1. Add a capture build that fills the app with sample data (docs/playbook.md, section 1)\n  2. Write the tour in store-listing/capture.tour.mjs (npx screenshot-studio screen shows what to tap)\n  3. ${cd}npx screenshot-studio recapture --boot`);
+		console.log(option("screenshots") || result.cards ? `Next:\n  1. Write the headlines in store-listing/${result.locales[0]}/copy.json (one per card, *highlight* a key word)${others.length ? `\n  2. Translate them into the empty fields of ${others.map((l) => `${l}/copy.json`).join(", ")}` : ""}\n  ${others.length ? 3 : 2}. ${cd}npx screenshot-studio check, then export (or studio --open for the editor)` : option("platform") === "ios" ? `Next:\n  1. Make the app's Debug build open on fictional sample data (docs/capture.md, iOS)\n  2. Write the tour in store-listing/capture.tour.mjs (npx screenshot-studio screen --simulator NAME shows what to tap); check capture.build in studio.json\n  3. ${cd}npx screenshot-studio recapture --boot` : `Next:\n  1. Add a capture build that fills the app with sample data (docs/playbook.md, section 1)\n  2. Write the tour in store-listing/capture.tour.mjs (npx screenshot-studio screen shows what to tap)\n  3. ${cd}npx screenshot-studio recapture --boot`);
 		return 0;
 	} catch (error) {
 		console.error(error.message);
@@ -4115,12 +4385,13 @@ var init_demo = __esmMin((() => {
 }));
 // src/node/emulator.ts
 /**
-* The capture emulator as an agent sees it, for writing a capture tour: what is on screen (a screenshot and every
+* The capture device as an agent sees it, for writing a capture tour: what is on screen (a screenshot and every
 * labelled element with its bounds), read through agent-device exactly as a tour reads it, and a way to move around
-* (tap by label or point, back).
-*   npx screenshot-studio screen [--serial emulator-5578] [--out screen.png] [--json]
+* (tap by label or point, back). An Android emulator, or a booted iOS simulator with --simulator.
+*   npx screenshot-studio screen [--serial emulator-5578 | --simulator "iPhone 17 Pro Max" [--app com.example.app]] [--out screen.png] [--json]
 *   npx screenshot-studio screen --tap "Settings" | --tap 540,1200 | --back
-* Emulators only: a phone is refused.
+* On iOS agent-device reads an app's screen: --app (default: the listing's iOS app) is brought to the front first.
+* Emulators and simulators only: a phone is refused.
 */
 var emulator_exports = /* @__PURE__ */ __exportAll({
 	emulator: () => emulator,
@@ -4129,20 +4400,53 @@ var emulator_exports = /* @__PURE__ */ __exportAll({
 	run: () => run$5,
 	tapScreen: () => tapScreen
 });
-/** The serial, checked: attached, booted, and an emulator. */
-function emulator(serial = process.env.CAPTURE_SERIAL || "emulator-5578") {
+/** The emulator (checked: attached, booted, an emulator), or with `simulator` a booted iOS simulator. */
+function emulator(serial = process.env.CAPTURE_SERIAL || "emulator-5578", simulator, app) {
+	if (simulator) {
+		const found = findSimulator(simulator);
+		if (found.state !== "Booted") throw new Error(`${found.name} isn't booted: open it in Simulator (or xcrun simctl boot "${found.udid}").`);
+		const sim = new Simulator(found.udid, found.name);
+		const width = sim.screenshot().readUInt32BE(16);
+		const listing = findListing();
+		const bundle = app || (listing ? loadListing(listing).config.capture?.install?.[0]?.package : void 0);
+		if (!bundle) throw new Error("On iOS, name the app whose screen to read: --app com.example.app");
+		return {
+			name: found.name,
+			target: {
+				platform: "ios",
+				udid: found.udid,
+				width
+			},
+			screenshot: () => sim.screenshot(),
+			app: bundle
+		};
+	}
 	const problem = missingEmulator(serial);
 	if (problem) throw new Error(problem);
-	if (!new Emulator(serial).isEmulator()) throw new Error(`${serial} is not an emulator. The studio only drives emulators, never a phone.`);
-	return serial;
+	const emu = new Emulator(serial);
+	if (!emu.isEmulator()) throw new Error(`${serial} is not an emulator. The studio only drives emulators, never a phone.`);
+	return {
+		name: serial,
+		target: {
+			platform: "android",
+			serial
+		},
+		screenshot: () => emu.screenshot()
+	};
+}
+async function front(device) {
+	if (!device.app || opened.has(device.name)) return;
+	await openApp(device.target, device.app, [], false);
+	opened.add(device.name);
 }
 /** A screenshot and every labelled element on screen, top to bottom. */
-async function readScreen(serial = emulator()) {
-	const tree = await readTree(serial);
-	const png = new Emulator(serial).screenshot();
+async function readScreen(device = emulator()) {
+	await front(device);
+	const tree = await readTree(device.target);
+	const png = device.screenshot();
 	const elements = tree.nodes.filter((node) => node.text || node.desc || node.id).map(element).sort((p, q) => p.bounds[1] - q.bounds[1] || p.bounds[0] - q.bounds[0]);
 	return {
-		serial,
+		serial: device.name,
 		width: png.readUInt32BE(16),
 		height: png.readUInt32BE(20),
 		png,
@@ -4163,43 +4467,43 @@ function formatScreen(screen) {
 		...lines
 	].join("\n");
 }
-/** Tap an element by its label (whole, then containing, case-insensitive) or a point "x,y"; or press back. */
-async function tapScreen(target, serial = emulator()) {
-	const emu = new Emulator(serial);
+/** Tap an element by its label (whole, then containing, case-insensitive) or a point "x,y" in pixels; or go back. */
+async function tapScreen(target, device = emulator()) {
+	await front(device);
 	if (target === "back") {
-		emu.shell("input", "keyevent", "KEYCODE_BACK");
+		await goBack(device.target);
 		return "back";
 	}
+	const { nodes } = await readTree(device.target);
 	const point = target.match(/^(\d+)\s*,\s*(\d+)$/);
 	if (point) {
-		emu.shell("input", "tap", point[1], point[2]);
+		await tapPoint(device.target, Number(point[1]), Number(point[2]));
 		return `${point[1]},${point[2]}`;
 	}
-	const { nodes } = await readTree(serial);
 	const escaped = target.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 	const hit = nodes.find(matcher(new RegExp(escaped, "i"))) || nodes.find(matcher(new RegExp(`.*${escaped}.*`, "i"))) || nodes.find((node) => node.id === target);
 	if (!hit) throw new Error(`Nothing on screen is labelled "${target}". Run \`npx screenshot-studio screen\` to see the labels.`);
-	await tapNode(serial, hit);
+	await tapNode(device.target, hit);
 	return hit.text || hit.desc || hit.id || hit.path;
 }
-/** `screen [--serial s] [--out file.png] [--json] [--tap label | --tap x,y | --back]` */
+/** `screen [--serial s | --simulator name] [--out file.png] [--json] [--tap label | --tap x,y | --back]` */
 async function run$5(argv) {
 	const option = (name) => {
 		const i = argv.indexOf(`--${name}`);
 		return i >= 0 ? argv[i + 1] : void 0;
 	};
 	try {
-		const serial = emulator(option("serial"));
+		const device = emulator(option("serial"), option("simulator"), option("app"));
 		const tap = argv.includes("--back") ? "back" : option("tap");
 		if (tap) {
-			console.log(`tapped ${await tapScreen(tap, serial)}`);
+			console.log(`tapped ${await tapScreen(tap, device)}`);
 			await sleep(1200);
 		}
-		const screen = await readScreen(serial);
+		const screen = await readScreen(device);
 		const out = node_path.default.resolve(option("out") || "screen.png");
 		node_fs.default.writeFileSync(out, screen.png);
 		if (argv.includes("--json")) console.log(JSON.stringify({
-			serial,
+			device: screen.serial,
 			width: screen.width,
 			height: screen.height,
 			image: out,
@@ -4213,11 +4517,15 @@ async function run$5(argv) {
 		return 1;
 	}
 }
-var element;
+var opened, element;
 var init_emulator = __esmMin((() => {
 	init_recapture();
 	init_emulator$1();
 	init_screen();
+	init_project();
+	init_simulator();
+	init_ios();
+	opened = /* @__PURE__ */ new Set();
 	element = (node) => ({
 		label: node.text || node.desc || node.id,
 		...node.text && { text: node.text },
@@ -5332,23 +5640,33 @@ function createTools(defaultListing) {
 		},
 		{
 			name: "emulator_screen",
-			description: "Look at the capture emulator: a screenshot and every labelled element with its bounds, read exactly as a capture tour reads it. Use it to write or fix the tour (store-listing/capture.tour.mjs): each label is what d.tap(\"…\") takes. Emulators only, never a phone.",
+			description: "Look at the capture emulator: a screenshot and every labelled element with its bounds, read exactly as a capture tour reads it. Use it to write or fix the tour (store-listing/capture.tour.mjs): each label is what d.tap(\"…\") takes. An Android emulator, or a booted iOS simulator with `simulator`; never a phone.",
 			inputSchema: {
 				type: "object",
-				properties: { serial: {
-					type: "string",
-					description: "The emulator (default: the capture emulator, emulator-5578)."
-				} }
+				properties: {
+					serial: {
+						type: "string",
+						description: "The emulator (default: the capture emulator, emulator-5578)."
+					},
+					simulator: {
+						type: "string",
+						description: "iOS instead: a booted simulator, by name or UDID."
+					},
+					app: {
+						type: "string",
+						description: "iOS: the app whose screen to read (default: the listing's iOS app)."
+					}
+				}
 			},
 			async call(args) {
 				const { emulator, readScreen, formatScreen } = await Promise.resolve().then(() => (init_emulator(), emulator_exports));
-				const screen = await readScreen(emulator(typeof args.serial === "string" ? args.serial : void 0));
+				const screen = await readScreen(emulator(typeof args.serial === "string" ? args.serial : void 0, typeof args.simulator === "string" ? args.simulator : void 0, typeof args.app === "string" ? args.app : void 0));
 				return [await image(screen.png, 1400), text(formatScreen(screen))];
 			}
 		},
 		{
 			name: "emulator_tap",
-			description: "Move around the app on the capture emulator, to find the screens a tour should capture: tap an element by its label (as emulator_screen lists it) or a point \"x,y\", or \"back\". Returns the screen after the tap.",
+			description: "Move around the app on the capture emulator (or a simulator), to find the screens a tour should capture: tap an element by its label (as emulator_screen lists it) or a point \"x,y\", or \"back\". Returns the screen after the tap.",
 			inputSchema: {
 				type: "object",
 				properties: {
@@ -5359,16 +5677,24 @@ function createTools(defaultListing) {
 					serial: {
 						type: "string",
 						description: "The emulator (default: the capture emulator, emulator-5578)."
+					},
+					simulator: {
+						type: "string",
+						description: "iOS instead: a booted simulator, by name or UDID."
+					},
+					app: {
+						type: "string",
+						description: "iOS: the app whose screen to read (default: the listing's iOS app)."
 					}
 				},
 				required: ["target"]
 			},
 			async call(args) {
 				const { emulator, readScreen, formatScreen, tapScreen } = await Promise.resolve().then(() => (init_emulator(), emulator_exports));
-				const serial = emulator(typeof args.serial === "string" ? args.serial : void 0);
-				const tapped = await tapScreen(String(args.target), serial);
+				const device = emulator(typeof args.serial === "string" ? args.serial : void 0, typeof args.simulator === "string" ? args.simulator : void 0, typeof args.app === "string" ? args.app : void 0);
+				const tapped = await tapScreen(String(args.target), device);
 				await new Promise((resolve) => setTimeout(resolve, 1200));
-				const screen = await readScreen(serial);
+				const screen = await readScreen(device);
 				return [await image(screen.png, 1400), text(`tapped ${tapped}\n${formatScreen(screen)}`)];
 			}
 		}
@@ -5663,6 +5989,8 @@ var init_readme_preview = __esmMin((() => {
 */
 init_export();
 init_recapture();
+init_tour();
+init_simulator();
 init_check();
 init_project();
 init_server();
@@ -5711,8 +6039,8 @@ const COMMANDS = {
 		run: async (argv) => (await Promise.resolve().then(() => (init_recapture(), recapture_exports))).run(argv)
 	},
 	tour: {
-		summary: "Run the capture tour by hand: one language, on the capture emulator",
-		usage: "tour [--locale en-US] [--profile phone,tablet7] [--only 01-home,02-log] [--serial emulator-5578] [--<option> value…]",
+		summary: "Run the capture tour by hand: one language, on the capture emulator or simulators",
+		usage: "tour [--locale en-US] [--profile phone,tablet7] [--only 01-home,02-log] [--serial emulator-5578 | --simulator \"iPhone 17 Pro Max\"] [--<option> value…]",
 		run: async (argv) => {
 			const option = (name) => {
 				const i = argv.indexOf(`--${name}`);
@@ -5720,80 +6048,67 @@ const COMMANDS = {
 			};
 			const { requireListing, loadListing } = await Promise.resolve().then(() => (init_project(), project_exports));
 			const listing = requireListing();
-			const tourFile = node_path.default.join(listing, "capture.tour.mjs");
-			if (node_fs.default.existsSync(tourFile)) {
+			const { tourFile } = await Promise.resolve().then(() => (init_recapture(), recapture_exports));
+			const list = (name) => option(name)?.split(",").map((s) => s.trim()).filter(Boolean);
+			const options = {};
+			for (let i = 0; i < argv.length; i++) {
+				const name = argv[i].match(/^--(.+)$/)?.[1];
+				if (!name) continue;
+				const value = argv[i + 1] !== void 0 && !argv[i + 1].startsWith("--") ? argv[++i] : true;
+				if (![
+					"locale",
+					"profile",
+					"only",
+					"serial",
+					"simulator"
+				].includes(name)) options[name.replace(/-(\w)/g, (_, c) => c.toUpperCase())] = value;
+			}
+			try {
+				const file = tourFile(listing);
 				const { runTour } = await Promise.resolve().then(() => (init_tour(), tour_exports));
 				const { DEFAULT_SERIAL } = await Promise.resolve().then(() => (init_recapture(), recapture_exports));
-				const list = (name) => option(name)?.split(",").map((s) => s.trim()).filter(Boolean);
-				const options = {};
-				for (let i = 0; i < argv.length; i++) {
-					const name = argv[i].match(/^--(.+)$/)?.[1];
-					if (!name) continue;
-					const value = argv[i + 1] !== void 0 && !argv[i + 1].startsWith("--") ? argv[++i] : true;
-					if (![
-						"locale",
-						"profile",
-						"only",
-						"serial"
-					].includes(name)) options[name.replace(/-(\w)/g, (_, c) => c.toUpperCase())] = value;
-				}
-				try {
-					const written = await runTour(tourFile, {
-						listing,
-						locale: option("locale") || loadListing(listing).defaultLocale,
-						profiles: list("profile"),
-						only: list("only"),
-						serial: option("serial") || process.env.CAPTURE_SERIAL || DEFAULT_SERIAL,
-						options
-					});
-					console.log(`${written.length} capture(s) written`);
-					return 0;
-				} catch (error) {
-					console.error(error.message);
-					return 1;
-				}
-			}
-			const { spawnSync } = await import("node:child_process");
-			const { tourEnvironment } = await Promise.resolve().then(() => (init_recapture(), recapture_exports));
-			const script = argv[0] && !argv[0].startsWith("--") ? argv.shift() : ["capture-emulator.py", "capture-simulator.py"].map((f) => node_path.default.join(listing, f)).find((f) => node_fs.default.existsSync(f));
-			if (!script) {
-				console.error("No capture tour in store-listing/. Write store-listing/capture.tour.mjs (docs/capture.md).");
+				const written = await runTour(file, {
+					listing,
+					locale: option("locale") || loadListing(listing).defaultLocale,
+					profiles: list("profile"),
+					only: list("only"),
+					serial: option("serial") || process.env.CAPTURE_SERIAL || DEFAULT_SERIAL,
+					simulator: option("simulator") || process.env.CAPTURE_SIMULATOR,
+					options
+				});
+				console.log(`${written.length} capture(s) written`);
+				return 0;
+			} catch (error) {
+				console.error(error.message);
 				return 1;
 			}
-			const python = spawnSync("sh", ["-c", "command -v uv"], { stdio: "ignore" }).status === 0 ? [
-				"uv",
-				"run",
-				"-q",
-				"--with",
-				"pillow",
-				"python3"
-			] : ["python3"];
-			return spawnSync(python[0], [
-				...python.slice(1),
-				script,
-				...argv
-			], {
-				stdio: "inherit",
-				env: {
-					...process.env,
-					...tourEnvironment(listing)
-				}
-			}).status ?? 1;
 		}
 	},
 	screen: {
-		summary: "What the capture emulator shows: a screenshot and every element to tap, for writing a tour",
-		usage: "screen [--serial emulator-5578] [--out screen.png] [--json] [--tap \"Settings\" | --tap 540,1200 | --back]",
+		summary: "What the capture emulator (or a simulator) shows: a screenshot and every element to tap, for writing a tour",
+		usage: "screen [--serial emulator-5578 | --simulator \"iPhone 17 Pro Max\"] [--out screen.png] [--json] [--tap \"Settings\" | --tap 540,1200 | --back]",
 		run: async (argv) => (await Promise.resolve().then(() => (init_emulator(), emulator_exports))).run(argv)
 	},
 	reset: {
-		summary: "Undo a capture that was interrupted (display size, density, demo mode on the emulator)",
-		usage: "reset [--serial emulator-5578]",
+		summary: "Undo a capture that was interrupted (display size, density, demo mode; a simulator's status bar and appearance)",
+		usage: "reset [--serial emulator-5578 | --simulator \"iPhone 17 Pro Max\"]",
 		run: async (argv) => {
-			const { Emulator } = await Promise.resolve().then(() => (init_emulator$1(), emulator_exports$1));
-			const { DEFAULT_SERIAL } = await Promise.resolve().then(() => (init_recapture(), recapture_exports));
-			const at = argv.indexOf("--serial"), serial = at >= 0 ? argv[at + 1] : process.env.CAPTURE_SERIAL || DEFAULT_SERIAL;
+			const option = (name) => {
+				const i = argv.indexOf(`--${name}`);
+				return i >= 0 ? argv[i + 1] : void 0;
+			};
 			try {
+				if (option("simulator")) {
+					const { findSimulator } = await Promise.resolve().then(() => (init_ios(), ios_exports));
+					const { Simulator } = await Promise.resolve().then(() => (init_simulator(), simulator_exports));
+					const found = findSimulator(option("simulator"));
+					new Simulator(found.udid, found.name).reset();
+					console.log(`${found.name} reset`);
+					return 0;
+				}
+				const { Emulator } = await Promise.resolve().then(() => (init_emulator$1(), emulator_exports$1));
+				const { DEFAULT_SERIAL } = await Promise.resolve().then(() => (init_recapture(), recapture_exports));
+				const serial = option("serial") || process.env.CAPTURE_SERIAL || DEFAULT_SERIAL;
 				new Emulator(serial).reset();
 				console.log(`${serial} reset`);
 				return 0;
@@ -5894,6 +6209,7 @@ if (require.main === module) main(process.argv.slice(2)).then((code) => {
 	process.exitCode = 1;
 });
 exports.TapMap = TapMap;
+exports.appleLanguage = appleLanguage;
 exports.bootEmulator = bootEmulator;
 exports.boundsFor = boundsFor;
 exports.boundsProblem = boundsProblem;
@@ -5922,7 +6238,9 @@ exports.parseHighlight = parseHighlight;
 exports.readJson = readJson;
 exports.recapture = recapture;
 exports.requireListing = requireListing;
+exports.runTour = runTour;
 exports.serve = serve;
+exports.tourFile = tourFile;
 exports.validate = validate;
 exports.withCopy = withCopy;
 exports.withoutMeta = withoutMeta;

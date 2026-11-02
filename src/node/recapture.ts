@@ -18,25 +18,23 @@
  *     "after": ["node scripts/refresh-readme.mjs"]                   shell commands once everything is exported
  *   }
  *
- * Android runs store-listing/capture.tour.mjs in the studio itself (capture/tour.ts), per run and locale. The default
- * locale goes first, since it records the tap map other locales replay. A listing still on a Python tour
- * (capture-emulator.py, a run's "script") runs `python3 <script> --serial <emulator> --locale <locale> [--profile
- * <profile>] <args>`, through `uv run --with pillow` when uv is installed, until those go away. --boot starts the
+ * Both platforms run store-listing/capture.tour.mjs in the studio itself (capture/tour.ts, on agent-device), per run
+ * and locale. The default locale goes first, since it records the tap map other locales replay. --boot starts the
  * capture emulator headless when it isn't running and waits for it.
  *
- * iOS ("platform": "ios"): install entries are {"app": "build/…/App.app", "package": "<bundle ID>"}, the default
- * script is store-listing/capture-simulator.py, the capture profiles are profiles.json's "platform": "ios" ones with
- * a capture size, each on its "simulator", and --boot boots those simulators. Each run is
- * `python3 <script> --locale <locale> [--profile <profile>] [--simulator <default>] <args>`.
+ * iOS ("platform": "ios"): install entries are {"app": "build/…/App.app", "package": "<bundle ID>"}, installed on each
+ * simulator the capture profiles use (profiles.json's "platform": "ios" ones with a capture size, each on its
+ * "simulator"); --boot boots those simulators first and leaves them running.
  */
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import {Emulator} from './capture/emulator';
+import {Simulator} from './capture/simulator';
 import {runTour} from './capture/tour';
 import {spawn, spawnSync} from 'node:child_process';
 import {loadListing, requireListing, STUDIO_DIR} from './project';
-import {bootSimulator, simulatorsFor} from './ios';
+import {bootSimulator, findSimulator, simulatorsFor} from './ios';
 import {findPlaywright} from './playwright';
 
 export interface RecaptureOptions {
@@ -66,21 +64,28 @@ export interface RecaptureResult {
   error?: string;
 }
 
-/** What a capture tour gets from the studio: its capture module on PYTHONPATH, the app's listing, the CLI, Playwright. */
-export function tourEnvironment(listing: string): NodeJS.ProcessEnv {
+/** What the build, export and after commands get from the studio: the app's listing, the CLI, Playwright. */
+export function commandEnvironment(listing: string): NodeJS.ProcessEnv {
   return {
-    PYTHONPATH: [STUDIO_DIR, process.env.PYTHONPATH].filter(Boolean).join(path.delimiter),
     SCREENSHOT_STUDIO_LISTING: listing,
     SCREENSHOT_STUDIO: path.join(STUDIO_DIR, 'studio.cjs'),
     ...(findPlaywright() ? {PLAYWRIGHT_MODULE: process.env.PLAYWRIGHT_MODULE || findPlaywright()!} : {}),
   };
 }
 
+/** The listing's tour, store-listing/capture.tour.mjs; a Python tour from older versions is named, with what to do. */
+export function tourFile(listing: string): string {
+  const file = path.join(listing, 'capture.tour.mjs');
+  if (fs.existsSync(file)) return file;
+  const old = ['capture-emulator.py', 'capture-simulator.py'].find(name => fs.existsSync(path.join(listing, name)));
+  if (old) throw new Error(`store-listing/${old} is a Python tour, which this version no longer runs. Write its scenes as store-listing/capture.tour.mjs (docs/capture.md shows the shape), then delete ${old}.`);
+  throw new Error('No capture tour: write store-listing/capture.tour.mjs (docs/capture.md shows the shape).');
+}
+
 export const DEFAULT_SERIAL = 'emulator-5578';
 
 const sdkRoot = () => process.env.ANDROID_HOME || process.env.ANDROID_SDK_ROOT ||
   [path.join(os.homedir(), 'Library/Android/sdk'), path.join(os.homedir(), 'Android/Sdk')].find(dir => fs.existsSync(dir)) || '';
-const has = (command: string) => spawnSync('sh', ['-c', `command -v ${command}`], {stdio: 'ignore'}).status === 0;
 const adb = (serial: string, ...args: string[]) => spawnSync('adb', ['-s', serial, ...args], {encoding: 'utf8'});
 
 /** Whether the emulator is attached and has finished booting. */
@@ -142,79 +147,54 @@ export async function recapture(options: RecaptureOptions = {}): Promise<Recaptu
       ? profiles[name].platform === 'ios' && profiles[name].captureWidth : profiles[name].captureDensity);
     if (options.profile && !profiles[options.profile]?.captureWidth) throw new Error(`No capture profile ${options.profile} in profiles.json`);
 
-    const python = has('uv') ? ['uv', 'run', '-q', '--with', 'pillow', 'python3'] : ['python3'];
-    // Tours import the studio's capture module (`from capture import Device`) from PYTHONPATH, and reach the studio's
-    // commands (`node $SCREENSHOT_STUDIO fixtures …`) and Playwright through the environment.
-    const studioEnv = tourEnvironment(listing);
-    const env: NodeJS.ProcessEnv = ios ? {...process.env, ...studioEnv, ...(simulator ? {CAPTURE_SIMULATOR: simulator} : {})}
-      : {...process.env, ...studioEnv, CAPTURE_SERIAL: serial, ANDROID_SERIAL: serial};
+    // Build, export and after commands reach the studio's commands and Playwright through the environment.
+    const env: NodeJS.ProcessEnv = {...process.env, ...commandEnvironment(listing), ...(ios ? {} : {CAPTURE_SERIAL: serial, ANDROID_SERIAL: serial})};
     const expand = (word: string) => String(word).replace(/\$\{(\w+)\}/g, (_, name: string) => {
-      if (env[name] === undefined) throw new Error(`Set ${name} for this capture (studio.json capture args or options use it)`);
+      if (env[name] === undefined) throw new Error(`Set ${name} for this capture (studio.json capture options use it)`);
       return env[name]!;
     });
-    const run = (command: string, args: string[] = [], {shell = false, check = true} = {}) => {
-      const line = shell ? command : [command, ...args].map(word => /\s/.test(word) ? JSON.stringify(word) : word).join(' ');
-      log(`\n$ ${line}`);
+    const run = (command: string, {check = true} = {}) => {
+      log(`\n$ ${command}`);
       if (options.dryRun) return true;
-      const done = shell ? spawnSync('sh', ['-c', command], {cwd: repo, env, stdio: 'inherit'})
-        : spawnSync(command, args, {cwd: repo, env, stdio: 'inherit'});
-      if (done.status !== 0 && check) throw new Error(`Failed (${done.status ?? done.signal}): ${line}`);
+      const done = spawnSync('sh', ['-c', command], {cwd: repo, env, stdio: 'inherit'});
+      if (done.status !== 0 && check) throw new Error(`Failed (${done.status ?? done.signal}): ${command}`);
       return done.status === 0;
     };
 
-    const studioPy = path.join(STUDIO_DIR, ios ? 'ios.py' : 'capture.py');
     // iOS: every simulator the selected profiles capture on.
     const sims = ios && options.capture !== false ? simulatorsFor(profiles, captureProfiles.filter(name => !options.profile || name === options.profile), simulator) : [];
-    const device = (sim?: string) => ios ? ['--simulator', sim!] : ['--serial', serial];
-    if (options.build !== false && capture.build) run(capture.build, [], {shell: true});
+    if (options.build !== false && capture.build) run(capture.build);
     if (options.capture !== false) {
+      const tour = tourFile(listing);
       if (options.boot && !options.dryRun) {
         if (ios) for (const sim of sims) await bootSimulator(sim, log);
         else await bootEmulator(serial, capture.avd, log);
       }
       if (!ios && !options.dryRun) { const problem = missingEmulator(serial); if (problem) throw new Error(problem); }
-      // A TypeScript tour (store-listing/capture.tour.mjs) runs in the studio itself, through agent-device.
-      const tourFile = path.join(listing, 'capture.tour.mjs');
-      const typescriptTour = !ios && fs.existsSync(tourFile);
+      // Android installs once on the emulator; iOS apps go to each simulator as the tour opens it.
+      const apps: string[] = [];
       for (const {apk, app, package: id} of capture.install || []) {
         const file = ios ? app : apk;
         if (!file) throw new Error(`capture.install needs ${ios ? '"app" (a simulator .app)' : '"apk"'} for ${id}`);
-        if (typescriptTour) { if (!options.dryRun) { new Emulator(serial).install(path.resolve(repo, file), id); log(`installed ${id}`); } else log(`$ install ${file}`); continue; }
-        for (const sim of ios ? sims : [undefined]) run(python[0], [...python.slice(1), studioPy, 'install', file, '--package', id, ...device(sim)]);
+        if (ios) apps.push(path.resolve(repo, file));
+        else if (options.dryRun) log(`$ install ${file}`);
+        else { new Emulator(serial).install(path.resolve(repo, file), id); log(`installed ${id}`); }
       }
-      if (typescriptTour) {
-        for (const locale of locales) {
-          for (const spec of capture.runs || [{}]) {
-            const wanted = spec.locales || 'all';
-            if (wanted === 'default' ? locale !== defaultLocale : Array.isArray(wanted) && !wanted.includes(locale)) continue;
-            const runProfiles = spec.profiles === false ? undefined : (spec.profiles || captureProfiles).filter(name => !options.profile || name === options.profile);
-            if (options.dryRun) { log(`$ tour ${path.relative(repo, tourFile)} --locale ${locale}${runProfiles ? ` --profile ${runProfiles.join(',')}` : ''}`); continue; }
-            const attempts = (capture.retries ?? 2) + 1;
-            for (let attempt = 1; ; attempt++) {
-              try { await runTour(tourFile, {listing, locale, profiles: runProfiles, serial, options: Object.fromEntries(Object.entries(spec.options || {}).map(([key, value]) => [key, typeof value === 'string' ? expand(value) : value])), log}); break; }
-              catch (error) {
-                if (attempt === attempts) throw error;
-                log(`Capture failed (${(error as Error).message.split('\n')[0]}); reset the emulator and try again (${attempt + 1}/${attempts})`);
-                new Emulator(serial).reset();
-              }
-            }
-          }
-        }
-      }
-      for (const locale of typescriptTour ? [] : locales) {
+      for (const locale of locales) {
         for (const spec of capture.runs || [{}]) {
           const wanted = spec.locales || 'all';
           if (wanted === 'default' ? locale !== defaultLocale : Array.isArray(wanted) && !wanted.includes(locale)) continue;
-          const runProfiles = spec.profiles === false ? [null] : (spec.profiles || captureProfiles).filter(name => !options.profile || name === options.profile);
-          for (const profile of runProfiles) {
-            const script = spec.script || path.relative(repo, path.join(listing, ios ? 'capture-simulator.py' : 'capture-emulator.py'));
-            const args = [...python.slice(1), script, ...(ios ? (simulator ? ['--simulator', simulator] : []) : ['--serial', serial]), '--locale', locale,
-              ...(profile ? ['--profile', profile] : []), ...(spec.args || []).map(expand)];
-            const attempts = (capture.retries ?? 2) + 1;
-            for (let attempt = 1; ; attempt++) {
-              if (run(python[0], args, {check: attempt === attempts})) break;
-              log(`Capture failed; reset the ${ios ? 'simulator' : 'emulator'} and try again (${attempt + 1}/${attempts})`);
-              for (const sim of ios ? sims : [undefined]) run(python[0], [...python.slice(1), studioPy, 'reset', ...device(sim)]);
+          const runProfiles = (spec.profiles || captureProfiles).filter(name => !options.profile || name === options.profile);
+          if (options.dryRun) { log(`$ tour ${path.relative(repo, tour)} --locale ${locale} --profile ${runProfiles.join(',')}`); continue; }
+          const tourOptions = Object.fromEntries(Object.entries(spec.options || {}).map(([key, value]) => [key, typeof value === 'string' ? expand(value) : value]));
+          const attempts = (capture.retries ?? 2) + 1;
+          for (let attempt = 1; ; attempt++) {
+            try { await runTour(tour, {listing, locale, profiles: runProfiles, serial, simulator, install: apps, options: tourOptions, log}); break; }
+            catch (error) {
+              if (attempt === attempts) throw error;
+              log(`Capture failed (${(error as Error).message.split('\n')[0]}); reset the ${ios ? 'simulators' : 'emulator'} and try again (${attempt + 1}/${attempts})`);
+              if (ios) for (const sim of sims) { const found = findSimulator(sim); new Simulator(found.udid, found.name).reset(); }
+              else new Emulator(serial).reset();
             }
           }
         }
@@ -222,11 +202,11 @@ export async function recapture(options: RecaptureOptions = {}): Promise<Recaptu
     }
     if (options.export !== false) {
       // One language's export failing (copy that no longer fits, say) does not stop the others.
-      result.failedExports = locales.filter(locale => !(capture.export
-        ? run(capture.export.replaceAll('{locale}', locale), [], {shell: true, check: false})
-        : run(process.execPath, [path.join(STUDIO_DIR, 'studio.cjs'), 'export', '--listing', listing, '--locale', locale], {check: false})));
+      result.failedExports = locales.filter(locale => !run(capture.export
+        ? capture.export.replaceAll('{locale}', locale)
+        : [process.execPath, path.join(STUDIO_DIR, 'studio.cjs'), 'export', '--listing', listing, '--locale', locale].map(word => JSON.stringify(word)).join(' '), {check: false}));
       if (result.failedExports.length) throw new Error(`Export failed for ${result.failedExports.join(', ')}; captures are in place. Fix those and export again.`);
-      for (const command of capture.after || []) run(command, [], {shell: true});
+      for (const command of capture.after || []) run(command);
     }
     log(`\nRecaptured ${locales.join(', ')}${options.dryRun ? ' (dry run)' : ''}.`);
     result.ok = true;

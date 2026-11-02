@@ -33,14 +33,14 @@ test('init --platform ios builds App Store galleries from simulator screenshots'
   assert.deepEqual([profiles.iphone63.width, profiles.iphone63.height], [1206, 2622]);
   assert.deepEqual([profiles.ipad.width, profiles.ipad.height], [2064, 2752]);
   assert.deepEqual(json(path.join(listing, 'gallery.json')).iphone63, {inherits: 'iphone', cards: [{}]});
-  assert.ok(fs.existsSync(path.join(listing, 'capture-simulator.py')));
+  assert.ok(fs.existsSync(path.join(listing, 'capture.tour.mjs')));
   assert.ok(!fs.existsSync(path.join(listing, 'studio')), 'init no longer copies the studio into the app');
   assert.match(fs.readFileSync(path.join(listing, 'theme.css'), 'utf8'), /\.iphone63 \.big \.device/);
   const result = checkListing(listing);
   assert.deepEqual(result.issues.filter(i => i.level === 'error'), []);
 });
 
-test('an iOS recapture installs on, and captures with, each profile\'s simulator', async t => {
+test('an iOS recapture runs the tour on each capture profile\'s simulator', async t => {
   const root = temp(t), app = path.join(root, 'app');
   fs.mkdirSync(app);
   const run = spawnSync(process.execPath, [CLI, 'init', app, '--platform', 'ios', '--name', 'Demo', '--package', 'com.example.demo'], {encoding: 'utf8'});
@@ -52,9 +52,8 @@ test('an iOS recapture installs on, and captures with, each profile\'s simulator
   const lines = [];
   const result = await recapture({listing, dryRun: true, build: false, export: false, log: line => lines.push(line)});
   assert.ok(result.ok, result.error);
-  const commands = lines.filter(line => line.startsWith('\n$')).join('\n');
-  assert.match(commands, /ios\.py install .*Demo\.app --package com\.example\.demo --simulator/);
-  assert.match(commands, /capture-simulator\.py --locale en-US --profile iphone/);
-  assert.match(commands, /capture-simulator\.py --locale en-US --profile ipad/);
+  const commands = lines.join('\n');
+  assert.match(fs.readFileSync(path.join(listing, 'capture.tour.mjs'), 'utf8'), /app: 'com\.example\.demo'/);
+  assert.match(commands, /\$ tour store-listing\/capture\.tour\.mjs --locale en-US --profile iphone,ipad/);
   assert.doesNotMatch(commands, /--profile iphone63|--serial/);
 });
