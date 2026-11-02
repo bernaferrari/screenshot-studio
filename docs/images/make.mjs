@@ -48,25 +48,31 @@ function hero() {
 <p style="position:absolute;top:286px;width:100%;text-align:center;font-size:56px;color:#5b5f73;letter-spacing:-.01em">Real app screens in. Store and README art out.</p>${fan}`, W, 1186];
 }
 
-/** Plain captures beside the finished cards, at one height; under them the same card in three more languages. */
+/**
+ * The finished set leads: three headline-first cards, large. Before them, small, the plain captures they came from;
+ * under them the same first card in three more languages, each from that language's own screens.
+ */
 function beforeAfter() {
-  const app = listing('SDKMonitor');
-  const raws = ['01-apps', '03-logs', '02-details'].map(n => image(path.join(app, 'en-US/raw/phone', `${n}.png`)));
-  const cards = ['01-apps', '02-logs', '04-details'].map(n => image(path.join(app, 'en-US/phone', `phone-${n}.jpg`)));
+  // Calcula's README showcase: its first three scenes in one palette, on one warm family of blocks.
+  const app = listing('Calcula');
+  const raws = ['01-every-key', '10-graph-amber', '11-convert-amber'].map(n => image(path.join(app, 'en-US/raw/phone', `${n}.png`)));
+  const cards = ['01-every-key', '02-graph', '03-convert'].map(n => image(path.join(app, 'en-US/showcase', `${n}.jpg`)));
   const langs = [['de-DE', 'Deutsch'], ['zh-CN', '中文'], ['ja-JP', '日本語']]
-    .map(([locale, name]) => [image(path.join(app, locale, 'phone/phone-01-apps.jpg')), name]);
-  const raw = (src, i) => `<img src="${src}" style="position:absolute;left:${80 + i * 317}px;top:190px;width:295px;border-radius:22px;box-shadow:0 0 0 1px #15172b18,0 24px 50px -24px #15172b60">`;
-  const card = (src, i) => `<img class="card" src="${src}" style="left:${1196 + i * 382}px;top:190px;width:360px;border-radius:24px">`;
+    .map(([locale, name]) => [image(path.join(app, locale, 'showcase/02-graph.jpg')), name]);
+  const W = 2400, H = 1420, cardW = 470, gap = 26, left = W - 80 - 3 * cardW - 2 * gap;
+  // A loose pile of plain screenshots, as they come off the device.
+  const raw = (src, i) => `<img src="${src}" style="position:absolute;left:${86 + i * 168}px;top:${300 + [10, 0, 26][i]}px;width:236px;border-radius:16px;transform:rotate(${[-6, 1, 7][i]}deg);box-shadow:0 0 0 1px #15172b1c,0 18px 40px -18px #15172b70">`;
+  const card = (src, i) => `<img class="card" src="${src}" style="left:${left + i * (cardW + gap)}px;top:190px;width:${cardW}px;border-radius:30px">`;
   // The languages run off the bottom: their headlines and the top of the app are the point.
-  const lang = ([src, name], i) => `<p style="position:absolute;left:${1196 + i * 382}px;top:900px;font-size:30px;font-weight:650;color:#5b5f73">${name}</p>
-<img class="card" src="${src}" style="left:${1196 + i * 382}px;top:956px;width:360px;border-radius:24px">`;
+  const lang = ([src, name], i) => `<p style="position:absolute;left:${left + i * (cardW + gap)}px;top:1092px;font-size:30px;font-weight:650;color:#5b5f73">${name}</p>
+<img class="card" src="${src}" style="left:${left + i * (cardW + gap)}px;top:1146px;width:${cardW}px;border-radius:30px">`;
   const label = (x, bold, text) => `<p style="position:absolute;left:${x}px;top:110px;font-size:36px;font-weight:600;color:#5b5f73"><b style="color:#15172b;font-weight:750">${bold}</b> ${text}</p>`;
-  return [`${label(80, 'Before:', 'your screenshots')}${label(1196, 'After:', 'a Google Play set, checked')}
+  return [`${label(80, 'Before:', 'your screenshots')}${label(left, 'After:', 'a Google Play set, checked')}
 ${raws.map(raw).join('')}${cards.map(card).join('')}
-<svg style="position:absolute;left:1046px;top:470px" width="110" height="60" viewBox="0 0 110 60"><path d="M6 30H96M74 8l26 22-26 22" fill="none" stroke="#4150d0" stroke-width="9" stroke-linecap="round" stroke-linejoin="round"/></svg>
-<p style="position:absolute;left:80px;top:930px;width:1060px;font-size:60px;font-weight:780;letter-spacing:-.03em;line-height:1.08">The same set in every language,<br><span style="color:#4150d0">the app's own screens too.</span></p>
-<p style="position:absolute;left:80px;top:1110px;width:940px;font-size:34px;line-height:1.35;color:#5b5f73">Captured in each language, laid out by one theme, every card checked: copy that doesn't fit, devices off the card, store limits.</p>
-${langs.map(lang).join('')}`, 2400, 1250];
+<svg style="position:absolute;left:${left - 150}px;top:520px" width="110" height="60" viewBox="0 0 110 60"><path d="M6 30H96M74 8l26 22-26 22" fill="none" stroke="#4150d0" stroke-width="9" stroke-linecap="round" stroke-linejoin="round"/></svg>
+<p style="position:absolute;left:80px;top:880px;font-size:54px;font-weight:780;letter-spacing:-.03em;line-height:1.08">The same set in<br>every language,<br><span style="color:#4150d0">the app's own<br>screens too.</span></p>
+<p style="position:absolute;left:80px;top:1150px;width:${left - 230}px;font-size:30px;line-height:1.38;color:#5b5f73">Captured in each language, laid out by one theme, every card checked: copy that doesn't fit, devices off the card, store limits.</p>
+${langs.map(lang).join('')}`, W, H];
 }
 
 /** The demo's text card in each theme, side by side, labelled, all cut by the stage at one line. */
