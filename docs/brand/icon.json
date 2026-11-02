@@ -1,0 +1,6 @@
+{
+  "files": [
+    {"path": "ui/logo.svg", "shape": "rounded"},
+    {"path": "docs/brand/icon.png", "size": 512, "shape": "rounded"}
+  ]
+}

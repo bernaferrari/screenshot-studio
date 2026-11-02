@@ -6,7 +6,6 @@ import {
   ChevronsUpDown,
   Image,
   Languages,
-  Layers,
   LayoutDashboard,
   ListChecks,
   Monitor,
@@ -17,6 +16,7 @@ import {
   Sun,
   X,
 } from "lucide-react";
+import logo from "../../logo.svg";
 import { Button } from "@/components/ui/button";
 import {
   Collapsible,
@@ -109,9 +109,7 @@ export function StudioSidebar({
           <SidebarMenuItem>
             <SidebarMenuButton asChild size="lg" tooltip="Screenshot Studio">
               <Link to="/studio/" onClick={close}>
-                <span className="flex size-8 shrink-0 items-center justify-center rounded-lg bg-primary text-primary-foreground">
-                  <Layers className="size-5" />
-                </span>
+                <img src={logo} alt="" className="size-8 shrink-0" />
                 <span className="flex flex-col text-left">
                   <span className="text-sm font-semibold">
                     Screenshot Studio

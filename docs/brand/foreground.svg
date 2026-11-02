@@ -1,0 +1,11 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 108 108">
+  <!-- A store card in miniature, what the studio makes: a headline, its second line under a highlighter, and a real
+       screen in a phone running off the bottom. -->
+  <rect x="35" y="25" width="28" height="7" rx="3.5" fill="#ffffff"/>
+  <rect x="35" y="36" width="38" height="9" rx="2" fill="#ffd45c"/>
+  <rect x="35" y="53" width="38" height="70" rx="8" fill="#ffffff"/>
+  <rect x="38.5" y="56.5" width="31" height="70" rx="5" fill="#e3e8ff"/>
+  <rect x="42.5" y="62" width="15" height="4" rx="2" fill="#5a68ec"/>
+  <rect x="42.5" y="70" width="23" height="9" rx="2.5" fill="#ffffff"/>
+  <rect x="42.5" y="82" width="23" height="9" rx="2.5" fill="#ffffff"/>
+</svg>

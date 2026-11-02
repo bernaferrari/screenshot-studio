@@ -6,6 +6,8 @@ for (const file of fs.readdirSync(target))
   fs.rmSync(path.join(target, file), { recursive: true, force: true });
 for (const file of fs.readdirSync(".ui-build"))
   if (file !== "bundled-packages.json") fs.copyFileSync(path.join(".ui-build", file), path.join(target, file));
+// The tab's icon: the studio's own (drawn in docs/brand/, written by `screenshot-studio icons docs/brand/icon.json`).
+fs.copyFileSync("ui/logo.svg", path.join(target, "favicon.svg"));
 fs.copyFileSync(
   "ui/SHADCN-LICENSE.md",
   path.join(target, "shadcn-LICENSE.txt"),
@@ -51,6 +53,6 @@ fs.writeFileSync(
 );
 fs.writeFileSync(
   "studio/index.html",
-  `<!doctype html>\n<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="color-scheme" content="light dark"><title>Screenshot Studio</title><link rel="stylesheet" href="./assets/studio.css"></head><body><div id="root"><div style="padding:32px;font:14px system-ui">Opening Screenshot Studio…</div></div><script defer src="./assets/studio.js"></script></body></html>\n`,
+  `<!doctype html>\n<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="color-scheme" content="light dark"><title>Screenshot Studio</title><link rel="icon" href="./assets/favicon.svg" type="image/svg+xml"><link rel="stylesheet" href="./assets/studio.css"></head><body><div id="root"><div style="padding:32px;font:14px system-ui">Opening Screenshot Studio…</div></div><script defer src="./assets/studio.js"></script></body></html>\n`,
 );
 console.log("Installed the self-contained shadcn UI into studio/assets.");

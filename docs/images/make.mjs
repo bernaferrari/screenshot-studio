@@ -43,7 +43,8 @@ function hero() {
     const style = `left:${W / 2 + d * 500 - width / 2}px;top:${468 + d * d * 26}px;width:${width}px;transform:rotate(${d * 2}deg);z-index:${10 - Math.abs(d)}`;
     return `<img class="card" style="${style}" src="${image(path.join(listing(app), file))}">`;
   }).join('');
-  return [`<h1 style="position:absolute;top:84px;width:100%;text-align:center;font-size:156px;font-weight:800;letter-spacing:-.04em">Screenshot Studio</h1>
+  // The name beside the studio's icon (docs/brand/).
+  return [`<h1 style="position:absolute;top:84px;width:100%;display:flex;justify-content:center;align-items:center;gap:44px;font-size:156px;font-weight:800;letter-spacing:-.04em"><img src="${image(path.join(root, 'docs/brand/icon.png'))}" style="width:168px;height:168px;filter:drop-shadow(0 18px 30px #3341c440)">Screenshot Studio</h1>
 <p style="position:absolute;top:286px;width:100%;text-align:center;font-size:56px;color:#5b5f73;letter-spacing:-.01em">Real app screens in. Store and README art out.</p>${fan}`, W, 1186];
 }
 
