@@ -51,6 +51,14 @@ The same card in each of the six themes. Every theme recolors from three variabl
   <img src="docs/images/themes.jpg" width="100%" alt="One card in each of the six themes: aurora, porcelain, signal, paper, panels and mono">
 </p>
 
+## Zoom in on what matters
+
+A callout lifts part of the real screen out and magnifies it. Pick it as a UI element from the capture's accessibility tree, not a box of pixels, and it follows that element into every language, wherever the translation moves it.
+
+<p align="center">
+  <img src="docs/images/callouts.jpg" width="100%" alt="One callout picked from the accessibility tree: the restock change lifted out of ChangeDetection's compare screen in English, German and Chinese">
+</p>
+
 ## Checked like a reviewer would
 
 `check` validates every file in a second and says how to fix each problem. `export` renders each card and fails or warns on what you'd otherwise catch by eye:
@@ -77,7 +85,7 @@ What only this does: the cards come from **real captures**, retaken by one comma
   <img src="docs/images/readme-art.jpg" width="100%" alt="README art made with the studio: Calcula's tools, WiFi Weakspot's features, Wordkeep's paper banner and Lumina's dark one">
 </p>
 
-The same studio makes the store listings and READMEs of [SDK Monitor](https://github.com/bernaferrari/SDKMonitor), Calcula, Keepout, QuietGuard, ChangeDetection, Wordkeep and WiFi Weakspot.
+The same studio makes the store listings and READMEs of [SDK Monitor](https://github.com/bernaferrari/SDKMonitor#readme), [Calcula](https://github.com/bernaferrari/calcula#readme), [Keepout](https://github.com/bernaferrari/keepout#readme), [QuietGuard](https://github.com/bernaferrari/QuietGuard#readme), [ChangeDetection](https://github.com/bernaferrari/ChangeDetection#readme), [Wordkeep](https://github.com/bernaferrari/wordkeep#readme) and [WiFi Weakspot](https://github.com/bernaferrari/wifi-weakspot#readme), the apps of [Kotlin Reforge](https://kotlin-reforge.vercel.app): old Android apps, rebuilt to feel new.
 
 ## Commands
 

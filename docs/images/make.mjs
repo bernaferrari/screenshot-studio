@@ -1,5 +1,5 @@
 // The README's art. From the real exported cards of the apps that use the studio: hero.jpg, before-after.jpg,
-// themes.jpg and readme-art.jpg. With --editor, from the editor open on a fresh `demo` project: editor-store.jpg and
+// themes.jpg, callouts.jpg and readme-art.jpg. With --editor, from the editor open on a fresh `demo` project: editor-store.jpg and
 // editor-languages.jpg (for docs/editor.md) and demo.gif, the cards re-rendering live as the theme changes on disk (ffmpeg makes the GIF).
 //   node docs/images/make.mjs [--editor]        (APPS=~/Documents/android: the apps whose cards it shows)
 // Run `npm run build` first. The editor runs on a temporary home and project list; yours are left alone.
@@ -82,6 +82,35 @@ function themes() {
 <img class="card" src="${cards[i]}" style="left:${48 + i * 392}px;top:112px;width:360px;border-radius:24px">`).join('');
   // Just under the first block of the app's screen, the same line on every card.
   return [html, 2400, 552];
+}
+
+/**
+ * A callout picked from the capture's accessibility tree, on the demo's restock card in three languages: the same
+ * element lifted out and magnified in each, wherever it sits.
+ */
+function callouts() {
+  const work = fs.mkdtempSync(path.join(os.tmpdir(), 'readme-callouts-')), at = path.join(work, 'store-listing');
+  fs.cpSync(path.join(root, 'templates/demo'), at, {recursive: true});
+  const locales = [['en-US', 'English'], ['de-DE', 'Deutsch'], ['zh-CN', '中文']];
+  for (const [locale] of locales) for (const ext of ['png', 'nodes.json'])
+    fs.copyFileSync(path.join(listing('ChangeDetection'), locale, `raw/phone/light/02b-compare-restock.${ext}`), path.join(at, locale, `raw/phone/restock.${ext}`));
+  for (const file of ['theme.css', 'theme.js']) fs.writeFileSync(path.join(at, file), fs.readFileSync(path.join(root, 'themes/aurora', file), 'utf8').replaceAll('{{name}}', 'ChangeDetection'));
+  fs.cpSync(path.join(root, 'themes/aurora/assets'), path.join(at, 'assets'), {recursive: true});
+  const profiles = JSON.parse(fs.readFileSync(path.join(at, 'profiles.json'), 'utf8'));
+  Object.assign(profiles.phone, {captureWidth: 1080, captureHeight: 2340});
+  fs.writeFileSync(path.join(at, 'profiles.json'), JSON.stringify(profiles));
+  // The first change on the page, by its place in the UI tree: "Sold out" before, "In stock" after.
+  fs.writeFileSync(path.join(at, 'gallery.json'), JSON.stringify({phone: [{feature: 'restock', raw: 'phone/restock.png', layout: 'big',
+    callouts: [{x: 147, y: 516, w: 912, h: 391, target: '0.0.0.0.0.0.0.0.0.2.3.1', targetMode: 'element', mag: 1.18, radius: 34}]}]}));
+  const run = spawnSync(process.execPath, [studio, 'export', '--listing', at], {encoding: 'utf8'});
+  if (run.status !== 0) throw new Error(`callout export failed:\n${run.stdout}${run.stderr}`);
+  const cards = locales.map(([locale, name]) => [image(path.join(at, locale, 'phone/01-restock.jpg')), name]);
+  fs.rmSync(work, {recursive: true, force: true});
+  const html = `<p style="position:absolute;left:80px;top:300px;width:760px;font-size:76px;font-weight:780;letter-spacing:-.035em;line-height:1.05">Lift out what<br><span style="color:#4150d0">matters.</span></p>
+<p style="position:absolute;left:80px;top:500px;width:720px;font-size:36px;line-height:1.38;color:#5b5f73">Pick a UI element from the capture's accessibility tree. The callout lifts it out, magnified, and follows it into every language, wherever the translation moves it.</p>
+${cards.map(([src, name], i) => `<p style="position:absolute;left:${900 + i * 500}px;top:56px;font-size:32px;font-weight:650;color:#5b5f73">${name}</p>
+<img class="card" src="${src}" style="left:${900 + i * 500}px;top:120px;width:460px;border-radius:26px">`).join('')}`;
+  return [html, 2400, 905];
 }
 
 /** README art from four apps, two by two: each app's own README image, whole. */
@@ -169,6 +198,7 @@ try {
   await shoot(browser, ...hero(), 'hero.jpg');
   await shoot(browser, ...beforeAfter(), 'before-after.jpg');
   await shoot(browser, ...themes(), 'themes.jpg');
+  await shoot(browser, ...callouts(), 'callouts.jpg');
   await shoot(browser, ...readmeArt(), 'readme-art.jpg');
   if (process.argv.includes('--editor')) await editor(browser);
 } finally { await browser.close(); }
