@@ -3217,8 +3217,9 @@ var init_init = __esmMin((() => {
 /**
 * A finished example in one command: real captures of an app in three languages, made into a Google Play set with a
 * theme, exported and opened in the editor.
-*   npx screenshot-studio demo [folder] [--theme aurora] [--no-open]
-* Run it again with another --theme to see the same cards in another look; your edits to the words are kept.
+*   npx screenshot-studio demo [folder] [--theme aurora] [--3d] [--no-open]
+* Run it again with another --theme to see the same cards in another look; your edits to the words are kept. --3d
+* draws the phones as real 3D devices, tilted (the theme's `depth` and the `tilt` layout word).
 */
 var demo_exports = /* @__PURE__ */ __exportAll({ run: () => run$5 });
 async function run$5(argv) {
@@ -3228,6 +3229,7 @@ async function run$5(argv) {
 	};
 	const theme = option("theme") || "aurora";
 	const folder = node_path.default.resolve(argv.find((word, i) => !word.startsWith("--") && argv[i - 1] !== "--theme") || "screenshot-studio-demo");
+	const depth = argv.includes("--3d");
 	const listing = node_path.default.join(folder, "store-listing");
 	if (!themes().some((t) => t.name === theme)) {
 		console.error(`No theme "${theme}". Available: ${themes().map((t) => t.name).join(", ")}`);
@@ -3251,8 +3253,12 @@ async function run$5(argv) {
 	installTheme(listing, theme, {
 		fill: (text) => text.replaceAll("{{name}}", "ChangeDetection"),
 		overwrite: true,
-		write: (relative, content) => node_fs.default.writeFileSync(node_path.default.join(listing, relative), content)
+		write: (relative, content) => node_fs.default.writeFileSync(node_path.default.join(listing, relative), content.replace(/^export default \{/m, depth && relative === "theme.js" ? "export default {\n  depth: true," : "$&"))
 	});
+	const galleryFile = node_path.default.join(listing, "gallery.json");
+	const gallery = JSON.parse(node_fs.default.readFileSync(galleryFile, "utf8"));
+	for (const card of gallery.phone) card.layout = [...(card.layout || "").split(/\s+/).filter((word) => word && word !== "tilt"), ...depth ? ["tilt"] : []].join(" ");
+	node_fs.default.writeFileSync(galleryFile, JSON.stringify(gallery, null, 2) + "\n");
 	const result = await exportListing({ listing });
 	console.log(`\n${formatSummary(result)}`);
 	if (!result.ok) {
@@ -3260,7 +3266,7 @@ async function run$5(argv) {
 		return 1;
 	}
 	const where = node_path.default.relative(process.cwd(), listing);
-	console.log(`\nThe cards are in ${where}/<language>/phone/. Try another look: npx screenshot-studio demo --theme paper`);
+	console.log(`\nThe cards are in ${where}/<language>/phone/. Try another look: npx screenshot-studio demo --theme paper${depth ? "" : ", or real 3D phones: --3d"}`);
 	if (argv.includes("--no-open")) return 0;
 	console.log("Opening the editor (Ctrl-C to stop)…");
 	process.chdir(folder);
@@ -4669,7 +4675,7 @@ const COMMANDS = {
 	},
 	demo: {
 		summary: "See it work in a minute: a finished example, exported and opened in the editor",
-		usage: "demo [folder] [--theme aurora] [--no-open]",
+		usage: "demo [folder] [--theme aurora] [--3d] [--no-open]",
 		run: async (argv) => (await Promise.resolve().then(() => (init_demo(), demo_exports))).run(argv)
 	},
 	themes: {

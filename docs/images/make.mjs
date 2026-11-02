@@ -1,5 +1,5 @@
 // The README's art. From the real exported cards of the apps that use the studio: hero.jpg, before-after.jpg,
-// themes.jpg, callouts.jpg and readme-art.jpg. With --editor, from the editor open on a fresh `demo` project: editor-store.jpg and
+// themes.jpg, depth.jpg, callouts.jpg and readme-art.jpg. With --editor, from the editor open on a fresh `demo` project: editor-store.jpg and
 // editor-languages.jpg (for docs/editor.md) and demo.gif, the cards re-rendering live as the theme changes on disk (ffmpeg makes the GIF).
 //   node docs/images/make.mjs [--editor]        (APPS=~/Documents/android: the apps whose cards it shows)
 // Run `npm run build` first. The editor runs on a temporary home and project list; yours are left alone.
@@ -82,6 +82,16 @@ function themes() {
 <img class="card" src="${cards[i]}" style="left:${48 + i * 392}px;top:112px;width:360px;border-radius:24px">`).join('');
   // Just under the first block of the app's screen, the same line on every card.
   return [html, 2400, 552];
+}
+
+/** The demo with --3d: its cards as real 3D phones, tilted, in porcelain, cut by the stage under their headlines. */
+function depth() {
+  const work = fs.mkdtempSync(path.join(os.tmpdir(), 'readme-depth-'));
+  const run = spawnSync(process.execPath, [studio, 'demo', 'd', '--theme', 'porcelain', '--3d', '--no-open'], {cwd: work, encoding: 'utf8'});
+  if (run.status !== 0) throw new Error(`demo --3d failed:\n${run.stdout}${run.stderr}`);
+  const cards = ['02-restock', '01-page', '03-text'].map(n => image(path.join(work, 'd/store-listing/en-US/phone', `${n}.jpg`)));
+  fs.rmSync(work, {recursive: true, force: true});
+  return [cards.map((src, i) => `<img class="card" src="${src}" style="left:${120 + i * 740}px;top:70px;width:680px;border-radius:32px">`).join(''), 2400, 880];
 }
 
 /**
@@ -198,6 +208,7 @@ try {
   await shoot(browser, ...hero(), 'hero.jpg');
   await shoot(browser, ...beforeAfter(), 'before-after.jpg');
   await shoot(browser, ...themes(), 'themes.jpg');
+  await shoot(browser, ...depth(), 'depth.jpg');
   await shoot(browser, ...callouts(), 'callouts.jpg');
   await shoot(browser, ...readmeArt(), 'readme-art.jpg');
   if (process.argv.includes('--editor')) await editor(browser);

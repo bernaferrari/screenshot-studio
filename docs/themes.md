@@ -39,6 +39,7 @@ Every theme styles these layout words on the phone, 7-inch and 10-inch galleries
 | `big` | One device, large, under the copy (on the 10-inch: copy left, tablet right) |
 | `hang` | The phone hangs from the top edge, the copy below it (on the 10-inch the tablet stays whole, top right) |
 | `duo` | Two devices, roles `primary` and `secondary`, the second stepping in front |
+| `tilt` | Beside another word (`"big tilt"`): the device turned in perspective, set by `--tilt` |
 
 They come from `studio/layouts.css`, which a theme opts into with its first rule, and places with a few variables per
 gallery, so a new gallery size gets all three layouts without new CSS:
@@ -62,6 +63,21 @@ optional.
 
 `hang` cards may leave the top edge and the feature graphic's phone may show only its top; the renderer knows both,
 so no `bounds` setting is needed.
+
+## 3D devices
+
+A theme can draw its phones and tablets as real 3D devices (three.js, loaded only for those cards):
+
+```js
+export default {
+  depth: true,        // or a list of galleries: ['phone', 'tablet7']
+};
+```
+
+Each device keeps its frame's size, bezel and corners, and takes its pose from the frame's CSS `transform`, so a tilt is
+plain CSS: the `tilt` layout word, `--tilt` for its angle, or any `perspective(…) rotateY(…)` of your own. The body is
+white, or `--device-body` on `.device`. The flat frame stays in place, hidden, so bounds checks and callouts work as
+before. A card opts out with the layout word `flat`. `npx screenshot-studio demo --3d` shows it.
 
 ## Fonts
 

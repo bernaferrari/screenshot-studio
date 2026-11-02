@@ -51,6 +51,14 @@ The same card in each of the six themes. Every theme recolors from three variabl
   <img src="docs/images/themes.jpg" width="100%" alt="One card in each of the six themes: aurora, porcelain, signal, paper, panels and mono">
 </p>
 
+## Real 3D phones
+
+Turn on `depth` in a theme and every phone and tablet is drawn as a real 3D device, with its thickness, rounded edges and glass, posed by the frame's CSS. Add the `tilt` layout word to angle one. Try it: `npx screenshot-studio demo --3d`.
+
+<p align="center">
+  <img src="docs/images/depth.jpg" width="100%" alt="The demo's three cards in porcelain with real 3D phones, tilted so their edges show">
+</p>
+
 ## Zoom in on what matters
 
 A callout lifts part of the real screen out and magnifies it. Pick it as a UI element from the capture's accessibility tree, not a box of pixels, and it follows that element into every language, wherever the translation moves it.
@@ -91,7 +99,7 @@ The same studio makes the store listings and READMEs of [SDK Monitor](https://gi
 
 | Command | Does |
 |---|---|
-| `demo` | A finished example from real captures, exported and opened in the editor (`--theme`) |
+| `demo` | A finished example from real captures, exported and opened in the editor (`--theme`, `--3d`) |
 | `init` | Set up an app from screenshots, or for capture on Android or iOS, with a theme |
 | `studio` | The editor |
 | `check` | Check every file, fast; run it after each edit |

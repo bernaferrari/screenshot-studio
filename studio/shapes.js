@@ -57,4 +57,5 @@ const shapes = {
 	circle: (cx, cy, r) => `<circle cx="${cx}" cy="${cy}" r="${r}"/>`,
 	pill: (cx, cy, r, rot = 0) => `<rect x="${cx - r * 1.25}" y="${cy - r * .5}" width="${r * 2.5}" height="${r}" rx="${r * .5}" transform="rotate(${rot * 180 / Math.PI} ${cx} ${cy})"/>`
 };
+
 export { isDark, mix, panoramaGradient, panoramaLights, panoramaX, rgb, shapes };

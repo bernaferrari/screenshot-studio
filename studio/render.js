@@ -133,6 +133,7 @@ function hasDeviceRatio(width, height, ratios, expected) {
 	const ratio = width / height;
 	return expected ? Math.abs(ratio - expected) <= .001 : ratios.some((r) => Math.abs(ratio - r) < .001);
 }
+
 // src/core/gallery.ts
 /**
 * The parsed contents of a studio file, without editor metadata. Files may carry a "$schema" key (for autocomplete
@@ -236,6 +237,7 @@ function followCallout(box, reference, localized) {
 	if (localized.width && moved.x + moved.w > localized.width || localized.height && moved.y + moved.h > localized.height) return null;
 	return moved;
 }
+
 // src/renderer/load.ts
 async function json(file, optional = false) {
 	const response = await fetch(file);
@@ -287,6 +289,7 @@ async function loadCard(q) {
 		}
 	};
 }
+
 // src/renderer/callouts.ts
 async function drawCallouts(callouts, scene) {
 	const { main, measured, defaultLocale, load, report } = scene;
@@ -349,6 +352,7 @@ async function drawCallouts(callouts, scene) {
 		main.append(el);
 	}
 }
+
 // src/renderer/text.ts
 /** Append runs to an element: plain text, or an em / del / ins around it. */
 function appendRuns(parent, runs) {
@@ -369,6 +373,7 @@ function headline(slide) {
 	if (slide.body) header.append(Object.assign(document.createElement("p"), { textContent: slide.body }));
 	return header;
 }
+
 // src/renderer/devices.ts
 /** Loads captures by name, falling back to the default language and noting each fallback in the report. */
 function captureLoader(locale, defaultLocale, report) {
@@ -489,6 +494,7 @@ function checkBounds(measured, slide, profile, config, layoutWords) {
 		if (problem) throw new Error(problem);
 	}
 }
+
 // src/renderer/fit.ts
 /** The box around the header's text itself, not its element. */
 function textBox(header) {
@@ -550,6 +556,7 @@ function findWidows(header) {
 	}
 	return widows;
 }
+
 // src/renderer/identity.ts
 async function identity(slide, config) {
 	const spec = {
@@ -573,6 +580,7 @@ async function identity(slide, config) {
 	}
 	return banner;
 }
+
 // src/renderer/render.ts
 const q = new URLSearchParams(location.search);
 const root = document.documentElement;
@@ -625,6 +633,10 @@ const locales = await settleDevices(devices, profiles);
 report.fallbackCaptures = devices.filter((d) => report.fallbackCaptures.includes(d.spec.raw)).map((d) => d.spec.raw);
 sizeFrames(devices, config, layoutWords);
 if (theme.layout) await theme.layout(context);
+if (Array.isArray(theme.depth) ? theme.depth.includes(kind) : theme.depth) await (await import(
+	/* @vite-ignore */
+	"./devices3d.js"
+)).renderDevices(main);
 const measured = context.devices = measure(main, devices, locales);
 labelDevices(main, measured);
 context.device = measured[0]?.box;

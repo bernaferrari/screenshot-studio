@@ -53,6 +53,9 @@ const locales = await settleDevices(devices, profiles);
 report.fallbackCaptures = devices.filter(d => report.fallbackCaptures.includes(d.spec.raw)).map(d => d.spec.raw);
 sizeFrames(devices, config, layoutWords);
 if (theme.layout) await theme.layout(context);
+// A theme with `depth` draws its phones and tablets as real 3D devices; three.js loads only for those cards.
+if (Array.isArray(theme.depth) ? theme.depth.includes(kind) : theme.depth)
+  await (await import(/* @vite-ignore */ './devices3d.js' as string) as typeof import('./devices3d')).renderDevices(main);
 const measured = context.devices = measure(main, devices, locales);
 labelDevices(main, measured);
 context.device = measured[0]?.box;

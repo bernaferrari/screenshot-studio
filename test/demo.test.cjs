@@ -23,3 +23,19 @@ test('demo exports every card in every language with no warnings, then swaps the
     assert.ok(!fs.readdirSync(path.join(listing, 'assets')).some(f => f.startsWith('Archivo')), 'signal\'s font is gone');
   } finally { fs.rmSync(cwd, {recursive: true, force: true}); }
 });
+
+test('demo --3d draws real 3D phones, tilted, and running it again without the flag stands them back up', {timeout: 180_000}, () => {
+  const cwd = fs.mkdtempSync(path.join(os.tmpdir(), 'studio-demo-3d-'));
+  try {
+    const listing = path.join(cwd, 'screenshot-studio-demo', 'store-listing');
+    const deep = demo(cwd, '--3d');
+    assert.equal(deep.status, 0, deep.stdout + deep.stderr);
+    assert.doesNotMatch(deep.stdout, /warning/i);
+    assert.match(fs.readFileSync(path.join(listing, 'theme.js'), 'utf8'), /depth: true/);
+    assert.ok(JSON.parse(fs.readFileSync(path.join(listing, 'gallery.json'), 'utf8')).phone.every(card => card.layout.split(' ').includes('tilt')));
+    const flat = demo(cwd);
+    assert.equal(flat.status, 0, flat.stdout + flat.stderr);
+    assert.doesNotMatch(fs.readFileSync(path.join(listing, 'theme.js'), 'utf8'), /depth/);
+    assert.ok(JSON.parse(fs.readFileSync(path.join(listing, 'gallery.json'), 'utf8')).phone.every(card => !card.layout.includes('tilt')));
+  } finally { fs.rmSync(cwd, {recursive: true, force: true}); }
+});

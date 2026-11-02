@@ -12,7 +12,8 @@
      --copy-top, --copy-bottom   where the copy starts, and where it ends on hang cards
      --device-left, --device-right, --device-width, --device-top    the big device (and hang's, from --hang-top)
      --duo-left, --duo-right, --duo-width, --duo-second-width, --duo-top, --duo-step
-                              duo: the primary from the left, the secondary from the right, --duo-step lower */
+                              duo: the primary from the left, the secondary from the right, --duo-step lower
+     --tilt                   tilt: the device's pose, a CSS transform */
 @layer layouts {
   :root.portrait {
     --inset: calc(var(--canvas-width) * .078);
@@ -57,4 +58,8 @@
   .hang .device{left:var(--device-left);top:var(--hang-top);width:var(--device-width)}
   .duo .primary{left:var(--duo-left);top:var(--duo-top);width:var(--duo-width)}
   .duo .secondary{left:calc(var(--canvas-width) - var(--duo-right) - var(--duo-second-width));top:calc(var(--duo-top) + var(--duo-step));width:var(--duo-second-width);z-index:3}
+
+  /* tilt: any device turned in perspective, beside another layout word ("big tilt"). With a theme's `depth`, the turn
+     shows the device's real thickness. --tilt sets the pose. */
+  .tilt .device{transform:var(--tilt, perspective(2400px) rotateY(-18deg) rotateX(6deg) rotateZ(1.5deg))}
 }

@@ -382,6 +382,11 @@ export interface Theme {
   refit?(ctx: ThemeContext): void | Promise<void>;
   /** The background runs across cards (all galleries, or these); the exporter checks the seams. */
   continuous?: boolean | string[];
+  /**
+   * Draw phones and tablets as real 3D devices (three.js), in every gallery or in these: each takes its frame's size,
+   * corners and CSS `transform` as its pose, and `--device-body` as its color. A card opts out with the layout word `flat`.
+   */
+  depth?: boolean | string[];
 }
 
 /** What the renderer reports for one card. */
