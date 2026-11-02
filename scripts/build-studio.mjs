@@ -11,9 +11,9 @@ import {build} from 'rolldown';
 
 const root = path.resolve(import.meta.dirname, '..');
 const out = path.join(root, 'studio');
-const KEEP = new Set(['VERSION', 'package.json', 'index.html', 'assets']);
+const KEEP = new Set(['package.json', 'index.html', 'assets']);
 
-// Start clean, except the editor build and the version.
+// Start clean, except the editor build.
 for (const entry of fs.readdirSync(out)) if (!KEEP.has(entry)) fs.rmSync(path.join(out, entry), {recursive: true, force: true});
 
 const banner = '// Built from https://github.com/bernaferrari/screenshot-studio (src/). Edit the source, not this file.';
@@ -33,6 +33,8 @@ for (const [entry, file] of [['src/renderer/render.ts', 'render.js'], ['src/rend
   });
 }
 fs.chmodSync(path.join(out, 'studio.cjs'), 0o755);
+// The version the MCP server reports, from package.json.
+fs.writeFileSync(path.join(out, 'VERSION'), JSON.parse(fs.readFileSync(path.join(root, 'package.json'), 'utf8')).version + '\n');
 
 for (const file of ['preview.html', 'studio.css', 'layouts.css']) fs.copyFileSync(path.join(root, 'src/renderer', file), path.join(out, file));
 fs.copyFileSync(path.join(root, 'src/core/types.d.ts'), path.join(out, 'types.d.ts'));
