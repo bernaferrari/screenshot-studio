@@ -131,7 +131,7 @@ Every command takes `--help` for its options.
 - **Real screens only.** No painted UI or made-up numbers; sample data is fictional and lives in a capture build.
 - **Everything regenerates.** Words, layout and look are files in your repository; images are output.
 - **Each app keeps its look.** The studio is shared; the theme is yours.
-- **Nothing to vendor.** Apps keep only their words, look and captures; the studio comes from the package. Pin a version (`npx screenshot-studio@0.0.3`) if you like.
+- **Nothing to vendor.** Apps keep only their words, look and captures; the studio comes from the package. Pin a version (`npx screenshot-studio@0.0.4`) if you like.
 
 ## License
 
