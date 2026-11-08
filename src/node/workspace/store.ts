@@ -238,12 +238,12 @@ export function createWorkspaceStore({registryFile = process.env.SCREENSHOT_STUD
           previews: library.files.slice(0, 4).map(image => ({url: assetURL(project.id, image.file), source: 'capture', feature: path.basename(image.file)}))};
       }
       const config = read<StudioConfig>(path.join(listing, 'studio.json')), profiles = read<Profiles>(path.join(listing, 'profiles.json')), layout = read<Galleries>(path.join(listing, 'gallery.json'));
-      const {cardsFor, devicesFor, nodesFile, outputFile} = await import('../../core/gallery');
+      const {cardsFor, devicesFor, nodesFile, outputFile, requiredCopyFields} = await import('../../core/gallery');
       const reference = config.defaultLocale || 'en-US', languages = config.locales || [reference];
       if (!languages.length || languages.some(locale => !localePattern.test(locale))) throw Error('studio.json has an invalid language list.');
       const copy = read<Copy>(path.join(listing, reference, 'copy.json'), {});
       // A field left empty in the reference on purpose (README art without a headline) needs no translation.
-      const fields = Object.entries(copy).flatMap(([key, values]) => Object.entries(values).filter(([, text]) => typeof text === 'string' && text.trim()).map(([field]) => ({key, field})));
+      const fieldsFor = (locale: string) => requiredCopyFields(layout, profiles, copy, locale, reference);
       const raws = new Set<string>(), outputs: (Omit<Preview, 'url' | 'source'> & {kind: string; file: string; raws: string[]; mapped: string[]})[] = [], galleries: GallerySummary[] = [];
       const requiredRaws = (card: Card): string[] => [...devicesFor(card).map(d => d.raw), ...(card.callouts || []).map(c => c.raw).filter((raw): raw is string => Boolean(raw))];
       // Only callouts read layout maps: the capture each one lifts its region from.
@@ -264,6 +264,7 @@ export function createWorkspaceStore({registryFile = process.env.SCREENSHOT_STUD
         const requiredOutputs = outputs.filter(o => locale === reference || !o.defaultLocaleOnly);
         const raws = new Set(requiredOutputs.flatMap(o => o.raws));
         const own = read<Copy>(path.join(listing, locale, 'copy.json'), {});
+        const fields = fieldsFor(locale);
         const translated = fields.filter(({key, field}) => { const text = own?.[key]?.[field]; return typeof text === 'string' && text.trim(); }).length;
         const captures = [...raws].filter(raw => { const file = fileIn(locale, 'raw', raw); return file && exists(file); }).length;
         const mapped = new Set(requiredOutputs.flatMap(o => o.mapped));

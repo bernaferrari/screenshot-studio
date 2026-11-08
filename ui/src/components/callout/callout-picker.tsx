@@ -132,6 +132,7 @@ function Picker({
       const gallery = await request<Galleries>(
         asset(model.base, "../gallery.json"),
       );
+      const savedGallery = JSON.stringify(gallery);
       placeCallout(
         gallery,
         kind,
@@ -140,7 +141,7 @@ function Picker({
         device,
         card.callouts,
       );
-      await session.saveGallery(gallery);
+      await session.saveGallery(gallery, savedGallery);
       toast.success(clear ? "Callouts removed" : "Callout saved");
       onClose();
     } catch (e) {

@@ -34,3 +34,23 @@ test('init finds fastlane screenshots in every language and maps them onto one s
     assert.deepEqual(untranslated.map(issue => issue.file).sort(), ['de-DE/copy.json', 'zh-CN/copy.json']);
   } finally { fs.rmSync(app, {recursive: true, force: true}); }
 });
+
+test('init imports a single WebP screenshot from a folder', async t => {
+  const {chromium}=require('playwright');
+  const root=fs.mkdtempSync(path.join(os.tmpdir(),'studio-single-webp-'));
+  t.after(()=>fs.rmSync(root,{recursive:true,force:true}));
+  const browser=await chromium.launch();
+  let data;
+  try {
+    const page=await browser.newPage();
+    data=await page.evaluate(()=>{const c=document.createElement('canvas');c.width=400;c.height=800;return c.toDataURL('image/webp').split(',')[1];});
+  } finally {await browser.close();}
+  const shots=path.join(root,'shots');fs.mkdirSync(shots);fs.writeFileSync(path.join(shots,'01-home.webp'),Buffer.from(data,'base64'));
+  const app=path.join(root,'app');
+  const run=spawnSync(process.execPath,[STUDIO,'init',app,'--screenshots',shots],{encoding:'utf8'});
+  assert.equal(run.status,0,run.stdout+run.stderr);
+  const listing=path.join(app,'store-listing');
+  const gallery=JSON.parse(fs.readFileSync(path.join(listing,'gallery.json')));
+  assert.match(gallery.phone[0].raw,/\.webp$/);
+  assert.equal(checkListing(listing).ok,true);
+});

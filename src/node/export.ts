@@ -224,6 +224,7 @@ interface Run extends ListingFiles {
   tallies: LocaleTally[];
   /** Fastlane screenshots, in temp folders until the export succeeds. */
   staged: {shots: string; destination: string}[];
+  textFiles: {file: string; value: string}[];
   log: (line: string) => void;
   warn: (message: string) => void;
 }
@@ -256,19 +257,26 @@ export async function exportListing(options: ExportOptions = {}): Promise<Export
   const gallery = await import('../core/gallery');
   let server: Server | null = null, browser: Browser | null = null, queue: RenderQueue | null = null;
   try {
+    if (options.kind && options.kind !== 'strips' && !files.galleries[options.kind]) throw new Error(`Unknown gallery ${options.kind}. Choose ${Object.keys(files.galleries).join(', ')}.`);
+    if (options.card !== undefined) {
+      if (!Number.isInteger(options.card) || options.card < 0) throw new Error('--card must be a nonnegative integer.');
+      const kinds = Object.keys(files.galleries).filter(kind => !options.kind || kind === options.kind);
+      if (!kinds.some(kind => gallery.cardsFor(files.galleries, kind).length > options.card!)) throw new Error(`No card ${options.card} in the selected galleries.`);
+    }
     server = await serve(files.repo);
     const address = server.address();
     const port = typeof address === 'object' && address ? address.port : 0;
     const base = `http://127.0.0.1:${port}/${path.relative(files.repo, listing).split(path.sep).join('/')}`;
     browser = await launchBrowser();
     queue = renderQueue(Math.max(1, Math.floor(options.jobs || defaultJobs())), browser);
-    const run: Run = {...files, options, browser, base, queue, gallery, cards, tallies, staged, log, warn};
+    const run: Run = {...files, options, browser, base, queue, gallery, cards, tallies, staged, textFiles: [], log, warn};
     const plans = plan(run);
     let failures = 0;
     for (const locale of plans) if (!await writeLocale(run, locale)) failures++;
     if (failures) throw new Error(`--strict: ${failures} locale(s) still borrow ${files.defaultLocale} words, captures or callout positions`);
     if (options.strict && warnings.length) throw new Error(`--strict: ${warnings.length} warning(s)`);
     commitFastlane(staged);
+    for (const {file, value} of run.textFiles) { fs.mkdirSync(path.dirname(file), {recursive: true}); fs.writeFileSync(file, value); }
     return finish({ok: true, cards, warnings, locales: tallies});
   } catch (error) {
     return finish({ok: false, cards, warnings, locales: tallies, error: error instanceof Error ? error.message : String(error)});
@@ -392,7 +400,7 @@ async function writeLocale(run: Run, plan: LocalePlan): Promise<boolean> {
   for (const strip of plan.strips) await writeStrip(run, plan, strip, written);
   if (!options.kind && options.card === undefined) staleOutputs(run, plan, manifest, written);
   writeListingText(run, locale);
-  if (config.writeAssets !== false && !options.kind) fs.writeFileSync(path.join(dir, 'assets.json'), JSON.stringify(manifest, null, 2) + '\n');
+  if (config.writeAssets !== false && !options.kind && options.card === undefined) fs.writeFileSync(path.join(dir, 'assets.json'), JSON.stringify(manifest, null, 2) + '\n');
   run.tallies.push(tally);
   return !(options.strict && locale !== defaultLocale && (tally.untranslated || tally.borrowedCaptures || tally.fixedCallouts));
 }
@@ -494,10 +502,9 @@ function writeListingText(run: Run, locale: string) {
   for (const problem of words ? listingProblems(words, storeFor(run.config, run.profiles)) : []) run.warn(`${locale}/listing.json ${problem.message}`);
   if (!run.options.fastlane || !words) return;
   const dir = laneDir(run, locale);
-  fs.mkdirSync(dir, {recursive: true});
   for (const [field, name] of [['title', 'title'], ['shortDescription', 'short_description'], ['fullDescription', 'full_description']] as const) {
     const value = words[field];
-    if (typeof value === 'string') fs.writeFileSync(path.join(dir, `${name}.txt`), `${value.trimEnd()}\n`);
+    if (typeof value === 'string') run.textFiles.push({file: path.join(dir, `${name}.txt`), value: `${value.trimEnd()}\n`});
   }
 }
 

@@ -374,3 +374,19 @@ test("a language needs layout maps only for the captures its callouts lift from"
   const english = project.locales.find((l) => l.locale === "en-US");
   assert.deepEqual([english.layouts, english.expectedLayouts, english.next, english.complete], [0, 1, "layout", false]);
 });
+
+test('gallery saves reject a stale base and preserve the first edit', async t => {
+  const {createHash}=require('node:crypto');
+  const root=fs.mkdtempSync(path.join(os.tmpdir(),'studio-gallery-conflict-'));
+  t.after(()=>fs.rmSync(root,{recursive:true,force:true}));
+  const listing=path.join(root,'store-listing');fs.mkdirSync(listing);
+  const file=path.join(listing,'gallery.json');
+  const original={phone:[{feature:'home'}]};fs.writeFileSync(file,JSON.stringify(original));
+  const server=await serve(root,0,{editable:true});t.after(()=>server.close());
+  const url=`http://127.0.0.1:${server.address().port}/store-listing/gallery.json`;
+  const headers={'X-Studio-Base':createHash('sha256').update(JSON.stringify(original)).digest('hex')};
+  const first={phone:[{feature:'home',layout:'big'}]};
+  assert.equal((await fetch(url,{method:'PUT',headers,body:JSON.stringify(first)})).status,204);
+  assert.equal((await fetch(url,{method:'PUT',headers,body:JSON.stringify(original)})).status,409);
+  assert.deepEqual(JSON.parse(fs.readFileSync(file)),first);
+});

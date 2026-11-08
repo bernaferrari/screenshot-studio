@@ -1444,3 +1444,26 @@ test("store preview shows the cards at Play's thumbnail size on a phone-width pa
   await page.getByRole("button", { name: "Store preview", exact: true }).click();
   await active(page).locator(".canvas-surface").waitFor();
 });
+
+test('a racing gallery edit is preserved when the callout dialog saves', async t => {
+  const {page,base,projects,roots,write}=await setup(t);
+  const file=roots[0]+'/store-listing/gallery.json';
+  await page.goto(base+projects[0].editorURL+'?view=gallery');
+  await page.getByRole('button',{name:'Pick callout',exact:true}).click();
+  const dialog=page.getByRole('dialog',{name:'Pick a callout',exact:true});
+  await dialog.getByRole('combobox',{name:'Find accessibility element',exact:true}).fill('Suggested');
+  await dialog.getByRole('option').first().click();
+  let concurrent;
+  await page.route('**/gallery.json',async route=>{
+    if(route.request().method()==='PUT') {
+      assert.ok(route.request().headers()['x-studio-base']);
+      concurrent=JSON.parse(fs.readFileSync(file));concurrent.phone[0].layout='concurrent-edit';write(file,concurrent);
+    }
+    await route.continue();
+  });
+  const response=page.waitForResponse(r=>r.url().endsWith('/gallery.json')&&r.request().method()==='PUT');
+  await dialog.getByRole('button',{name:"Save as this card's callout",exact:true}).click();
+  assert.equal((await response).status(),409);
+  assert.deepEqual(JSON.parse(fs.readFileSync(file)),concurrent);
+  assert.ok(await dialog.isVisible());
+});

@@ -185,6 +185,7 @@ export async function recapture(options: RecaptureOptions = {}): Promise<Recaptu
           const wanted = spec.locales || 'all';
           if (wanted === 'default' ? locale !== defaultLocale : Array.isArray(wanted) && !wanted.includes(locale)) continue;
           const runProfiles = (spec.profiles || captureProfiles).filter(name => !options.profile || name === options.profile);
+          if (!runProfiles.length) continue;
           if (options.dryRun) { log(`$ tour ${path.relative(repo, tour)} --locale ${locale} --profile ${runProfiles.join(',')}`); continue; }
           const tourOptions = Object.fromEntries(Object.entries(spec.options || {}).map(([key, value]) => [key, typeof value === 'string' ? expand(value) : value]));
           const attempts = (capture.retries ?? 2) + 1;
@@ -202,9 +203,12 @@ export async function recapture(options: RecaptureOptions = {}): Promise<Recaptu
     }
     if (options.export !== false) {
       // One language's export failing (copy that no longer fits, say) does not stop the others.
-      result.failedExports = locales.filter(locale => !run(capture.export
-        ? capture.export.replaceAll('{locale}', locale)
-        : [process.execPath, path.join(STUDIO_DIR, 'studio.cjs'), 'export', '--listing', listing, '--locale', locale].map(word => JSON.stringify(word)).join(' '), {check: false}));
+      result.failedExports = locales.filter(locale => {
+        if (capture.export) return !run(capture.export.replaceAll('{locale}', locale), {check: false});
+        const args = [path.join(STUDIO_DIR, 'studio.cjs'), 'export', '--listing', listing, '--locale', locale];
+        log(`\n$ ${[process.execPath, ...args].join(' ')}`);
+        return !options.dryRun && spawnSync(process.execPath, args, {cwd: repo, env, stdio: 'inherit'}).status !== 0;
+      });
       if (result.failedExports.length) throw new Error(`Export failed for ${result.failedExports.join(', ')}; captures are in place. Fix those and export again.`);
       for (const command of capture.after || []) run(command);
     }

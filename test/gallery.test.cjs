@@ -54,3 +54,13 @@ test('single-capture shorthand preserves its frame override', async () => {
   const {devicesFor} = await Promise.resolve(require('../studio/studio.cjs'));
   assert.deepEqual(devicesFor({raw:'home.png',frame:'none'}), [{raw:'home.png',frame:'none'}]);
 });
+
+test('blank reference fields need no translation and required words follow locale galleries', async () => {
+  const {withCopy, requiredCopyFields} = await load();
+  assert.deepEqual(withCopy({feature:'home'}, 'phone', {home:{title:'Hallo'}}, {home:{title:'Hello',body:''}}).missing, []);
+  const galleries = {phone:[{feature:'home'}], readme:[{feature:'hero'}]};
+  const profiles = {phone:{},readme:{defaultLocaleOnly:true}};
+  const copy = {home:{title:'Hello',body:''},hero:{title:'README'}};
+  assert.deepEqual(requiredCopyFields(galleries,profiles,copy,'de-DE','en-US'), [{key:'home',field:'title'}]);
+  assert.equal(requiredCopyFields(galleries,profiles,copy,'en-US','en-US').length,2);
+});

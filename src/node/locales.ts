@@ -7,8 +7,7 @@
  */
 import fs from 'node:fs';
 import path from 'node:path';
-import type {Copy} from '../core/types';
-import {cardsFor, devicesFor, nodesFile} from '../core/gallery';
+import {cardsFor, devicesFor, nodesFile, requiredCopyFields} from '../core/gallery';
 import {loadListing, readCopy, writeJson, type ListingFiles, requireListing} from './project';
 
 export interface Tally {
@@ -65,26 +64,23 @@ const mapped = ({galleries, profiles, defaultLocale}: ListingFiles, locale: stri
   .filter(kind => locale === defaultLocale || !profiles[kind]?.defaultLocaleOnly)
   .flatMap(kind => cardsFor(galleries, kind).flatMap(card => (card.callouts || []).map(c => c.raw || devicesFor(card)[c.device || 0]?.raw).filter((raw): raw is string => !!raw))))];
 
-const fieldCount = (copy: Copy): number => Object.values(copy).reduce((n, entry) => n + Object.keys(entry).length, 0);
 
 /** How far each locale is: words translated, captures present and layout sidecars beside them. */
 export function localeCoverage(listing?: string): CoverageReport {
   const files = loadListing(resolveListing(listing));
   const {defaultLocale, locales} = files;
   const defaultCopy = readCopy(files.listing, defaultLocale);
-  const fields = fieldCount(defaultCopy);
+  const fields = requiredCopyFields(files.galleries, files.profiles, defaultCopy, defaultLocale, defaultLocale).length;
   const rows = locales.map((locale): LocaleCoverage => {
     const raws = [...capturesFor(files, locale)];
     const copy = readCopy(files.listing, locale);
-    let done = 0;
-    for (const [key, entry] of Object.entries(defaultCopy)) {
-      for (const field of Object.keys(entry)) if (copy[key]?.[field]?.trim()) done++;
-    }
+    const required = requiredCopyFields(files.galleries, files.profiles, defaultCopy, locale, defaultLocale);
+    const done = required.filter(({key, field}) => copy[key]?.[field]?.trim()).length;
     const exists = (file: string) => fs.existsSync(path.join(files.listing, locale, 'raw', file));
     return {
       locale,
       isDefault: locale === defaultLocale,
-      words: {done, total: fields},
+      words: {done, total: required.length},
       captures: {done: raws.filter(raw => exists(raw)).length, total: raws.length},
       // Layout maps matter only for the captures callouts lift from, to follow their element into this language.
       sidecars: {done: mapped(files, locale).filter(raw => exists(nodesFile(raw))).length, total: mapped(files, locale).length},

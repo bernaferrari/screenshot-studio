@@ -90,3 +90,14 @@ test('icons says which layer is missing or misdrawn', t => {
   assert.equal(run.status, 1);
   assert.match(run.stderr, /store-listing\/brand\/foreground\.svg must be an <svg viewBox="0 0 108 108">/);
 });
+
+test('Apple icon bundles preserve custom background layer names', t => {
+  const root=app(t),brand=path.join(root,'store-listing/brand');
+  fs.writeFileSync(path.join(brand,'icon.json'),JSON.stringify({files:[{path:'Test.icon',apple:{Backdrop:'background',Mark:'foreground'}}]}));
+  const run=icons([],root);assert.equal(run.status,0,run.stderr);
+  const bundle=path.join(root,'Test.icon');
+  const json=JSON.parse(fs.readFileSync(path.join(bundle,'icon.json')));
+  const background=json.groups[0].layers.find(l=>l.name==='Backdrop');
+  assert.equal(background['image-name'],'Backdrop.png');
+  for(const layer of json.groups[0].layers) assert.ok(fs.existsSync(path.join(bundle,'Assets',layer['image-name'])));
+});

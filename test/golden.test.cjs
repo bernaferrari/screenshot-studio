@@ -45,7 +45,7 @@ test.after(async () => { await browser?.close(); });
 async function pixels(file) {
   const page = await browser.newPage();
   try {
-    return await page.evaluate(async ({data, width}) => {
+    const result = await page.evaluate(async ({data, width}) => {
       const image = new Image();
       image.src = data;
       await image.decode();
@@ -58,8 +58,13 @@ async function pixels(file) {
       encoded.src = jpeg;
       await encoded.decode();
       context.drawImage(encoded, 0, 0);
-      return {width, height, rgba: Array.from(context.getImageData(0, 0, width, height).data), jpeg: jpeg.split(',')[1]};
+      const rgba = context.getImageData(0, 0, width, height).data;
+      // A string avoids Playwright serializing a separate protocol value for every channel.
+      let binary = '';
+      for (let i = 0; i < rgba.length; i += 8192) binary += String.fromCharCode(...rgba.subarray(i, i + 8192));
+      return {width, height, rgba: btoa(binary), jpeg: jpeg.split(',')[1]};
     }, {data: `data:image/${file.endsWith('.png') ? 'png' : 'jpeg'};base64,${fs.readFileSync(file).toString('base64')}`, width: WIDTH});
+    return {...result, rgba: Buffer.from(result.rgba, 'base64')};
   } finally { await page.close(); }
 }
 
@@ -86,11 +91,12 @@ for (const theme of themes) {
         const name = card.file.replace(/^en-US\//, '').replace(/[/\\]/g, '__').replace(/\.(jpe?g|png)$/, '.jpg');
         const golden = path.join(GOLDEN, theme, name);
         const actual = await pixels(path.join(listing, card.file));
-        if (UPDATE || !fs.existsSync(golden)) {
+        if (UPDATE) {
           fs.mkdirSync(path.dirname(golden), {recursive: true});
           fs.writeFileSync(golden, Buffer.from(actual.jpeg, 'base64'));
           continue;
         }
+        assert.ok(fs.existsSync(golden), `Missing golden ${golden}. Review and regenerate with UPDATE_GOLDEN=1.`);
         const share = difference(actual, await pixels(golden));
         if (share > TOLERANCE) {
           const out = path.join(os.tmpdir(), 'golden-failures', theme, name);

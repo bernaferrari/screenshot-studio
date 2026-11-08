@@ -121,7 +121,7 @@ export {checkListing, formatIssues, imageSize} from '../node/check';
 export {loadListing, findListing, requireListing, readJson, writeJson} from '../node/project';
 export {serve} from '../node/server';
 export {createWorkspaceStore} from '../node/workspace/store';
-export {cardsFor, withCopy, copyKeys, devicesFor, outputFile, nodesFile, followCallout, withoutMeta} from '../core/gallery';
+export {cardsFor, withCopy, copyKeys, devicesFor, outputFile, nodesFile, followCallout, withoutMeta, requiredCopyFields} from '../core/gallery';
 export {validate} from '../core/validate';
 export {matcher, TapMap} from '../node/capture/screen';
 

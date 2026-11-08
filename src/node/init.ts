@@ -130,7 +130,7 @@ function galleryFor(width: number, height: number): {kind: string; profile: Prof
  * to set the order), or a comma-separated list of files in the order given.
  */
 function screenshotFiles(source: string): {folder: string; images: string[]} {
-  if (source.includes(',')) {
+  if (source.includes(',') || (fs.existsSync(source) && fs.statSync(source).isFile())) {
     const files = source.split(',').map(file => path.resolve(file.trim()));
     for (const file of files) if (!fs.existsSync(file) || !isImage(file)) throw new Error(`${file} isn't a PNG, JPEG or WebP image`);
     return {folder: '', images: files};

@@ -46,7 +46,7 @@ export function LanguagesView({
   const [query, setQuery] = useState(""),
     [filter, setFilter] = useState<Filter>("all");
   const rows: Row[] = model.locales.map((locale) => {
-    const copy = copyCoverage(session.drafts, model.reference, locale),
+    const copy = copyCoverage(session.drafts, model.reference, locale, model),
       saved = summary?.locales.find((l) => l.locale === locale),
       copyDone = copy.translated === copy.total,
       status: [string, Tone] = !copyDone

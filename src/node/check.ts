@@ -7,7 +7,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import {validate, type Schema} from '../core/validate';
-import {cardsFor, devicesFor} from '../core/gallery';
+import {cardsFor, devicesFor, requiredCopyFields} from '../core/gallery';
 import {readJson, requireListing, STUDIO_DIR} from './project';
 import type {Copy, Galleries, Listing, Profiles, StudioConfig} from '../core/types';
 import {isStoreGallery, listingProblems, SCREENSHOT_LIMIT, storeFor} from '../core/stores';
@@ -33,13 +33,27 @@ export interface CheckResult {
 }
 
 
-/** Width and height of a PNG or JPEG, read from its header. */
+/** Width and height of a PNG, JPEG or WebP, read from its header. */
 export function imageSize(file: string): {width: number; height: number} | null {
   const fd = fs.openSync(file, 'r');
   try {
     const head = Buffer.alloc(64 * 1024);
     const length = fs.readSync(fd, head, 0, head.length, 0);
     if (head.readUInt32BE(0) === 0x89504e47) return {width: head.readUInt32BE(16), height: head.readUInt32BE(20)};
+    if (head.toString('ascii', 0, 4) === 'RIFF' && head.toString('ascii', 8, 12) === 'WEBP') {
+      for (let offset = 12; offset + 8 <= length;) {
+        const type = head.toString('ascii', offset, offset + 4), size = head.readUInt32LE(offset + 4), data = offset + 8;
+        if (data + Math.min(size, 10) > length) break;
+        if (type === 'VP8X' && size >= 10) return {width: 1 + head.readUIntLE(data + 4, 3), height: 1 + head.readUIntLE(data + 7, 3)};
+        if (type === 'VP8 ' && size >= 10 && head[data + 3] === 0x9d && head[data + 4] === 0x01 && head[data + 5] === 0x2a)
+          return {width: head.readUInt16LE(data + 6) & 0x3fff, height: head.readUInt16LE(data + 8) & 0x3fff};
+        if (type === 'VP8L' && size >= 5 && head[data] === 0x2f) {
+          const bits = head.readUInt32LE(data + 1);
+          return {width: (bits & 0x3fff) + 1, height: ((bits >>> 14) & 0x3fff) + 1};
+        }
+        offset = data + size + (size % 2);
+      }
+    }
     if (head[0] === 0xff && head[1] === 0xd8) {
       for (let i = 2; i + 9 < length;) {
         if (head[i] !== 0xff) { i++; continue; }
@@ -70,8 +84,9 @@ export function checkListing(listingDir?: string): CheckResult {
     let value: T;
     try { value = readJson<T>(full); } catch (e) { error(file, (e as Error).message); return null; }
     const definition = readJson<Schema | null>(path.join(schemas, `${schema}.schema.json`), null);
-    if (definition) for (const problem of validate(value, definition)) error(file, problem.message, {path: problem.path});
-    return value;
+    const problems = definition ? validate(value, definition) : [];
+    for (const problem of problems) error(file, problem.message, {path: problem.path});
+    return problems.length ? null : value;
   };
 
   const config = load<StudioConfig>('studio.json', 'studio');
@@ -89,6 +104,7 @@ export function checkListing(listingDir?: string): CheckResult {
   // Real device ratios: every capture must match one of the configured capture sizes, in either orientation.
   const ratios = Object.values(profiles).filter(p => p.captureWidth && p.captureHeight).flatMap(p => [p.captureWidth! / p.captureHeight!, p.captureHeight! / p.captureWidth!]);
   const defaultCopy = load<Copy>(`${defaultLocale}/copy.json`, 'copy', {}) || {};
+  const resolvedGalleries: Galleries = {};
   const used = new Set<string>();
   const checkedRaws = new Set<string>();
 
@@ -96,6 +112,7 @@ export function checkListing(listingDir?: string): CheckResult {
     if (!profiles[kind]) { error('gallery.json', `gallery "${kind}" has no profile`, {path: kind, fix: `Add "${kind}" to profiles.json with its width and height.`}); continue; }
     let cards;
     try { cards = cardsFor(galleries, kind); } catch (e) { error('gallery.json', (e as Error).message, {path: kind}); continue; }
+    resolvedGalleries[kind] = cards;
     counted.galleries++;
     if (isStoreGallery(kind, profiles[kind], config) && cards.length > SCREENSHOT_LIMIT[store])
       warn('gallery.json', `"${kind}" has ${cards.length} cards; ${store} takes at most ${SCREENSHOT_LIMIT[store]} per device type`, {path: kind, code: 'store-limit',
@@ -136,7 +153,7 @@ export function checkListing(listingDir?: string): CheckResult {
     if (typeof value === 'string' && PLACEHOLDER.test(value)) warn(`${defaultLocale}/copy.json`, `is still the starter placeholder`, {path: `${key}.${field}`, code: 'placeholder',
       fix: field === 'title' ? 'Write a benefit headline for this screen: what it does for the person, in a few words.' : 'Write one short line that backs the headline up.'});
   for (const locale of locales) {
-    const words = readJson<Listing | null>(path.join(listing, locale, 'listing.json'), null);
+    const words = load<Listing | null>(`${locale}/listing.json`, 'listing', null);
     for (const [field, value] of Object.entries(words || {}))
       if (typeof value === 'string' && PLACEHOLDER.test(value)) warn(`${locale}/listing.json`, `is still the starter placeholder`, {path: field, code: 'placeholder', fix: 'Write the store text.'});
   }
@@ -149,13 +166,13 @@ export function checkListing(listingDir?: string): CheckResult {
       else {
         // Words still to translate: every field the default language fills in, empty here.
         const copy = load<Copy>(file, 'copy') || {};
-        const missing = Object.entries(defaultCopy).flatMap(([key, entry]) => Object.entries(entry || {})
-          .filter(([field, text]) => typeof text === 'string' && text.trim() && !copy[key]?.[field]?.trim()).map(([field]) => `${key}.${field}`));
+        const missing = requiredCopyFields(resolvedGalleries, profiles, defaultCopy, locale, defaultLocale)
+          .filter(({key, field}) => !copy[key]?.[field]?.trim()).map(({key, field}) => `${key}.${field}`);
         if (missing.length) warn(file, `${missing.length} field(s) not translated yet; those cards show ${defaultLocale} words: ${missing.slice(0, 6).join(', ')}${missing.length > 6 ? ', …' : ''}`,
           {code: 'untranslated', fix: `Translate each empty field from ${defaultLocale}/copy.json, keeping its *highlight* and line breaks.`});
       }
     }
-    const words = readJson<Listing | null>(path.join(listing, locale, 'listing.json'), null);
+    const words = load<Listing | null>(`${locale}/listing.json`, 'listing', null);
     for (const problem of words ? listingProblems(words, store) : []) error(`${locale}/listing.json`, problem.message, {path: problem.field});
   }
   return {ok: !issues.some(issue => issue.level === 'error'), issues, counted};

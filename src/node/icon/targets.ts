@@ -101,7 +101,7 @@ async function writeAppleIcon(out: Output, bundle: string, layers: Record<string
     const names = Object.keys(layers).filter(name => layers[name] !== 'background');
     out.write(json, JSON.stringify({
       groups: [{layers: [...names.map(name => ({'image-name': `${name}.png`, name})),
-        ...(Object.values(layers).includes('background') ? [{'image-name': 'Background.png', name: 'Background', glass: false}] : [])],
+        ...Object.entries(layers).filter(([, layer]) => layer === 'background').map(([name]) => ({'image-name': `${name}.png`, name, glass: false}))],
         shadow: {kind: 'neutral', opacity: 0.3}, translucency: {enabled: true, value: 0.15}}],
       'supported-platforms': {squares: 'shared'},
     }, null, 2) + '\n');

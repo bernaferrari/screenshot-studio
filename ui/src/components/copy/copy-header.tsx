@@ -21,7 +21,7 @@ export function CopyHeader({
   locale: string;
   route: Route;
 }) {
-  const coverage = copyCoverage(session.drafts, model.reference, locale);
+  const coverage = copyCoverage(session.drafts, model.reference, locale, model);
   return (
     <div className="flex flex-wrap items-center gap-3">
       <Button

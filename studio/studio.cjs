@@ -150,6 +150,7 @@ var gallery_exports = /* @__PURE__ */ __exportAll({
 	followCallout: () => followCallout,
 	nodesFile: () => nodesFile,
 	outputFile: () => outputFile,
+	requiredCopyFields: () => requiredCopyFields,
 	withCopy: () => withCopy,
 	withoutMeta: () => withoutMeta
 });
@@ -185,7 +186,7 @@ function withCopy(card, kind, copy = {}, fallback = {}) {
 	const own = Object.assign({}, ...keys.map((k) => copy[k] || {}));
 	const base = Object.assign({}, ...keys.map((k) => fallback[k] || {}));
 	const empty = (value) => typeof value === "string" && !value.trim();
-	const missing = Object.keys(base).filter((field) => !(field in own) || empty(own[field]));
+	const missing = Object.keys(base).filter((field) => !empty(base[field]) && (!(field in own) || empty(own[field])));
 	const translated = Object.fromEntries(Object.entries(own).filter(([, value]) => !empty(value)));
 	return {
 		card: {
@@ -253,6 +254,23 @@ function followCallout(box, reference, localized) {
 	].every(Number.isFinite) || moved.w <= 0 || moved.h <= 0 || moved.x < 0 || moved.y < 0) return null;
 	if (localized.width && moved.x + moved.w > localized.width || localized.height && moved.y + moved.h > localized.height) return null;
 	return moved;
+}
+/** Nonempty reference fields read by the cards rendered in a locale. */
+function requiredCopyFields(galleries, profiles, reference, locale, defaultLocale) {
+	const fields = /* @__PURE__ */ new Map();
+	for (const kind of Object.keys(galleries)) {
+		if (locale !== defaultLocale && profiles[kind]?.defaultLocaleOnly) continue;
+		for (const card of cardsFor(galleries, kind)) {
+			const keys = card.sharedCopy === false ? [`${kind}/${card.feature}`] : [card.feature, `${kind}/${card.feature}`];
+			const owners = /* @__PURE__ */ new Map();
+			for (const key of keys) for (const field of Object.keys(reference[key] || {})) owners.set(field, key);
+			for (const [field, key] of owners) if (reference[key]?.[field]?.trim()) fields.set(`${key}\0${field}`, {
+				key,
+				field
+			});
+		}
+	}
+	return [...fields.values()];
 }
 var devicesFor, outputFile, nodesFile;
 var init_gallery = __esmMin((() => {
@@ -405,7 +423,7 @@ var check_exports = /* @__PURE__ */ __exportAll({
 	imageSize: () => imageSize,
 	run: () => run$11
 });
-/** Width and height of a PNG or JPEG, read from its header. */
+/** Width and height of a PNG, JPEG or WebP, read from its header. */
 function imageSize(file) {
 	const fd = node_fs.default.openSync(file, "r");
 	try {
@@ -415,6 +433,26 @@ function imageSize(file) {
 			width: head.readUInt32BE(16),
 			height: head.readUInt32BE(20)
 		};
+		if (head.toString("ascii", 0, 4) === "RIFF" && head.toString("ascii", 8, 12) === "WEBP") for (let offset = 12; offset + 8 <= length;) {
+			const type = head.toString("ascii", offset, offset + 4), size = head.readUInt32LE(offset + 4), data = offset + 8;
+			if (data + Math.min(size, 10) > length) break;
+			if (type === "VP8X" && size >= 10) return {
+				width: 1 + head.readUIntLE(data + 4, 3),
+				height: 1 + head.readUIntLE(data + 7, 3)
+			};
+			if (type === "VP8 " && size >= 10 && head[data + 3] === 157 && head[data + 4] === 1 && head[data + 5] === 42) return {
+				width: head.readUInt16LE(data + 6) & 16383,
+				height: head.readUInt16LE(data + 8) & 16383
+			};
+			if (type === "VP8L" && size >= 5 && head[data] === 47) {
+				const bits = head.readUInt32LE(data + 1);
+				return {
+					width: (bits & 16383) + 1,
+					height: (bits >>> 14 & 16383) + 1
+				};
+			}
+			offset = data + size + size % 2;
+		}
 		if (head[0] === 255 && head[1] === 216) for (let i = 2; i + 9 < length;) {
 			if (head[i] !== 255) {
 				i++;
@@ -473,8 +511,9 @@ function checkListing(listingDir) {
 			return null;
 		}
 		const definition = readJson(node_path.default.join(schemas, `${schema}.schema.json`), null);
-		if (definition) for (const problem of validate(value, definition)) error(file, problem.message, { path: problem.path });
-		return value;
+		const problems = definition ? validate(value, definition) : [];
+		for (const problem of problems) error(file, problem.message, { path: problem.path });
+		return problems.length ? null : value;
 	};
 	const config = load("studio.json", "studio");
 	const profiles = load("profiles.json", "profiles");
@@ -495,6 +534,7 @@ function checkListing(listingDir) {
 	for (const file of ["theme.css"]) if (!node_fs.default.existsSync(node_path.default.join(listing, file))) warn(file, "is missing; cards render unstyled");
 	const ratios = Object.values(profiles).filter((p) => p.captureWidth && p.captureHeight).flatMap((p) => [p.captureWidth / p.captureHeight, p.captureHeight / p.captureWidth]);
 	const defaultCopy = load(`${defaultLocale}/copy.json`, "copy", {}) || {};
+	const resolvedGalleries = {};
 	const used = /* @__PURE__ */ new Set();
 	const checkedRaws = /* @__PURE__ */ new Set();
 	for (const kind of Object.keys(galleries)) {
@@ -512,6 +552,7 @@ function checkListing(listingDir) {
 			error("gallery.json", e.message, { path: kind });
 			continue;
 		}
+		resolvedGalleries[kind] = cards;
 		counted.galleries++;
 		if (isStoreGallery(kind, profiles[kind], config) && cards.length > SCREENSHOT_LIMIT[store]) warn("gallery.json", `"${kind}" has ${cards.length} cards; ${store} takes at most ${SCREENSHOT_LIMIT[store]} per device type`, {
 			path: kind,
@@ -559,7 +600,7 @@ function checkListing(listingDir) {
 		fix: field === "title" ? "Write a benefit headline for this screen: what it does for the person, in a few words." : "Write one short line that backs the headline up."
 	});
 	for (const locale of locales) {
-		const words = readJson(node_path.default.join(listing, locale, "listing.json"), null);
+		const words = load(`${locale}/listing.json`, "listing", null);
 		for (const [field, value] of Object.entries(words || {})) if (typeof value === "string" && PLACEHOLDER.test(value)) warn(`${locale}/listing.json`, `is still the starter placeholder`, {
 			path: field,
 			code: "placeholder",
@@ -576,14 +617,14 @@ function checkListing(listingDir) {
 			if (!node_fs.default.existsSync(node_path.default.join(listing, file))) warn(file, "is missing; this language shows the default words", { fix: `Run \`npx screenshot-studio locales --init ${locale}\`.` });
 			else {
 				const copy = load(file, "copy") || {};
-				const missing = Object.entries(defaultCopy).flatMap(([key, entry]) => Object.entries(entry || {}).filter(([field, text]) => typeof text === "string" && text.trim() && !copy[key]?.[field]?.trim()).map(([field]) => `${key}.${field}`));
+				const missing = requiredCopyFields(resolvedGalleries, profiles, defaultCopy, locale, defaultLocale).filter(({ key, field }) => !copy[key]?.[field]?.trim()).map(({ key, field }) => `${key}.${field}`);
 				if (missing.length) warn(file, `${missing.length} field(s) not translated yet; those cards show ${defaultLocale} words: ${missing.slice(0, 6).join(", ")}${missing.length > 6 ? ", …" : ""}`, {
 					code: "untranslated",
 					fix: `Translate each empty field from ${defaultLocale}/copy.json, keeping its *highlight* and line breaks.`
 				});
 			}
 		}
-		const words = readJson(node_path.default.join(listing, locale, "listing.json"), null);
+		const words = load(`${locale}/listing.json`, "listing", null);
 		for (const problem of words ? listingProblems(words, store) : []) error(`${locale}/listing.json`, problem.message, { path: problem.field });
 	}
 	return {
@@ -823,14 +864,11 @@ function createWorkspaceStore({ registryFile = process.env.SCREENSHOT_STUDIO_PRO
 				};
 			}
 			const config = readJson(node_path.default.join(listing, "studio.json")), profiles = readJson(node_path.default.join(listing, "profiles.json")), layout = readJson(node_path.default.join(listing, "gallery.json"));
-			const { cardsFor, devicesFor, nodesFile, outputFile } = await Promise.resolve().then(() => (init_gallery(), gallery_exports));
+			const { cardsFor, devicesFor, nodesFile, outputFile, requiredCopyFields } = await Promise.resolve().then(() => (init_gallery(), gallery_exports));
 			const reference = config.defaultLocale || "en-US", languages = config.locales || [reference];
 			if (!languages.length || languages.some((locale) => !localePattern.test(locale))) throw Error("studio.json has an invalid language list.");
 			const copy = readJson(node_path.default.join(listing, reference, "copy.json"), {});
-			const fields = Object.entries(copy).flatMap(([key, values]) => Object.entries(values).filter(([, text]) => typeof text === "string" && text.trim()).map(([field]) => ({
-				key,
-				field
-			})));
+			const fieldsFor = (locale) => requiredCopyFields(layout, profiles, copy, locale, reference);
 			const raws = /* @__PURE__ */ new Set(), outputs = [], galleries = [];
 			const requiredRaws = (card) => [...devicesFor(card).map((d) => d.raw), ...(card.callouts || []).map((c) => c.raw).filter((raw) => Boolean(raw))];
 			const mappedRaws = (card) => (card.callouts || []).map((c) => c.raw || devicesFor(card)[c.device || 0]?.raw).filter((raw) => Boolean(raw));
@@ -877,6 +915,7 @@ function createWorkspaceStore({ registryFile = process.env.SCREENSHOT_STUDIO_PRO
 				const requiredOutputs = outputs.filter((o) => locale === reference || !o.defaultLocaleOnly);
 				const raws = new Set(requiredOutputs.flatMap((o) => o.raws));
 				const own = readJson(node_path.default.join(listing, locale, "copy.json"), {});
+				const fields = fieldsFor(locale);
 				const translated = fields.filter(({ key, field }) => {
 					const text = own?.[key]?.[field];
 					return typeof text === "string" && text.trim();
@@ -1910,6 +1949,11 @@ async function exportListing(options = {}) {
 	const gallery = await Promise.resolve().then(() => (init_gallery(), gallery_exports));
 	let server = null, browser = null, queue = null;
 	try {
+		if (options.kind && options.kind !== "strips" && !files.galleries[options.kind]) throw new Error(`Unknown gallery ${options.kind}. Choose ${Object.keys(files.galleries).join(", ")}.`);
+		if (options.card !== void 0) {
+			if (!Number.isInteger(options.card) || options.card < 0) throw new Error("--card must be a nonnegative integer.");
+			if (!Object.keys(files.galleries).filter((kind) => !options.kind || kind === options.kind).some((kind) => gallery.cardsFor(files.galleries, kind).length > options.card)) throw new Error(`No card ${options.card} in the selected galleries.`);
+		}
 		server = await serve(files.repo);
 		const address = server.address();
 		const base = `http://127.0.0.1:${typeof address === "object" && address ? address.port : 0}/${node_path.default.relative(files.repo, listing).split(node_path.default.sep).join("/")}`;
@@ -1925,6 +1969,7 @@ async function exportListing(options = {}) {
 			cards,
 			tallies,
 			staged,
+			textFiles: [],
 			log,
 			warn
 		};
@@ -1934,6 +1979,10 @@ async function exportListing(options = {}) {
 		if (failures) throw new Error(`--strict: ${failures} locale(s) still borrow ${files.defaultLocale} words, captures or callout positions`);
 		if (options.strict && warnings.length) throw new Error(`--strict: ${warnings.length} warning(s)`);
 		commitFastlane(staged);
+		for (const { file, value } of run.textFiles) {
+			node_fs.default.mkdirSync(node_path.default.dirname(file), { recursive: true });
+			node_fs.default.writeFileSync(file, value);
+		}
 		return finish({
 			ok: true,
 			cards,
@@ -2116,7 +2165,7 @@ async function writeLocale(run, plan) {
 	for (const strip of plan.strips) await writeStrip(run, plan, strip, written);
 	if (!options.kind && options.card === void 0) staleOutputs(run, plan, manifest, written);
 	writeListingText(run, locale);
-	if (config.writeAssets !== false && !options.kind) node_fs.default.writeFileSync(node_path.default.join(dir, "assets.json"), JSON.stringify(manifest, null, 2) + "\n");
+	if (config.writeAssets !== false && !options.kind && options.card === void 0) node_fs.default.writeFileSync(node_path.default.join(dir, "assets.json"), JSON.stringify(manifest, null, 2) + "\n");
 	run.tallies.push(tally);
 	return !(options.strict && locale !== defaultLocale && (tally.untranslated || tally.borrowedCaptures || tally.fixedCallouts));
 }
@@ -2255,14 +2304,16 @@ function writeListingText(run, locale) {
 	for (const problem of words ? listingProblems(words, storeFor(run.config, run.profiles)) : []) run.warn(`${locale}/listing.json ${problem.message}`);
 	if (!run.options.fastlane || !words) return;
 	const dir = laneDir(run, locale);
-	node_fs.default.mkdirSync(dir, { recursive: true });
 	for (const [field, name] of [
 		["title", "title"],
 		["shortDescription", "short_description"],
 		["fullDescription", "full_description"]
 	]) {
 		const value = words[field];
-		if (typeof value === "string") node_fs.default.writeFileSync(node_path.default.join(dir, `${name}.txt`), `${value.trimEnd()}\n`);
+		if (typeof value === "string") run.textFiles.push({
+			file: node_path.default.join(dir, `${name}.txt`),
+			value: `${value.trimEnd()}\n`
+		});
 	}
 }
 /** Replace each fastlane screenshot folder's images with the staged ones; only a successful export gets here. */
@@ -3643,6 +3694,7 @@ async function recapture(options = {}) {
 				const wanted = spec.locales || "all";
 				if (wanted === "default" ? locale !== defaultLocale : Array.isArray(wanted) && !wanted.includes(locale)) continue;
 				const runProfiles = (spec.profiles || captureProfiles).filter((name) => !options.profile || name === options.profile);
+				if (!runProfiles.length) continue;
 				if (options.dryRun) {
 					log(`$ tour ${node_path.default.relative(repo, tour)} --locale ${locale} --profile ${runProfiles.join(",")}`);
 					continue;
@@ -3673,15 +3725,23 @@ async function recapture(options = {}) {
 			}
 		}
 		if (options.export !== false) {
-			result.failedExports = locales.filter((locale) => !run(capture.export ? capture.export.replaceAll("{locale}", locale) : [
-				process.execPath,
-				node_path.default.join(STUDIO_DIR, "studio.cjs"),
-				"export",
-				"--listing",
-				listing,
-				"--locale",
-				locale
-			].map((word) => JSON.stringify(word)).join(" "), { check: false }));
+			result.failedExports = locales.filter((locale) => {
+				if (capture.export) return !run(capture.export.replaceAll("{locale}", locale), { check: false });
+				const args = [
+					node_path.default.join(STUDIO_DIR, "studio.cjs"),
+					"export",
+					"--listing",
+					listing,
+					"--locale",
+					locale
+				];
+				log(`\n$ ${[process.execPath, ...args].join(" ")}`);
+				return !options.dryRun && (0, node_child_process.spawnSync)(process.execPath, args, {
+					cwd: repo,
+					env,
+					stdio: "inherit"
+				}).status !== 0;
+			});
 			if (result.failedExports.length) throw new Error(`Export failed for ${result.failedExports.join(", ")}; captures are in place. Fix those and export again.`);
 			for (const command of capture.after || []) run(command);
 		}
@@ -3988,7 +4048,7 @@ function galleryFor(width, height) {
 * to set the order), or a comma-separated list of files in the order given.
 */
 function screenshotFiles(source) {
-	if (source.includes(",")) {
+	if (source.includes(",") || node_fs.default.existsSync(source) && node_fs.default.statSync(source).isFile()) {
 		const files = source.split(",").map((file) => node_path.default.resolve(file.trim()));
 		for (const file of files) if (!node_fs.default.existsSync(file) || !isImage(file)) throw new Error(`${file} isn't a PNG, JPEG or WebP image`);
 		return {
@@ -4559,19 +4619,19 @@ function localeCoverage(listing) {
 	const files = loadListing(resolveListing(listing));
 	const { defaultLocale, locales } = files;
 	const defaultCopy = readCopy(files.listing, defaultLocale);
-	const fields = fieldCount(defaultCopy);
+	const fields = requiredCopyFields(files.galleries, files.profiles, defaultCopy, defaultLocale, defaultLocale).length;
 	const rows = locales.map((locale) => {
 		const raws = [...capturesFor(files, locale)];
 		const copy = readCopy(files.listing, locale);
-		let done = 0;
-		for (const [key, entry] of Object.entries(defaultCopy)) for (const field of Object.keys(entry)) if (copy[key]?.[field]?.trim()) done++;
+		const required = requiredCopyFields(files.galleries, files.profiles, defaultCopy, locale, defaultLocale);
+		const done = required.filter(({ key, field }) => copy[key]?.[field]?.trim()).length;
 		const exists = (file) => node_fs.default.existsSync(node_path.default.join(files.listing, locale, "raw", file));
 		return {
 			locale,
 			isDefault: locale === defaultLocale,
 			words: {
 				done,
-				total: fields
+				total: required.length
 			},
 			captures: {
 				done: raws.filter((raw) => exists(raw)).length,
@@ -4654,14 +4714,13 @@ async function run$4(argv) {
 		return 1;
 	}
 }
-var LOCALE, resolveListing, mapped, fieldCount, USAGE$3;
+var LOCALE, resolveListing, mapped, USAGE$3;
 var init_locales = __esmMin((() => {
 	init_gallery();
 	init_project();
 	LOCALE = /^[a-z]{2,3}(-[A-Za-z0-9]{2,8})*$/;
 	resolveListing = (listing) => requireListing(listing);
 	mapped = ({ galleries, profiles, defaultLocale }, locale) => [...new Set(Object.keys(galleries).filter((kind) => locale === defaultLocale || !profiles[kind]?.defaultLocaleOnly).flatMap((kind) => cardsFor(galleries, kind).flatMap((card) => (card.callouts || []).map((c) => c.raw || devicesFor(card)[c.device || 0]?.raw).filter((raw) => !!raw))))];
-	fieldCount = (copy) => Object.values(copy).reduce((n, entry) => n + Object.keys(entry).length, 0);
 	USAGE$3 = `Usage:
   npx screenshot-studio locales                 words translated, captures present and layout sidecars per locale
   npx screenshot-studio locales --init de-DE    add a locale with empty copy fields to fill in the editor`;
@@ -4885,11 +4944,11 @@ async function writeAppleIcon(out, bundle, layers, icon) {
 				layers: [...names.map((name) => ({
 					"image-name": `${name}.png`,
 					name
-				})), ...Object.values(layers).includes("background") ? [{
-					"image-name": "Background.png",
-					name: "Background",
+				})), ...Object.entries(layers).filter(([, layer]) => layer === "background").map(([name]) => ({
+					"image-name": `${name}.png`,
+					name,
 					glass: false
-				}] : []],
+				}))],
 				shadow: {
 					kind: "neutral",
 					opacity: .3
@@ -6238,6 +6297,7 @@ exports.parseHighlight = parseHighlight;
 exports.readJson = readJson;
 exports.recapture = recapture;
 exports.requireListing = requireListing;
+exports.requiredCopyFields = requiredCopyFields;
 exports.runTour = runTour;
 exports.serve = serve;
 exports.tourFile = tourFile;

@@ -167,7 +167,7 @@ function withCopy(card, kind, copy = {}, fallback = {}) {
 	const own = Object.assign({}, ...keys.map((k) => copy[k] || {}));
 	const base = Object.assign({}, ...keys.map((k) => fallback[k] || {}));
 	const empty = (value) => typeof value === "string" && !value.trim();
-	const missing = Object.keys(base).filter((field) => !(field in own) || empty(own[field]));
+	const missing = Object.keys(base).filter((field) => !empty(base[field]) && (!(field in own) || empty(own[field])));
 	const translated = Object.fromEntries(Object.entries(own).filter(([, value]) => !empty(value)));
 	return {
 		card: {

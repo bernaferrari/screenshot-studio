@@ -17,7 +17,7 @@ import type {
   StudioConfig,
 } from "./types";
 
-import { cardsFor } from "../../../src/core/gallery";
+import { cardsFor, requiredCopyFields } from "../../../src/core/gallery";
 
 export {
   cardsFor,
@@ -67,7 +67,7 @@ export interface ProjectSession {
   /** Settle a conflict: keep the unsaved draft, or take the file on disk. */
   resolve(locale: string, keep: "draft" | "saved"): void;
   save(locale: string): Promise<void>;
-  saveGallery(galleries: Galleries): Promise<void>;
+  saveGallery(galleries: Galleries, saved: string): Promise<void>;
 }
 
 const empty: Draft = {
@@ -274,9 +274,10 @@ export function useProject(
   );
 
   const saveGallery = useCallback(
-    async (galleries: Galleries) => {
+    async (galleries: Galleries, saved: string) => {
       await request(asset(base, "../gallery.json"), {
         method: "PUT",
+        headers: { "X-Studio-Base": await sha256(saved) },
         body: JSON.stringify(galleries),
       });
       setModel((old) =>
@@ -332,20 +333,13 @@ export function copyCoverage(
   drafts: ReadonlyMap<string, Draft>,
   reference: string,
   locale: string,
+  model: Pick<ProjectModel, "galleries" | "profiles">,
 ): { total: number; translated: number } {
   const base = drafts.get(reference)?.data || {},
     own = drafts.get(locale)?.data || {};
-  let total = 0,
-    translated = 0;
-  for (const [key, fields] of Object.entries(base)) {
-    if (!fields || typeof fields !== "object") continue;
-    for (const [field, text] of Object.entries(fields)) {
-      // An empty reference field (README art without a headline) is empty on purpose.
-      if (!text?.trim()) continue;
-      total++;
-      if (own[key]?.[field]?.trim()) translated++;
-    }
-  }
+  const fields = requiredCopyFields(model.galleries, model.profiles, base, locale, reference);
+  const total = fields.length;
+  const translated = fields.filter(({key, field}) => own[key]?.[field]?.trim()).length;
   return { total, translated };
 }
 

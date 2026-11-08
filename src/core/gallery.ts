@@ -4,7 +4,7 @@
 // Words live per language in ../<locale>/copy.json, keyed by card `feature`, with optional
 // "<kind>/<feature>" entries for one device gallery. Missing words fall back to the default
 // locale and are reported, so a half-translated language still renders and is easy to spot.
-import type {Callout, Card, Copy, DeviceSpec, Galleries, UiNode, UiTree} from './types';
+import type {Callout, Card, Copy, DeviceSpec, Galleries, Profiles, UiNode, UiTree} from './types';
 
 /**
  * The parsed contents of a studio file, without editor metadata. Files may carry a "$schema" key (for autocomplete
@@ -38,7 +38,7 @@ export function withCopy(card: Card, kind: string, copy: Copy = {}, fallback: Co
   const own: Record<string, string | undefined> = Object.assign({}, ...keys.map(k => copy[k] || {}));
   const base: Record<string, string | undefined> = Object.assign({}, ...keys.map(k => fallback[k] || {}));
   const empty = (value: unknown) => typeof value === 'string' && !value.trim();
-  const missing = Object.keys(base).filter(field => !(field in own) || empty(own[field]));
+  const missing = Object.keys(base).filter(field => !empty(base[field]) && (!(field in own) || empty(own[field])));
   const translated = Object.fromEntries(Object.entries(own).filter(([, value]) => !empty(value)));
   return {card: {...card, ...base, ...translated}, missing};
 }
@@ -98,4 +98,19 @@ export function followCallout(box: CalloutBox, reference: UiTree | null | undefi
   if (![moved.x, moved.y, moved.w, moved.h].every(Number.isFinite) || moved.w <= 0 || moved.h <= 0 || moved.x < 0 || moved.y < 0) return null;
   if ((localized.width && moved.x + moved.w > localized.width) || (localized.height && moved.y + moved.h > localized.height)) return null;
   return moved;
+}
+
+/** Nonempty reference fields read by the cards rendered in a locale. */
+export function requiredCopyFields(galleries: Galleries, profiles: Profiles, reference: Copy, locale: string, defaultLocale: string): {key: string; field: string}[] {
+  const fields = new Map<string, {key: string; field: string}>();
+  for (const kind of Object.keys(galleries)) {
+    if (locale !== defaultLocale && profiles[kind]?.defaultLocaleOnly) continue;
+    for (const card of cardsFor(galleries, kind)) {
+      const keys = card.sharedCopy === false ? [`${kind}/${card.feature}`] : [card.feature, `${kind}/${card.feature}`];
+      const owners = new Map<string, string>();
+      for (const key of keys) for (const field of Object.keys(reference[key] || {})) owners.set(field, key);
+      for (const [field, key] of owners) if (reference[key]?.[field]?.trim()) fields.set(`${key}\0${field}`, {key, field});
+    }
+  }
+  return [...fields.values()];
 }
