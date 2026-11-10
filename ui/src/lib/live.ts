@@ -5,6 +5,7 @@ import type { ListingChange } from "./types";
 export interface ChangeScope {
   /** studio.json, profiles.json or gallery.json changed: reload them. */
   listing: boolean;
+  exportReport?: boolean;
   /** Languages whose copy.json changed. */
   copy: string[];
   /** Previews to render again: every one, or these languages'. */
@@ -46,7 +47,9 @@ export function classifyChanges(
       scope.listing = true;
       render("all");
     } else if (file === "export-report.json") {
-      // Only the review reads it.
+      // Partial exports do not rewrite assets.json; their report invalidates saved images too.
+      scope.exports = [...new Set([...scope.exports, reference])];
+      scope.exportReport = true;
     } else if (LOCALE.test(first) && second !== undefined) {
       if (second === "copy.json") {
         add(scope.copy, first);

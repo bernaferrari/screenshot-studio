@@ -40,3 +40,30 @@ test('recapture skips runs excluded by the selected profile and exports literal 
   assert.equal(exported.ok,true,exported.error);
   assert.ok(fs.existsSync(path.join(listing,'en-US/phone/01-one.jpg')));
 });
+
+test('export rejects escaping paths, source paths and collisions before writing', async t=>{
+  const {root,listing,write}=fixture(t);
+  const {checkListing}=require('../studio/studio.cjs');
+  for(const file of ['../../outside.png','raw/overwrite.png']) {
+    write('gallery.json',{phone:[{feature:'one',file}]});
+    assert.equal(checkListing(listing).ok,false);
+    const result=await exportListing({listing,log:()=>{}});assert.equal(result.ok,false);assert.match(result.error,/Output/);
+  }
+  assert.equal(fs.existsSync(path.join(root,'outside.png')),false);
+  write('gallery.json',{phone:[{feature:'one',file:'phone/shared.png'},{feature:'two',file:'phone/shared.png'}]});
+  assert.equal(checkListing(listing).ok,false);
+  assert.match((await exportListing({listing,log:()=>{}})).error,/unique path/);
+  write('gallery.json',{phone:[{feature:'one',file:'phone/alias.png'}]});
+  fs.mkdirSync(path.join(listing,'en-US/phone'));fs.symlinkSync(root,path.join(listing,'en-US/phone/link'));
+  write('gallery.json',{phone:[{feature:'one',file:'phone/link/escaped.png'}]});
+  assert.equal((await exportListing({listing,log:()=>{}})).ok,false);
+  fs.symlinkSync(path.join(root,'missing'),path.join(listing,'en-US/phone/broken'));
+  write('gallery.json',{phone:[{feature:'one',file:'phone/broken/escaped.png'}]});
+  assert.equal(checkListing(listing).ok,false);
+  assert.equal((await exportListing({listing,log:()=>{}})).ok,false);
+  write('gallery.json',{phone:[{feature:'one',file:'phone/one.jpg'},{feature:'two',file:'phone/two.jpg'}]});
+  write('studio.json',{app:'Test',locales:['en-US'],contactSheets:{phone:'phone/one.jpg'}});
+  assert.match((await exportListing({listing,log:()=>{}})).error,/unique path/);
+  write('studio.json',{app:'Test',locales:['en-US'],readmeStrips:[{kind:'phone',cards:[0],file:'../strip.jpg'}]});
+  assert.equal((await exportListing({listing,log:()=>{}})).ok,false);
+});

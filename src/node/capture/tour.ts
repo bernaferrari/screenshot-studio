@@ -225,7 +225,12 @@ export async function runTour(file: string, options: TourOptions): Promise<strin
       const device = ios ? simulator() : android();
       await device.night(on); d.theme = device.theme; device.statusBar();
     },
-    async rotate(landscape) { await android().rotate(landscape); },
+    async rotate(landscape) {
+      await android().rotate(landscape);
+      const short = Math.min(d.width, d.height), long = Math.max(d.width, d.height);
+      d.width = landscape ? long : short; d.height = landscape ? short : long;
+      target = {...target, width: d.width};
+    },
     async resize(width, height, density) { const emu = android(); await emu.resize(width, height, density ?? emu.density); d.width = width; d.height = height; target = {...target, width}; },
     setClock(hhmm) { android().setClock(hhmm); },
     async openUrl(url) { simulator().simctl('openurl', simulator().udid, url); await d.settle(); },

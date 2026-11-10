@@ -10,6 +10,7 @@
  * --json prints the result as JSON (for agents and tools); exportListing() returns the same result.
  */
 import fs from 'node:fs';
+import {outputProblems} from './outputs';
 import os from 'node:os';
 import path from 'node:path';
 import type {Server} from 'node:http';
@@ -263,6 +264,8 @@ export async function exportListing(options: ExportOptions = {}): Promise<Export
       const kinds = Object.keys(files.galleries).filter(kind => !options.kind || kind === options.kind);
       if (!kinds.some(kind => gallery.cardsFor(files.galleries, kind).length > options.card!)) throw new Error(`No card ${options.card} in the selected galleries.`);
     }
+    const problems = outputProblems({...files, locales: options.locales?.length ? options.locales : files.locales});
+    if (problems.length) throw new Error(problems.map(p => `${p.file}: ${p.message}`).join('\n'));
     server = await serve(files.repo);
     const address = server.address();
     const port = typeof address === 'object' && address ? address.port : 0;

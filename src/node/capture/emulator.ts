@@ -26,6 +26,11 @@ export class Emulator {
   battery = 100;
   private saved = new Map<string, string>();
   private clockSet = false;
+  private removedHelpers = new Set<string>();
+  private savedLocales = new Map<string, string>();
+  private originalNight: string | undefined;
+  private originalNavigation: string | undefined;
+  private network: {wifi: string; data: string} | undefined;
 
   constructor(readonly serial: string) {}
 
@@ -41,7 +46,7 @@ export class Emulator {
   try(...words: (string | number)[]): string { try { return this.shell(...words); } catch { return ''; } }
 
   setting(namespace: 'global' | 'system' | 'secure', key: string, value?: string): string {
-    if (value === undefined) { const read = this.try('settings', 'get', namespace, key).trim(); return read === 'null' ? '' : read; }
+    if (value === undefined) { const read = this.shell('settings', 'get', namespace, key).trim(); return read === 'null' ? '' : read; }
     this.shell('settings', 'put', namespace, key, value);
     return value;
   }
@@ -59,6 +64,9 @@ export class Emulator {
   prepare(options: {offline: boolean; animations: boolean}) {
     if (/Override/.test(this.try('wm', 'size') + this.try('wm', 'density')))
       throw new Error('The emulator still has a display override from an interrupted run: npx screenshot-studio reset');
+    this.originalNight = this.shell('cmd', 'uimode', 'night').match(/\b(auto|no|yes|custom)\b/)?.[1];
+    this.originalNavigation = this.try('cmd', 'overlay', 'list').match(/\[x\]\s+(\S*navbar\.\S+)/)?.[1];
+    if (options.offline) this.network = {wifi: this.setting('global', 'wifi_on'), data: this.setting('global', 'mobile_data')};
     this.try('input', 'keyevent', 'KEYCODE_WAKEUP');
     this.try('wm', 'dismiss-keyguard');
     this.try('cmd', 'overlay', 'enable-exclusive', '--category', 'com.android.internal.systemui.navbar.gestural');
@@ -68,10 +76,10 @@ export class Emulator {
     this.change('system', 'accelerometer_rotation', '0');
     this.change('system', 'user_rotation', '0');
     for (const key of SCALES) this.change('global', key, options.animations ? '1' : '0');
-    this.setting('global', 'sysui_demo_allowed', '1');
+    this.change('global', 'sysui_demo_allowed', '1');
     for (const line of this.try('pm', 'list', 'packages').split(/\s+/)) {
       const name = line.replace(/^package:/, '');
-      if (HELPERS.test(name)) this.try('pm', 'uninstall', '--user', '0', name);
+      if (HELPERS.test(name) && this.try('pm', 'uninstall', '--user', '0', name).includes('Success')) this.removedHelpers.add(name);
     }
     this.snapshotHelper();
     this.try('pkill', '-f', 'uiautomator');
@@ -143,6 +151,11 @@ export class Emulator {
 
   /** The app's own language (Android 13+), checked; empty resets it to the system language. */
   appLocale(pkg: string, locale: string) {
+    if (!this.savedLocales.has(pkg)) {
+      const current = this.shell('cmd', 'locale', 'get-app-locales', pkg, '--user', 'current').match(/are \[([^\]]*)\]/)?.[1];
+      if (current === undefined) throw new Error(`Could not read the original language for ${pkg}; capture has not changed it.`);
+      this.savedLocales.set(pkg, current);
+    }
     this.shell('cmd', 'locale', 'set-app-locales', pkg, '--user', 'current', '--locales', locale);
     const read = this.shell('cmd', 'locale', 'get-app-locales', pkg, '--user', 'current');
     if (read.match(/are \[([^\]]*)\]/)?.[1] !== locale) throw new Error(`The app's language did not switch to ${locale || 'the system language'}: ${read.trim()}`);
@@ -188,19 +201,23 @@ export class Emulator {
     const failed: string[] = [];
     const step = (name: string, run: () => unknown) => { try { run(); } catch (error) { failed.push(`${name}: ${(error as Error).message}`); } };
     if (options.pkg) step('stop the app', () => this.shell('am', 'force-stop', options.pkg!));
-    if (options.pkg && options.appLocale) step('app language', () => this.appLocale(options.pkg!, ''));
+    for (const [pkg, locale] of this.savedLocales) step('app language', () => this.appLocale(pkg, locale));
     step('demo mode', () => this.demo('exit'));
-    step('night mode', () => this.shell('cmd', 'uimode', 'night', 'no'));
+    if (this.originalNight) step('night mode', () => this.shell('cmd', 'uimode', 'night', this.originalNight!));
+    if (this.originalNavigation) step('navigation', () => this.shell('cmd', 'overlay', 'enable-exclusive', '--category', this.originalNavigation!));
     step('display size', () => this.shell('wm', 'size', 'reset'));
     step('display density', () => this.shell('wm', 'density', 'reset'));
     if (this.clockSet) step('clock', () => this.shell('cmd', 'alarm', 'set-time', Date.now()));
-    const defaults: Record<string, string> = {heads_up_notifications_enabled: '1', auto_time: '1', font_scale: '1.0', accelerometer_rotation: '1', user_rotation: '0',
-      ...Object.fromEntries(SCALES.map(key => [key, '1']))};
     for (const [where, value] of this.saved) {
       const [namespace, key] = where.split('/') as ['global' | 'system', string];
-      step(key, () => this.setting(namespace, key, value || defaults[key]));
+      step(key, () => value ? this.setting(namespace, key, value) : this.shell('settings', 'delete', namespace, key));
     }
-    if (options.offline) { step('Wi-Fi', () => this.shell('svc', 'wifi', 'enable')); step('mobile data', () => this.shell('svc', 'data', 'enable')); }
+    for (const pkg of this.removedHelpers) step(`restore ${pkg}`, () => this.shell('pm', 'install-existing', '--user', '0', pkg));
+    if (this.network) {
+      const {wifi, data} = this.network;
+      if (/^[01]$/.test(wifi)) step('Wi-Fi', () => this.shell('svc', 'wifi', wifi === '1' ? 'enable' : 'disable'));
+      if (/^[01]$/.test(data)) step('mobile data', () => this.shell('svc', 'data', data === '1' ? 'enable' : 'disable'));
+    }
     if (options.uninstall && options.pkg) step('uninstall', () => this.adb('uninstall', options.pkg!));
     return failed;
   }

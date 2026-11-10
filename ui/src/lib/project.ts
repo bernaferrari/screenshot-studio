@@ -215,6 +215,7 @@ export function useProject(
             exports: open.locales,
             storeText: open.locales,
           };
+      if ("exportReport" in scope && scope.exportReport) scope.exports = open.locales;
       try {
         if (scope.listing) {
           const listing = await loadListing(base);
@@ -251,20 +252,21 @@ export function useProject(
       const draft = current.current.drafts.get(locale);
       if (!draft || draft.saving || draft.conflict || !isDirty(draft)) return;
       const snapshot = JSON.stringify(draft.data);
-      update(locale, (d) => ({ ...d, saving: true, error: "" }));
+      update(locale, (d) => ({ ...d, saving: true, pending: snapshot, error: "" }));
       try {
         await request(asset(base, `../${locale}/copy.json`), {
           method: "PUT",
           headers: { "X-Studio-Base": await sha256(draft.saved) },
           body: snapshot,
         });
-        update(locale, (d) => ({ ...d, saved: snapshot, saving: false }));
+        update(locale, (d) => ({ ...d, saved: d.conflict ? d.saved : snapshot, saving: false, pending: undefined }));
         // Without live reload, the previews still need to know.
         if (live !== "live") bump({ render: [locale] });
       } catch (e) {
         update(locale, (d) => ({
           ...d,
           saving: false,
+          pending: undefined,
           error: errorMessage(e),
         }));
         throw e;

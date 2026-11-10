@@ -1467,3 +1467,41 @@ test('a racing gallery edit is preserved when the callout dialog saves', async t
   assert.deepEqual(JSON.parse(fs.readFileSync(file)),concurrent);
   assert.ok(await dialog.isVisible());
 });
+
+test('typing during a delayed save does not conflict with its own live event', async t=>{
+  const {page,base,projects}=await setup(t);
+  await page.goto(base+projects[0].editorURL+'?view=copy&locale=de-DE');
+  const area=page.getByRole('textbox',{name:'de-DE hello title',exact:true});await area.waitFor();
+  let sentResolve,releaseResolve;
+  const sent=new Promise(r=>sentResolve=r),release=new Promise(r=>releaseResolve=r);
+  await page.route('**/de-DE/copy.json',async route=>{
+    if(route.request().method()!=='PUT')return route.continue();
+    const response=await route.fetch();sentResolve();await release;await route.fulfill({response});
+  });
+  await area.fill('First save');await area.press('Meta+Enter');await sent;
+  await area.fill('Keep typing');await page.waitForTimeout(600);releaseResolve();
+  await page.getByText(/copy saved/).waitFor();
+  assert.equal(await page.getByText('The saved copy changed',{exact:true}).count(),0);
+  assert.equal(await area.inputValue(),'Keep typing');
+  await page.unrouteAll({behavior:'wait'});
+});
+
+test('failed preview reloads retain at most the last successful and newest frame',async t=>{
+  const {page,base,projects,roots,write}=await setup(t);
+  const listing=roots[0]+'/store-listing';
+  // Fail the render without generating uncaught page errors in the editor itself.
+  write(listing+'/theme.js','export default {async compose(){await new Promise(()=>{})}}');
+  await page.goto(base+projects[0].editorURL+'?view=gallery');
+  const card=page.locator('[data-card-frame=live]').first();await card.waitFor();
+  for(let i=0;i<4;i++){write(listing+'/theme.css',`body{background:rgb(${i},0,0)}`);await page.waitForTimeout(350);}
+  assert.ok(await card.locator('iframe').count()<=2);
+});
+
+test('a partial export report refreshes exported image URLs',async t=>{
+  const {page,base,projects,roots,write}=await setup(t);
+  await page.goto(base+projects[0].editorURL+'?view=gallery&source=exported');
+  const image=page.locator('[data-card-frame=exported] img').first();await image.waitFor();
+  const before=await image.getAttribute('src');
+  write(roots[0]+'/store-listing/export-report.json',{ok:true,cards:[{locale:'en-US'}],options:{kind:'phone',card:0}});
+  await page.waitForFunction(previous=>document.querySelector('[data-card-frame=exported] img')?.getAttribute('src')!==previous,before);
+});

@@ -65,7 +65,7 @@ export function CardFrame({
     setFrames((old) =>
       old.some((f) => f.revision === revision)
         ? old
-        : [...old, { revision, ready: false }],
+        : [...old.filter((f) => f.ready).slice(-1), { revision, ready: false }],
     );
   }, [revision]);
   useEffect(() => {
@@ -142,6 +142,7 @@ export function CardFrame({
               ready={frame.ready}
               onReady={(report) => ready(frame.revision, report)}
               onFail={() => {
+                setFrames((old) => old.filter((f) => f.revision !== frame.revision));
                 if (shown < 0) state.current?.({ status: "failed" });
               }}
             />

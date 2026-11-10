@@ -6,6 +6,8 @@ export interface Draft {
   /** The saved file, as JSON: what the draft is compared with and what a save must still find on disk. */
   saved: string;
   saving: boolean;
+  /** Snapshot whose write is in flight; live reload may observe it before the response. */
+  pending?: string;
   error: string;
   /** The file changed on disk under an unsaved draft; the person chooses which to keep. */
   conflict: boolean;
@@ -85,6 +87,10 @@ export function createDraftStore(
  */
 export function rebase(draft: Draft, disk: Copy): boolean {
   const saved = JSON.stringify(disk);
+  if (saved === draft.pending) {
+    draft.saved = saved;
+    return true;
+  }
   if (saved === draft.saved) return false;
   if (!isDirty(draft)) {
     Object.assign(draft, fresh(disk));

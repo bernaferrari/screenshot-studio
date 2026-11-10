@@ -5,6 +5,7 @@
  *   npx screenshot-studio check [--json]
  */
 import fs from 'node:fs';
+import {outputProblems} from './outputs';
 import path from 'node:path';
 import {validate, type Schema} from '../core/validate';
 import {cardsFor, devicesFor, requiredCopyFields} from '../core/gallery';
@@ -147,6 +148,7 @@ export function checkListing(listingDir?: string): CheckResult {
         warn(`${defaultLocale}/copy.json`, `card "${card.feature}" (${kind}) has no headline`, {fix: `Add {"${card.feature}": {"title": "…", "body": "…"}}.`});
     });
   }
+  for (const problem of outputProblems({listing, repo: path.dirname(listing), config, profiles, galleries: resolvedGalleries, defaultLocale, locales})) error(problem.file, problem.message, {path: problem.path});
   // Starter placeholders: init writes these so the first export renders; they must never ship.
   const PLACEHOLDER = /^Your headline|One short (supporting )?line|Why it matters, briefly|One line about what \*your app\*|^One clear\n|^The core\n|Up to (80|4,?000) characters/;
   for (const [key, entry] of Object.entries(defaultCopy)) for (const [field, value] of Object.entries(entry || {}))

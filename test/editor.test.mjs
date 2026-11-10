@@ -299,3 +299,13 @@ test("render reports read as words", { skip }, async () => {
   ]);
   assert.deepEqual(reportNotes(null, "en-US"), []);
 });
+
+test('live reload recognizes a pending save without losing later typing', {skip}, async()=>{
+  const {rebase}=await lib('drafts');
+  const before=JSON.stringify({home:{title:'Original'}}),snapshot=JSON.stringify({home:{title:'Saving'}});
+  const draft={data:{home:{title:'Continued typing'}},saved:before,saving:true,pending:snapshot,error:'',conflict:false};
+  assert.equal(rebase(draft,JSON.parse(snapshot)),true);
+  assert.equal(draft.conflict,false);assert.equal(draft.saving,true);assert.equal(draft.saved,snapshot);
+  assert.equal(draft.data.home.title,'Continued typing');
+  rebase(draft,{home:{title:'External change'}});assert.equal(draft.conflict,true);
+});

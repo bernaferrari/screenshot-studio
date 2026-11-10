@@ -45,103 +45,14 @@ let node_path = require("node:path");
 node_path = __toESM(node_path, 1);
 let node_os = require("node:os");
 node_os = __toESM(node_os, 1);
+let node_crypto = require("node:crypto");
 let node_http = require("node:http");
 node_http = __toESM(node_http, 1);
-let node_crypto = require("node:crypto");
 let node_child_process = require("node:child_process");
 let node_util = require("node:util");
 let node_url = require("node:url");
 let node_readline = require("node:readline");
 node_readline = __toESM(node_readline, 1);
-// src/core/validate.ts
-/** Validate `value` against `schema`; an empty list means valid. */
-function validate(value, schema, root = schema, path = "") {
-	if (schema.$ref) {
-		const name = schema.$ref.replace(/^#\/\$defs\//, "");
-		const target = root.$defs?.[name];
-		if (!target) return [{
-			path,
-			message: `unknown schema reference ${schema.$ref}`
-		}];
-		return validate(value, target, root, path);
-	}
-	const errors = [];
-	const add = (message, at = path) => errors.push({
-		path: at || "(top level)",
-		message
-	});
-	if (schema.allOf) for (const part of schema.allOf) errors.push(...validate(value, part, root, path));
-	if (schema.anyOf) {
-		const attempts = schema.anyOf.map((option) => validate(value, option, root, path));
-		if (!attempts.some((found) => found.length === 0)) {
-			const sameType = schema.anyOf.map((option, i) => ({
-				option,
-				i
-			})).filter(({ option }) => {
-				const resolved = option.$ref ? root.$defs?.[option.$ref.replace(/^#\/\$defs\//, "")] ?? option : option;
-				return (resolved.type ? Array.isArray(resolved.type) ? resolved.type : [resolved.type] : []).some((type) => matchesType(value, type));
-			});
-			if (sameType.length === 1) return [...errors, ...attempts[sameType[0].i]];
-			const consts = schema.anyOf.filter((option) => "const" in option).map((option) => show(option.const));
-			add(`${show(value)} isn't an allowed value${consts.length ? ` (allowed values include ${consts.join(", ")})` : ""}`);
-			return errors;
-		}
-	}
-	if ("const" in schema && value !== schema.const) add(`must be ${show(schema.const)}`);
-	if (schema.enum && !schema.enum.includes(value)) add(`must be one of ${schema.enum.map(show).join(", ")}; got ${show(value)}`);
-	if (schema.type) {
-		const types = Array.isArray(schema.type) ? schema.type : [schema.type];
-		if (!types.some((type) => matchesType(value, type))) {
-			add(`must be ${types.join(" or ")}, not ${typeOf(value)}`);
-			return errors;
-		}
-	}
-	if (typeof value === "string" && schema.pattern && !new RegExp(schema.pattern).test(value)) add(`${show(value)} doesn't match the expected format (${schema.pattern})`);
-	if (typeof value === "number") {
-		if (schema.minimum !== void 0 && value < schema.minimum) add(`must be at least ${schema.minimum}`);
-		if (schema.maximum !== void 0 && value > schema.maximum) add(`must be at most ${schema.maximum}`);
-		if (schema.exclusiveMinimum !== void 0 && value <= schema.exclusiveMinimum) add(`must be more than ${schema.exclusiveMinimum}`);
-	}
-	if (Array.isArray(value)) {
-		if (schema.minItems !== void 0 && value.length < schema.minItems) add(`needs at least ${schema.minItems} item(s)`);
-		if (schema.items) value.forEach((item, i) => errors.push(...validate(item, schema.items, root, join(path, i))));
-	}
-	if (typeOf(value) === "object") {
-		const object = value;
-		for (const key of schema.required || []) if (!(key in object)) add(`is missing "${key}"`);
-		for (const [key, item] of Object.entries(object)) {
-			const own = schema.properties?.[key];
-			if (own) errors.push(...validate(item, own, root, join(path, key)));
-			else if (schema.additionalProperties === false) {
-				const near = Object.keys(schema.properties || {}).find((name) => name.toLowerCase() === key.toLowerCase() || levenshtein(name, key) <= 2);
-				add(`unknown setting "${key}"${near ? `; did you mean "${near}"?` : ""}`, join(path, key));
-			} else if (typeof schema.additionalProperties === "object") errors.push(...validate(item, schema.additionalProperties, root, join(path, key)));
-		}
-	}
-	return errors;
-}
-function levenshtein(a, b) {
-	const row = Array.from({ length: b.length + 1 }, (_, i) => i);
-	for (let i = 1; i <= a.length; i++) {
-		let previous = row[0]++;
-		for (let j = 1; j <= b.length; j++) {
-			const current = row[j];
-			row[j] = Math.min(row[j] + 1, row[j - 1] + 1, previous + (a[i - 1] === b[j - 1] ? 0 : 1));
-			previous = current;
-		}
-	}
-	return row[b.length];
-}
-var typeOf, matchesType, join, show;
-var init_validate = __esmMin((() => {
-	typeOf = (value) => value === null ? "null" : Array.isArray(value) ? "array" : Number.isInteger(value) ? "integer" : typeof value;
-	matchesType = (value, type) => {
-		const actual = typeOf(value);
-		return actual === type || type === "number" && actual === "integer";
-	};
-	join = (base, key) => typeof key === "number" ? `${base}[${key}]` : /^[A-Za-z_$][\w$]*$/.test(key) ? base ? `${base}.${key}` : key : `${base}[${JSON.stringify(key)}]`;
-	show = (value) => JSON.stringify(value)?.slice(0, 60) ?? String(value);
-}));
 // src/core/gallery.ts
 var gallery_exports = /* @__PURE__ */ __exportAll({
 	cardsFor: () => cardsFor,
@@ -357,301 +268,6 @@ var init_project = __esmMin((() => {
 	init_gallery();
 	readCopy = (listing, locale) => readJson(node_path.default.join(listing, locale, "copy.json"), {});
 	STUDIO_DIR = __dirname;
-}));
-// src/core/stores.ts
-/** Which store a listing is for: the App Store when its capture or galleries are iOS, Google Play otherwise. */
-function storeFor(config, profiles) {
-	return config.capture?.platform === "ios" || Object.values(profiles).some((profile) => profile.platform === "ios") ? "App Store" : "Google Play";
-}
-/** Whether a gallery's cards upload to the store: fastlane's screenshot folders when set, else Play's phone and tablets and the iOS galleries. */
-function isStoreGallery(kind, profile, config) {
-	if (profile.defaultLocaleOnly) return false;
-	if (config.fastlane?.screenshots) return kind in config.fastlane.screenshots;
-	return profile.platform === "ios" || [
-		"phone",
-		"tablet7",
-		"tablet10"
-	].includes(kind);
-}
-/** Fields of listing.json over the store's limits. `appName` counts as the title. */
-function listingProblems(words, store) {
-	const problems = [];
-	for (const [field, max] of Object.entries(LIMITS[store])) {
-		const value = field === "title" ? words.title ?? words.appName : words[field];
-		const length = typeof value === "string" ? [...value].length : 0;
-		if (length > max) problems.push({
-			field,
-			length,
-			max,
-			message: `${field} has ${length} characters; ${store} allows ${max}`
-		});
-	}
-	return problems;
-}
-var LIMITS, SCREENSHOT_LIMIT;
-var init_stores = __esmMin((() => {
-	LIMITS = {
-		"Google Play": {
-			title: 30,
-			shortDescription: 80,
-			fullDescription: 4e3
-		},
-		"App Store": {
-			title: 30,
-			subtitle: 30,
-			promotionalText: 170,
-			keywords: 100,
-			description: 4e3,
-			whatsNew: 4e3
-		}
-	};
-	SCREENSHOT_LIMIT = {
-		"Google Play": 8,
-		"App Store": 10
-	};
-}));
-// src/node/check.ts
-/**
-* Check an app's listing without rendering anything: every file against its schema, then what schemas can't see
-* (captures that are missing or have the wrong shape, cards without words, words no card uses, store text over
-* Play's limits). Fast enough to run after every edit; `export` then checks the rendered result.
-*   npx screenshot-studio check [--json]
-*/
-var check_exports = /* @__PURE__ */ __exportAll({
-	checkListing: () => checkListing,
-	formatIssues: () => formatIssues,
-	imageSize: () => imageSize,
-	run: () => run$11
-});
-/** Width and height of a PNG, JPEG or WebP, read from its header. */
-function imageSize(file) {
-	const fd = node_fs.default.openSync(file, "r");
-	try {
-		const head = Buffer.alloc(65536);
-		const length = node_fs.default.readSync(fd, head, 0, head.length, 0);
-		if (head.readUInt32BE(0) === 2303741511) return {
-			width: head.readUInt32BE(16),
-			height: head.readUInt32BE(20)
-		};
-		if (head.toString("ascii", 0, 4) === "RIFF" && head.toString("ascii", 8, 12) === "WEBP") for (let offset = 12; offset + 8 <= length;) {
-			const type = head.toString("ascii", offset, offset + 4), size = head.readUInt32LE(offset + 4), data = offset + 8;
-			if (data + Math.min(size, 10) > length) break;
-			if (type === "VP8X" && size >= 10) return {
-				width: 1 + head.readUIntLE(data + 4, 3),
-				height: 1 + head.readUIntLE(data + 7, 3)
-			};
-			if (type === "VP8 " && size >= 10 && head[data + 3] === 157 && head[data + 4] === 1 && head[data + 5] === 42) return {
-				width: head.readUInt16LE(data + 6) & 16383,
-				height: head.readUInt16LE(data + 8) & 16383
-			};
-			if (type === "VP8L" && size >= 5 && head[data] === 47) {
-				const bits = head.readUInt32LE(data + 1);
-				return {
-					width: (bits & 16383) + 1,
-					height: (bits >>> 14 & 16383) + 1
-				};
-			}
-			offset = data + size + size % 2;
-		}
-		if (head[0] === 255 && head[1] === 216) for (let i = 2; i + 9 < length;) {
-			if (head[i] !== 255) {
-				i++;
-				continue;
-			}
-			const marker = head[i + 1];
-			if (marker >= 192 && marker <= 207 && ![
-				196,
-				200,
-				204
-			].includes(marker)) return {
-				height: head.readUInt16BE(i + 5),
-				width: head.readUInt16BE(i + 7)
-			};
-			i += 2 + head.readUInt16BE(i + 2);
-		}
-		return null;
-	} finally {
-		node_fs.default.closeSync(fd);
-	}
-}
-function checkListing(listingDir) {
-	const listing = requireListing(listingDir);
-	const schemas = node_path.default.join(STUDIO_DIR, "schemas");
-	const issues = [];
-	const error = (file, message, extra = {}) => issues.push({
-		level: "error",
-		file,
-		message,
-		...extra
-	});
-	const warn = (file, message, extra = {}) => issues.push({
-		level: "warning",
-		file,
-		message,
-		...extra
-	});
-	const counted = {
-		galleries: 0,
-		cards: 0,
-		captures: 0,
-		locales: 0
-	};
-	const load = (file, schema, fallback) => {
-		const full = node_path.default.join(listing, file);
-		if (!node_fs.default.existsSync(full)) {
-			if (fallback !== void 0) return fallback;
-			error(file, "is missing", { fix: "Run `npx screenshot-studio init` to create a starter listing." });
-			return null;
-		}
-		let value;
-		try {
-			value = readJson(full);
-		} catch (e) {
-			error(file, e.message);
-			return null;
-		}
-		const definition = readJson(node_path.default.join(schemas, `${schema}.schema.json`), null);
-		const problems = definition ? validate(value, definition) : [];
-		for (const problem of problems) error(file, problem.message, { path: problem.path });
-		return problems.length ? null : value;
-	};
-	const config = load("studio.json", "studio");
-	const profiles = load("profiles.json", "profiles");
-	const galleries = load("gallery.json", "gallery");
-	if (!config || !profiles || !galleries) return {
-		ok: false,
-		issues,
-		counted
-	};
-	const defaultLocale = config.defaultLocale || "en-US";
-	const store = storeFor(config, profiles);
-	const locales = config.locales || [defaultLocale];
-	counted.locales = locales.length;
-	if (!locales.includes(defaultLocale)) error("studio.json", `defaultLocale ${defaultLocale} isn't in locales`, {
-		path: "locales",
-		fix: `Add "${defaultLocale}" to locales.`
-	});
-	for (const file of ["theme.css"]) if (!node_fs.default.existsSync(node_path.default.join(listing, file))) warn(file, "is missing; cards render unstyled");
-	const ratios = Object.values(profiles).filter((p) => p.captureWidth && p.captureHeight).flatMap((p) => [p.captureWidth / p.captureHeight, p.captureHeight / p.captureWidth]);
-	const defaultCopy = load(`${defaultLocale}/copy.json`, "copy", {}) || {};
-	const resolvedGalleries = {};
-	const used = /* @__PURE__ */ new Set();
-	const checkedRaws = /* @__PURE__ */ new Set();
-	for (const kind of Object.keys(galleries)) {
-		if (!profiles[kind]) {
-			error("gallery.json", `gallery "${kind}" has no profile`, {
-				path: kind,
-				fix: `Add "${kind}" to profiles.json with its width and height.`
-			});
-			continue;
-		}
-		let cards;
-		try {
-			cards = cardsFor(galleries, kind);
-		} catch (e) {
-			error("gallery.json", e.message, { path: kind });
-			continue;
-		}
-		resolvedGalleries[kind] = cards;
-		counted.galleries++;
-		if (isStoreGallery(kind, profiles[kind], config) && cards.length > SCREENSHOT_LIMIT[store]) warn("gallery.json", `"${kind}" has ${cards.length} cards; ${store} takes at most ${SCREENSHOT_LIMIT[store]} per device type`, {
-			path: kind,
-			code: "store-limit",
-			fix: `Keep the best ${SCREENSHOT_LIMIT[store]}: lead with the screen that sells the app, and cut the rest from gallery.json.`
-		});
-		cards.forEach((card, i) => {
-			counted.cards++;
-			const at = `${kind}[${i}]`;
-			used.add(card.feature).add(`${kind}/${card.feature}`);
-			const devices = devicesFor(card);
-			for (const [d, device] of devices.entries()) {
-				const raw = node_path.default.join(listing, defaultLocale, "raw", device.raw);
-				if (checkedRaws.has(raw)) continue;
-				checkedRaws.add(raw);
-				counted.captures++;
-				if (!node_fs.default.existsSync(raw)) {
-					error("gallery.json", `capture ${defaultLocale}/raw/${device.raw} doesn't exist`, {
-						path: devices.length > 1 ? `${at}.devices[${d}].raw` : `${at}.raw`,
-						fix: "Capture it (`npx screenshot-studio recapture`), add the file, or fix the path."
-					});
-					continue;
-				}
-				const size = imageSize(raw);
-				if (size && ratios.length && !ratios.some((r) => Math.abs(size.width / size.height - r) < .001)) error("gallery.json", `${device.raw} is ${size.width}×${size.height}, which isn't the shape of any capture size in profiles.json`, {
-					path: `${at}.raw`,
-					fix: "Recapture it at a configured size, or add a profile whose captureWidth × captureHeight has this shape."
-				});
-			}
-			for (const [c, callout] of (card.callouts || []).entries()) {
-				if (!callout.raw && (callout.device || 0) >= devices.length) error("gallery.json", `callout ${c} points at device ${callout.device || 0}, but the card has ${devices.length}`, { path: `${at}.callouts[${c}]` });
-				if (callout.raw && !node_fs.default.existsSync(node_path.default.join(listing, defaultLocale, "raw", callout.raw))) error("gallery.json", `callout capture ${callout.raw} doesn't exist`, { path: `${at}.callouts[${c}].raw` });
-			}
-			const words = card.sharedCopy === false ? defaultCopy[`${kind}/${card.feature}`] : {
-				...defaultCopy[card.feature],
-				...defaultCopy[`${kind}/${card.feature}`]
-			};
-			if (devices.length && !card.identity && !(words && "title" in words) && profiles[kind].frame !== "none") warn(`${defaultLocale}/copy.json`, `card "${card.feature}" (${kind}) has no headline`, { fix: `Add {"${card.feature}": {"title": "…", "body": "…"}}.` });
-		});
-	}
-	const PLACEHOLDER = /^Your headline|One short (supporting )?line|Why it matters, briefly|One line about what \*your app\*|^One clear\n|^The core\n|Up to (80|4,?000) characters/;
-	for (const [key, entry] of Object.entries(defaultCopy)) for (const [field, value] of Object.entries(entry || {})) if (typeof value === "string" && PLACEHOLDER.test(value)) warn(`${defaultLocale}/copy.json`, `is still the starter placeholder`, {
-		path: `${key}.${field}`,
-		code: "placeholder",
-		fix: field === "title" ? "Write a benefit headline for this screen: what it does for the person, in a few words." : "Write one short line that backs the headline up."
-	});
-	for (const locale of locales) {
-		const words = load(`${locale}/listing.json`, "listing", null);
-		for (const [field, value] of Object.entries(words || {})) if (typeof value === "string" && PLACEHOLDER.test(value)) warn(`${locale}/listing.json`, `is still the starter placeholder`, {
-			path: field,
-			code: "placeholder",
-			fix: "Write the store text."
-		});
-	}
-	for (const key of Object.keys(defaultCopy)) if (!used.has(key)) warn(`${defaultLocale}/copy.json`, `"${key}" isn't used by any card`, {
-		path: key,
-		fix: "Remove it, or fix the card's feature name."
-	});
-	for (const locale of locales) {
-		if (locale !== defaultLocale) {
-			const file = `${locale}/copy.json`;
-			if (!node_fs.default.existsSync(node_path.default.join(listing, file))) warn(file, "is missing; this language shows the default words", { fix: `Run \`npx screenshot-studio locales --init ${locale}\`.` });
-			else {
-				const copy = load(file, "copy") || {};
-				const missing = requiredCopyFields(resolvedGalleries, profiles, defaultCopy, locale, defaultLocale).filter(({ key, field }) => !copy[key]?.[field]?.trim()).map(({ key, field }) => `${key}.${field}`);
-				if (missing.length) warn(file, `${missing.length} field(s) not translated yet; those cards show ${defaultLocale} words: ${missing.slice(0, 6).join(", ")}${missing.length > 6 ? ", …" : ""}`, {
-					code: "untranslated",
-					fix: `Translate each empty field from ${defaultLocale}/copy.json, keeping its *highlight* and line breaks.`
-				});
-			}
-		}
-		const words = load(`${locale}/listing.json`, "listing", null);
-		for (const problem of words ? listingProblems(words, store) : []) error(`${locale}/listing.json`, problem.message, { path: problem.field });
-	}
-	return {
-		ok: !issues.some((issue) => issue.level === "error"),
-		issues,
-		counted
-	};
-}
-function formatIssues(result) {
-	const { counted, issues } = result;
-	const lines = issues.map((issue) => `${issue.level === "error" ? "✗" : "!"} ${issue.file}${issue.path ? ` ${issue.path}` : ""}: ${issue.message}${issue.fix ? `\n    → ${issue.fix}` : ""}`);
-	const errors = issues.filter((i) => i.level === "error").length, warnings = issues.length - errors;
-	lines.push(`${lines.length ? "\n" : ""}${counted.galleries} galleries, ${counted.cards} cards, ${counted.captures} captures, ${counted.locales} language(s): ` + (issues.length ? `${errors} error(s), ${warnings} warning(s)` : "all good"));
-	return lines.join("\n");
-}
-/** `check [--json]` */
-async function run$11(argv) {
-	const at = argv.indexOf("--listing");
-	const result = checkListing(at >= 0 ? argv[at + 1] : void 0);
-	console.log(argv.includes("--json") ? JSON.stringify(result, null, 2) : formatIssues(result));
-	return result.ok ? 0 : 1;
-}
-var init_check = __esmMin((() => {
-	init_validate();
-	init_gallery();
-	init_project();
-	init_stores();
 }));
 // src/node/workspace/store.ts
 /** Local project registration and coverage. It never modifies a connected project's files. */
@@ -1104,6 +720,479 @@ var init_store = __esmMin((() => {
 	};
 	statusError = (message, status = 400) => Object.assign(new Error(message), { status });
 	assetURL = (id, relative) => `/p/${id}/${relative.split(node_path.default.sep).map(encodeURIComponent).join("/")}`;
+}));
+// src/node/outputs.ts
+/** Validate every generated listing path before rendering or writing any images. */
+function outputProblems(files) {
+	const problems = [];
+	for (const locale of files.locales) {
+		const root = node_path.default.resolve(files.listing, locale), destinations = /* @__PURE__ */ new Map();
+		const physical = (file) => {
+			let parent = file;
+			for (;;) try {
+				node_fs.default.lstatSync(parent);
+				break;
+			} catch (error) {
+				if (error.code !== "ENOENT" && error.code !== "ENOTDIR") throw error;
+				parent = node_path.default.dirname(parent);
+			}
+			return node_path.default.join(node_fs.default.realpathSync(parent), node_path.default.relative(parent, file));
+		};
+		let physicalRoot;
+		try {
+			physicalRoot = physical(root);
+		} catch {
+			problems.push({
+				file: "studio.json",
+				message: `Cannot resolve output folder ${locale}. Repair its symbolic links or choose another locale folder.`
+			});
+			continue;
+		}
+		const add = (file, owner) => {
+			const destination = node_path.default.resolve(root, file);
+			let canonical;
+			try {
+				canonical = physical(destination);
+			} catch {
+				problems.push({
+					...owner,
+					message: `Cannot resolve output ${file}. Repair its symbolic links or choose another output path.`
+				});
+				return;
+			}
+			const relative = node_path.default.relative(root, destination);
+			if (node_path.default.isAbsolute(file) || !inside(root, destination) || destination === root || !inside(files.listing, root) || !inside(node_fs.default.realpathSync(files.listing), physicalRoot) || !inside(physicalRoot, canonical) || node_path.default.relative(physicalRoot, canonical).split(node_path.default.sep)[0] === "raw" || relative.split(node_path.default.sep)[0] === "raw" || ["copy.json", "listing.json"].includes(relative)) {
+				problems.push({
+					...owner,
+					message: `Output ${file} must stay inside ${locale}/ and outside its source files. Choose another output path.`
+				});
+				return;
+			}
+			const previous = destinations.get(canonical);
+			if (previous) problems.push({
+				...owner,
+				message: `Output ${file} is also written by ${previous.file}${previous.path ? ` ${previous.path}` : ""}. Give each output a unique path.`
+			});
+			else destinations.set(canonical, owner);
+		};
+		if (files.config.writeAssets !== false) add("assets.json", { file: `${locale}/assets.json` });
+		for (const kind of Object.keys(files.galleries)) {
+			const profile = files.profiles[kind];
+			if (!profile || locale !== files.defaultLocale && profile.defaultLocaleOnly) continue;
+			const cards = cardsFor(files.galleries, kind);
+			cards.forEach((card, i) => add(outputFile(kind, card, i), {
+				file: "gallery.json",
+				path: `${kind}[${i}]`
+			}));
+			if (cards.length >= 2 && !profile.defaultLocaleOnly && files.config.contactSheets?.[kind] !== false) add(files.config.contactSheets?.[kind] || `contact-${kind}.jpg`, {
+				file: "studio.json",
+				path: `contactSheets.${kind}`
+			});
+		}
+		if (locale === files.defaultLocale) for (const strip of files.config.readmeStrips || []) add(strip.file, {
+			file: "studio.json",
+			path: "readmeStrips"
+		});
+	}
+	return problems;
+}
+var init_outputs = __esmMin((() => {
+	init_gallery();
+	init_store();
+}));
+// src/core/validate.ts
+/** Validate `value` against `schema`; an empty list means valid. */
+function validate(value, schema, root = schema, path = "") {
+	if (schema.$ref) {
+		const name = schema.$ref.replace(/^#\/\$defs\//, "");
+		const target = root.$defs?.[name];
+		if (!target) return [{
+			path,
+			message: `unknown schema reference ${schema.$ref}`
+		}];
+		return validate(value, target, root, path);
+	}
+	const errors = [];
+	const add = (message, at = path) => errors.push({
+		path: at || "(top level)",
+		message
+	});
+	if (schema.allOf) for (const part of schema.allOf) errors.push(...validate(value, part, root, path));
+	if (schema.anyOf) {
+		const attempts = schema.anyOf.map((option) => validate(value, option, root, path));
+		if (!attempts.some((found) => found.length === 0)) {
+			const sameType = schema.anyOf.map((option, i) => ({
+				option,
+				i
+			})).filter(({ option }) => {
+				const resolved = option.$ref ? root.$defs?.[option.$ref.replace(/^#\/\$defs\//, "")] ?? option : option;
+				return (resolved.type ? Array.isArray(resolved.type) ? resolved.type : [resolved.type] : []).some((type) => matchesType(value, type));
+			});
+			if (sameType.length === 1) return [...errors, ...attempts[sameType[0].i]];
+			const consts = schema.anyOf.filter((option) => "const" in option).map((option) => show(option.const));
+			add(`${show(value)} isn't an allowed value${consts.length ? ` (allowed values include ${consts.join(", ")})` : ""}`);
+			return errors;
+		}
+	}
+	if ("const" in schema && value !== schema.const) add(`must be ${show(schema.const)}`);
+	if (schema.enum && !schema.enum.includes(value)) add(`must be one of ${schema.enum.map(show).join(", ")}; got ${show(value)}`);
+	if (schema.type) {
+		const types = Array.isArray(schema.type) ? schema.type : [schema.type];
+		if (!types.some((type) => matchesType(value, type))) {
+			add(`must be ${types.join(" or ")}, not ${typeOf(value)}`);
+			return errors;
+		}
+	}
+	if (typeof value === "string" && schema.pattern && !new RegExp(schema.pattern).test(value)) add(`${show(value)} doesn't match the expected format (${schema.pattern})`);
+	if (typeof value === "number") {
+		if (schema.minimum !== void 0 && value < schema.minimum) add(`must be at least ${schema.minimum}`);
+		if (schema.maximum !== void 0 && value > schema.maximum) add(`must be at most ${schema.maximum}`);
+		if (schema.exclusiveMinimum !== void 0 && value <= schema.exclusiveMinimum) add(`must be more than ${schema.exclusiveMinimum}`);
+	}
+	if (Array.isArray(value)) {
+		if (schema.minItems !== void 0 && value.length < schema.minItems) add(`needs at least ${schema.minItems} item(s)`);
+		if (schema.items) value.forEach((item, i) => errors.push(...validate(item, schema.items, root, join(path, i))));
+	}
+	if (typeOf(value) === "object") {
+		const object = value;
+		for (const key of schema.required || []) if (!(key in object)) add(`is missing "${key}"`);
+		for (const [key, item] of Object.entries(object)) {
+			const own = schema.properties?.[key];
+			if (own) errors.push(...validate(item, own, root, join(path, key)));
+			else if (schema.additionalProperties === false) {
+				const near = Object.keys(schema.properties || {}).find((name) => name.toLowerCase() === key.toLowerCase() || levenshtein(name, key) <= 2);
+				add(`unknown setting "${key}"${near ? `; did you mean "${near}"?` : ""}`, join(path, key));
+			} else if (typeof schema.additionalProperties === "object") errors.push(...validate(item, schema.additionalProperties, root, join(path, key)));
+		}
+	}
+	return errors;
+}
+function levenshtein(a, b) {
+	const row = Array.from({ length: b.length + 1 }, (_, i) => i);
+	for (let i = 1; i <= a.length; i++) {
+		let previous = row[0]++;
+		for (let j = 1; j <= b.length; j++) {
+			const current = row[j];
+			row[j] = Math.min(row[j] + 1, row[j - 1] + 1, previous + (a[i - 1] === b[j - 1] ? 0 : 1));
+			previous = current;
+		}
+	}
+	return row[b.length];
+}
+var typeOf, matchesType, join, show;
+var init_validate = __esmMin((() => {
+	typeOf = (value) => value === null ? "null" : Array.isArray(value) ? "array" : Number.isInteger(value) ? "integer" : typeof value;
+	matchesType = (value, type) => {
+		const actual = typeOf(value);
+		return actual === type || type === "number" && actual === "integer";
+	};
+	join = (base, key) => typeof key === "number" ? `${base}[${key}]` : /^[A-Za-z_$][\w$]*$/.test(key) ? base ? `${base}.${key}` : key : `${base}[${JSON.stringify(key)}]`;
+	show = (value) => JSON.stringify(value)?.slice(0, 60) ?? String(value);
+}));
+// src/core/stores.ts
+/** Which store a listing is for: the App Store when its capture or galleries are iOS, Google Play otherwise. */
+function storeFor(config, profiles) {
+	return config.capture?.platform === "ios" || Object.values(profiles).some((profile) => profile.platform === "ios") ? "App Store" : "Google Play";
+}
+/** Whether a gallery's cards upload to the store: fastlane's screenshot folders when set, else Play's phone and tablets and the iOS galleries. */
+function isStoreGallery(kind, profile, config) {
+	if (profile.defaultLocaleOnly) return false;
+	if (config.fastlane?.screenshots) return kind in config.fastlane.screenshots;
+	return profile.platform === "ios" || [
+		"phone",
+		"tablet7",
+		"tablet10"
+	].includes(kind);
+}
+/** Fields of listing.json over the store's limits. `appName` counts as the title. */
+function listingProblems(words, store) {
+	const problems = [];
+	for (const [field, max] of Object.entries(LIMITS[store])) {
+		const value = field === "title" ? words.title ?? words.appName : words[field];
+		const length = typeof value === "string" ? [...value].length : 0;
+		if (length > max) problems.push({
+			field,
+			length,
+			max,
+			message: `${field} has ${length} characters; ${store} allows ${max}`
+		});
+	}
+	return problems;
+}
+var LIMITS, SCREENSHOT_LIMIT;
+var init_stores = __esmMin((() => {
+	LIMITS = {
+		"Google Play": {
+			title: 30,
+			shortDescription: 80,
+			fullDescription: 4e3
+		},
+		"App Store": {
+			title: 30,
+			subtitle: 30,
+			promotionalText: 170,
+			keywords: 100,
+			description: 4e3,
+			whatsNew: 4e3
+		}
+	};
+	SCREENSHOT_LIMIT = {
+		"Google Play": 8,
+		"App Store": 10
+	};
+}));
+// src/node/check.ts
+/**
+* Check an app's listing without rendering anything: every file against its schema, then what schemas can't see
+* (captures that are missing or have the wrong shape, cards without words, words no card uses, store text over
+* Play's limits). Fast enough to run after every edit; `export` then checks the rendered result.
+*   npx screenshot-studio check [--json]
+*/
+var check_exports = /* @__PURE__ */ __exportAll({
+	checkListing: () => checkListing,
+	formatIssues: () => formatIssues,
+	imageSize: () => imageSize,
+	run: () => run$11
+});
+/** Width and height of a PNG, JPEG or WebP, read from its header. */
+function imageSize(file) {
+	const fd = node_fs.default.openSync(file, "r");
+	try {
+		const head = Buffer.alloc(65536);
+		const length = node_fs.default.readSync(fd, head, 0, head.length, 0);
+		if (head.readUInt32BE(0) === 2303741511) return {
+			width: head.readUInt32BE(16),
+			height: head.readUInt32BE(20)
+		};
+		if (head.toString("ascii", 0, 4) === "RIFF" && head.toString("ascii", 8, 12) === "WEBP") for (let offset = 12; offset + 8 <= length;) {
+			const type = head.toString("ascii", offset, offset + 4), size = head.readUInt32LE(offset + 4), data = offset + 8;
+			if (data + Math.min(size, 10) > length) break;
+			if (type === "VP8X" && size >= 10) return {
+				width: 1 + head.readUIntLE(data + 4, 3),
+				height: 1 + head.readUIntLE(data + 7, 3)
+			};
+			if (type === "VP8 " && size >= 10 && head[data + 3] === 157 && head[data + 4] === 1 && head[data + 5] === 42) return {
+				width: head.readUInt16LE(data + 6) & 16383,
+				height: head.readUInt16LE(data + 8) & 16383
+			};
+			if (type === "VP8L" && size >= 5 && head[data] === 47) {
+				const bits = head.readUInt32LE(data + 1);
+				return {
+					width: (bits & 16383) + 1,
+					height: (bits >>> 14 & 16383) + 1
+				};
+			}
+			offset = data + size + size % 2;
+		}
+		if (head[0] === 255 && head[1] === 216) for (let i = 2; i + 9 < length;) {
+			if (head[i] !== 255) {
+				i++;
+				continue;
+			}
+			const marker = head[i + 1];
+			if (marker >= 192 && marker <= 207 && ![
+				196,
+				200,
+				204
+			].includes(marker)) return {
+				height: head.readUInt16BE(i + 5),
+				width: head.readUInt16BE(i + 7)
+			};
+			i += 2 + head.readUInt16BE(i + 2);
+		}
+		return null;
+	} finally {
+		node_fs.default.closeSync(fd);
+	}
+}
+function checkListing(listingDir) {
+	const listing = requireListing(listingDir);
+	const schemas = node_path.default.join(STUDIO_DIR, "schemas");
+	const issues = [];
+	const error = (file, message, extra = {}) => issues.push({
+		level: "error",
+		file,
+		message,
+		...extra
+	});
+	const warn = (file, message, extra = {}) => issues.push({
+		level: "warning",
+		file,
+		message,
+		...extra
+	});
+	const counted = {
+		galleries: 0,
+		cards: 0,
+		captures: 0,
+		locales: 0
+	};
+	const load = (file, schema, fallback) => {
+		const full = node_path.default.join(listing, file);
+		if (!node_fs.default.existsSync(full)) {
+			if (fallback !== void 0) return fallback;
+			error(file, "is missing", { fix: "Run `npx screenshot-studio init` to create a starter listing." });
+			return null;
+		}
+		let value;
+		try {
+			value = readJson(full);
+		} catch (e) {
+			error(file, e.message);
+			return null;
+		}
+		const definition = readJson(node_path.default.join(schemas, `${schema}.schema.json`), null);
+		const problems = definition ? validate(value, definition) : [];
+		for (const problem of problems) error(file, problem.message, { path: problem.path });
+		return problems.length ? null : value;
+	};
+	const config = load("studio.json", "studio");
+	const profiles = load("profiles.json", "profiles");
+	const galleries = load("gallery.json", "gallery");
+	if (!config || !profiles || !galleries) return {
+		ok: false,
+		issues,
+		counted
+	};
+	const defaultLocale = config.defaultLocale || "en-US";
+	const store = storeFor(config, profiles);
+	const locales = config.locales || [defaultLocale];
+	counted.locales = locales.length;
+	if (!locales.includes(defaultLocale)) error("studio.json", `defaultLocale ${defaultLocale} isn't in locales`, {
+		path: "locales",
+		fix: `Add "${defaultLocale}" to locales.`
+	});
+	for (const file of ["theme.css"]) if (!node_fs.default.existsSync(node_path.default.join(listing, file))) warn(file, "is missing; cards render unstyled");
+	const ratios = Object.values(profiles).filter((p) => p.captureWidth && p.captureHeight).flatMap((p) => [p.captureWidth / p.captureHeight, p.captureHeight / p.captureWidth]);
+	const defaultCopy = load(`${defaultLocale}/copy.json`, "copy", {}) || {};
+	const resolvedGalleries = {};
+	const used = /* @__PURE__ */ new Set();
+	const checkedRaws = /* @__PURE__ */ new Set();
+	for (const kind of Object.keys(galleries)) {
+		if (!profiles[kind]) {
+			error("gallery.json", `gallery "${kind}" has no profile`, {
+				path: kind,
+				fix: `Add "${kind}" to profiles.json with its width and height.`
+			});
+			continue;
+		}
+		let cards;
+		try {
+			cards = cardsFor(galleries, kind);
+		} catch (e) {
+			error("gallery.json", e.message, { path: kind });
+			continue;
+		}
+		resolvedGalleries[kind] = cards;
+		counted.galleries++;
+		if (isStoreGallery(kind, profiles[kind], config) && cards.length > SCREENSHOT_LIMIT[store]) warn("gallery.json", `"${kind}" has ${cards.length} cards; ${store} takes at most ${SCREENSHOT_LIMIT[store]} per device type`, {
+			path: kind,
+			code: "store-limit",
+			fix: `Keep the best ${SCREENSHOT_LIMIT[store]}: lead with the screen that sells the app, and cut the rest from gallery.json.`
+		});
+		cards.forEach((card, i) => {
+			counted.cards++;
+			const at = `${kind}[${i}]`;
+			used.add(card.feature).add(`${kind}/${card.feature}`);
+			const devices = devicesFor(card);
+			for (const [d, device] of devices.entries()) {
+				const raw = node_path.default.join(listing, defaultLocale, "raw", device.raw);
+				if (checkedRaws.has(raw)) continue;
+				checkedRaws.add(raw);
+				counted.captures++;
+				if (!node_fs.default.existsSync(raw)) {
+					error("gallery.json", `capture ${defaultLocale}/raw/${device.raw} doesn't exist`, {
+						path: devices.length > 1 ? `${at}.devices[${d}].raw` : `${at}.raw`,
+						fix: "Capture it (`npx screenshot-studio recapture`), add the file, or fix the path."
+					});
+					continue;
+				}
+				const size = imageSize(raw);
+				if (size && ratios.length && !ratios.some((r) => Math.abs(size.width / size.height - r) < .001)) error("gallery.json", `${device.raw} is ${size.width}×${size.height}, which isn't the shape of any capture size in profiles.json`, {
+					path: `${at}.raw`,
+					fix: "Recapture it at a configured size, or add a profile whose captureWidth × captureHeight has this shape."
+				});
+			}
+			for (const [c, callout] of (card.callouts || []).entries()) {
+				if (!callout.raw && (callout.device || 0) >= devices.length) error("gallery.json", `callout ${c} points at device ${callout.device || 0}, but the card has ${devices.length}`, { path: `${at}.callouts[${c}]` });
+				if (callout.raw && !node_fs.default.existsSync(node_path.default.join(listing, defaultLocale, "raw", callout.raw))) error("gallery.json", `callout capture ${callout.raw} doesn't exist`, { path: `${at}.callouts[${c}].raw` });
+			}
+			const words = card.sharedCopy === false ? defaultCopy[`${kind}/${card.feature}`] : {
+				...defaultCopy[card.feature],
+				...defaultCopy[`${kind}/${card.feature}`]
+			};
+			if (devices.length && !card.identity && !(words && "title" in words) && profiles[kind].frame !== "none") warn(`${defaultLocale}/copy.json`, `card "${card.feature}" (${kind}) has no headline`, { fix: `Add {"${card.feature}": {"title": "…", "body": "…"}}.` });
+		});
+	}
+	for (const problem of outputProblems({
+		listing,
+		repo: node_path.default.dirname(listing),
+		config,
+		profiles,
+		galleries: resolvedGalleries,
+		defaultLocale,
+		locales
+	})) error(problem.file, problem.message, { path: problem.path });
+	const PLACEHOLDER = /^Your headline|One short (supporting )?line|Why it matters, briefly|One line about what \*your app\*|^One clear\n|^The core\n|Up to (80|4,?000) characters/;
+	for (const [key, entry] of Object.entries(defaultCopy)) for (const [field, value] of Object.entries(entry || {})) if (typeof value === "string" && PLACEHOLDER.test(value)) warn(`${defaultLocale}/copy.json`, `is still the starter placeholder`, {
+		path: `${key}.${field}`,
+		code: "placeholder",
+		fix: field === "title" ? "Write a benefit headline for this screen: what it does for the person, in a few words." : "Write one short line that backs the headline up."
+	});
+	for (const locale of locales) {
+		const words = load(`${locale}/listing.json`, "listing", null);
+		for (const [field, value] of Object.entries(words || {})) if (typeof value === "string" && PLACEHOLDER.test(value)) warn(`${locale}/listing.json`, `is still the starter placeholder`, {
+			path: field,
+			code: "placeholder",
+			fix: "Write the store text."
+		});
+	}
+	for (const key of Object.keys(defaultCopy)) if (!used.has(key)) warn(`${defaultLocale}/copy.json`, `"${key}" isn't used by any card`, {
+		path: key,
+		fix: "Remove it, or fix the card's feature name."
+	});
+	for (const locale of locales) {
+		if (locale !== defaultLocale) {
+			const file = `${locale}/copy.json`;
+			if (!node_fs.default.existsSync(node_path.default.join(listing, file))) warn(file, "is missing; this language shows the default words", { fix: `Run \`npx screenshot-studio locales --init ${locale}\`.` });
+			else {
+				const copy = load(file, "copy") || {};
+				const missing = requiredCopyFields(resolvedGalleries, profiles, defaultCopy, locale, defaultLocale).filter(({ key, field }) => !copy[key]?.[field]?.trim()).map(({ key, field }) => `${key}.${field}`);
+				if (missing.length) warn(file, `${missing.length} field(s) not translated yet; those cards show ${defaultLocale} words: ${missing.slice(0, 6).join(", ")}${missing.length > 6 ? ", …" : ""}`, {
+					code: "untranslated",
+					fix: `Translate each empty field from ${defaultLocale}/copy.json, keeping its *highlight* and line breaks.`
+				});
+			}
+		}
+		const words = load(`${locale}/listing.json`, "listing", null);
+		for (const problem of words ? listingProblems(words, store) : []) error(`${locale}/listing.json`, problem.message, { path: problem.field });
+	}
+	return {
+		ok: !issues.some((issue) => issue.level === "error"),
+		issues,
+		counted
+	};
+}
+function formatIssues(result) {
+	const { counted, issues } = result;
+	const lines = issues.map((issue) => `${issue.level === "error" ? "✗" : "!"} ${issue.file}${issue.path ? ` ${issue.path}` : ""}: ${issue.message}${issue.fix ? `\n    → ${issue.fix}` : ""}`);
+	const errors = issues.filter((i) => i.level === "error").length, warnings = issues.length - errors;
+	lines.push(`${lines.length ? "\n" : ""}${counted.galleries} galleries, ${counted.cards} cards, ${counted.captures} captures, ${counted.locales} language(s): ` + (issues.length ? `${errors} error(s), ${warnings} warning(s)` : "all good"));
+	return lines.join("\n");
+}
+/** `check [--json]` */
+async function run$11(argv) {
+	const at = argv.indexOf("--listing");
+	const result = checkListing(at >= 0 ? argv[at + 1] : void 0);
+	console.log(argv.includes("--json") ? JSON.stringify(result, null, 2) : formatIssues(result));
+	return result.ok ? 0 : 1;
+}
+var init_check = __esmMin((() => {
+	init_outputs();
+	init_validate();
+	init_gallery();
+	init_project();
+	init_stores();
 }));
 // src/node/workspace/events.ts
 /**
@@ -1954,6 +2043,11 @@ async function exportListing(options = {}) {
 			if (!Number.isInteger(options.card) || options.card < 0) throw new Error("--card must be a nonnegative integer.");
 			if (!Object.keys(files.galleries).filter((kind) => !options.kind || kind === options.kind).some((kind) => gallery.cardsFor(files.galleries, kind).length > options.card)) throw new Error(`No card ${options.card} in the selected galleries.`);
 		}
+		const problems = outputProblems({
+			...files,
+			locales: options.locales?.length ? options.locales : files.locales
+		});
+		if (problems.length) throw new Error(problems.map((p) => `${p.file}: ${p.message}`).join("\n"));
 		server = await serve(files.repo);
 		const address = server.address();
 		const base = `http://127.0.0.1:${typeof address === "object" && address ? address.port : 0}/${node_path.default.relative(files.repo, listing).split(node_path.default.sep).join("/")}`;
@@ -2359,6 +2453,7 @@ async function run$9(argv) {
 }
 var IMAGES, defaultJobs, laneDir, decoded;
 var init_export = __esmMin((() => {
+	init_outputs();
 	init_check();
 	init_project();
 	init_server();
@@ -2398,6 +2493,11 @@ var init_emulator$1 = __esmMin((() => {
 		battery = 100;
 		saved = /* @__PURE__ */ new Map();
 		clockSet = false;
+		removedHelpers = /* @__PURE__ */ new Set();
+		savedLocales = /* @__PURE__ */ new Map();
+		originalNight;
+		originalNavigation;
+		network;
 		constructor(serial) {
 			this.serial = serial;
 		}
@@ -2427,7 +2527,7 @@ var init_emulator$1 = __esmMin((() => {
 		}
 		setting(namespace, key, value) {
 			if (value === void 0) {
-				const read = this.try("settings", "get", namespace, key).trim();
+				const read = this.shell("settings", "get", namespace, key).trim();
 				return read === "null" ? "" : read;
 			}
 			this.shell("settings", "put", namespace, key, value);
@@ -2445,6 +2545,12 @@ var init_emulator$1 = __esmMin((() => {
 		/** Prepare the emulator for a capture: a refused override, settings saved, demo mode allowed, helpers away. */
 		prepare(options) {
 			if (/Override/.test(this.try("wm", "size") + this.try("wm", "density"))) throw new Error("The emulator still has a display override from an interrupted run: npx screenshot-studio reset");
+			this.originalNight = this.shell("cmd", "uimode", "night").match(/\b(auto|no|yes|custom)\b/)?.[1];
+			this.originalNavigation = this.try("cmd", "overlay", "list").match(/\[x\]\s+(\S*navbar\.\S+)/)?.[1];
+			if (options.offline) this.network = {
+				wifi: this.setting("global", "wifi_on"),
+				data: this.setting("global", "mobile_data")
+			};
 			this.try("input", "keyevent", "KEYCODE_WAKEUP");
 			this.try("wm", "dismiss-keyguard");
 			this.try("cmd", "overlay", "enable-exclusive", "--category", "com.android.internal.systemui.navbar.gestural");
@@ -2454,10 +2560,10 @@ var init_emulator$1 = __esmMin((() => {
 			this.change("system", "accelerometer_rotation", "0");
 			this.change("system", "user_rotation", "0");
 			for (const key of SCALES) this.change("global", key, options.animations ? "1" : "0");
-			this.setting("global", "sysui_demo_allowed", "1");
+			this.change("global", "sysui_demo_allowed", "1");
 			for (const line of this.try("pm", "list", "packages").split(/\s+/)) {
 				const name = line.replace(/^package:/, "");
-				if (HELPERS.test(name)) this.try("pm", "uninstall", "--user", "0", name);
+				if (HELPERS.test(name) && this.try("pm", "uninstall", "--user", "0", name).includes("Success")) this.removedHelpers.add(name);
 			}
 			this.snapshotHelper();
 			this.try("pkill", "-f", "uiautomator");
@@ -2545,6 +2651,11 @@ var init_emulator$1 = __esmMin((() => {
 		}
 		/** The app's own language (Android 13+), checked; empty resets it to the system language. */
 		appLocale(pkg, locale) {
+			if (!this.savedLocales.has(pkg)) {
+				const current = this.shell("cmd", "locale", "get-app-locales", pkg, "--user", "current").match(/are \[([^\]]*)\]/)?.[1];
+				if (current === void 0) throw new Error(`Could not read the original language for ${pkg}; capture has not changed it.`);
+				this.savedLocales.set(pkg, current);
+			}
 			this.shell("cmd", "locale", "set-app-locales", pkg, "--user", "current", "--locales", locale);
 			const read = this.shell("cmd", "locale", "get-app-locales", pkg, "--user", "current");
 			if (read.match(/are \[([^\]]*)\]/)?.[1] !== locale) throw new Error(`The app's language did not switch to ${locale || "the system language"}: ${read.trim()}`);
@@ -2639,27 +2750,22 @@ var init_emulator$1 = __esmMin((() => {
 				}
 			};
 			if (options.pkg) step("stop the app", () => this.shell("am", "force-stop", options.pkg));
-			if (options.pkg && options.appLocale) step("app language", () => this.appLocale(options.pkg, ""));
+			for (const [pkg, locale] of this.savedLocales) step("app language", () => this.appLocale(pkg, locale));
 			step("demo mode", () => this.demo("exit"));
-			step("night mode", () => this.shell("cmd", "uimode", "night", "no"));
+			if (this.originalNight) step("night mode", () => this.shell("cmd", "uimode", "night", this.originalNight));
+			if (this.originalNavigation) step("navigation", () => this.shell("cmd", "overlay", "enable-exclusive", "--category", this.originalNavigation));
 			step("display size", () => this.shell("wm", "size", "reset"));
 			step("display density", () => this.shell("wm", "density", "reset"));
 			if (this.clockSet) step("clock", () => this.shell("cmd", "alarm", "set-time", Date.now()));
-			const defaults = {
-				heads_up_notifications_enabled: "1",
-				auto_time: "1",
-				font_scale: "1.0",
-				accelerometer_rotation: "1",
-				user_rotation: "0",
-				...Object.fromEntries(SCALES.map((key) => [key, "1"]))
-			};
 			for (const [where, value] of this.saved) {
 				const [namespace, key] = where.split("/");
-				step(key, () => this.setting(namespace, key, value || defaults[key]));
+				step(key, () => value ? this.setting(namespace, key, value) : this.shell("settings", "delete", namespace, key));
 			}
-			if (options.offline) {
-				step("Wi-Fi", () => this.shell("svc", "wifi", "enable"));
-				step("mobile data", () => this.shell("svc", "data", "enable"));
+			for (const pkg of this.removedHelpers) step(`restore ${pkg}`, () => this.shell("pm", "install-existing", "--user", "0", pkg));
+			if (this.network) {
+				const { wifi, data } = this.network;
+				if (/^[01]$/.test(wifi)) step("Wi-Fi", () => this.shell("svc", "wifi", wifi === "1" ? "enable" : "disable"));
+				if (/^[01]$/.test(data)) step("mobile data", () => this.shell("svc", "data", data === "1" ? "enable" : "disable"));
 			}
 			if (options.uninstall && options.pkg) step("uninstall", () => this.adb("uninstall", options.pkg));
 			return failed;
@@ -3345,6 +3451,13 @@ async function runTour(file, options) {
 		},
 		async rotate(landscape) {
 			await android().rotate(landscape);
+			const short = Math.min(d.width, d.height), long = Math.max(d.width, d.height);
+			d.width = landscape ? long : short;
+			d.height = landscape ? short : long;
+			target = {
+				...target,
+				width: d.width
+			};
 		},
 		async resize(width, height, density) {
 			const emu = android();
