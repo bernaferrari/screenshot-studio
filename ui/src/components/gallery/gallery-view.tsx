@@ -232,7 +232,7 @@ export function GalleryView({
             side="right"
             showCloseButton={false}
             className="inspector-sheet w-full gap-0 p-0 sm:max-w-md"
-            onOpenAutoFocus={(event) => event.preventDefault()}
+            initialFocus={false}
           >
             <SheetTitle className="sr-only">Card inspector</SheetTitle>
             <SheetDescription className="sr-only">

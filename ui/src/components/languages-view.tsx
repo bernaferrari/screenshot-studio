@@ -143,7 +143,7 @@ export function LanguagesView({
             {visible.length} of {model.locales.length} languages
           </span>
         </div>
-        <TabsContent forceMount value={filter} className="mt-0">
+        <TabsContent keepMounted value={filter} className="mt-0">
           {visible.length ? (
             <ul className="divide-y overflow-hidden rounded-xl border bg-card">
               {visible.map((row) => (

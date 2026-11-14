@@ -22,23 +22,25 @@ export function ProjectMenu({
 }) {
   return (
     <DropdownMenu>
-      <DropdownMenuTrigger asChild>
-        <Button
-          variant="ghost"
-          size="icon"
-          aria-label={`Manage ${project.name}`}
-        >
-          <MoreHorizontal />
-        </Button>
+      <DropdownMenuTrigger
+        render={
+          <Button
+            variant="ghost"
+            size="icon"
+            aria-label={`Manage ${project.name}`}
+          />
+        }
+      >
+        <MoreHorizontal />
       </DropdownMenuTrigger>
       <DropdownMenuContent align="end">
-        <DropdownMenuItem onSelect={() => actions.edit(project)}>
+        <DropdownMenuItem onClick={() => actions.edit(project)}>
           <Pencil />
           Change folder or name
         </DropdownMenuItem>
         {actions.capabilities.revealFolder && (
           <DropdownMenuItem
-            onSelect={() =>
+            onClick={() =>
               mutate(`/api/projects/${project.id}/reveal`, {}).catch(
                 (e: unknown) => toast.error(errorMessage(e)),
               )
@@ -51,7 +53,7 @@ export function ProjectMenu({
         <DropdownMenuSeparator />
         <DropdownMenuItem
           variant="destructive"
-          onSelect={() => actions.remove(project)}
+          onClick={() => actions.remove(project)}
         >
           <Trash2 />
           Remove from workspace

@@ -218,15 +218,17 @@ function ProjectCard({
         )}
       </CardContent>
       <CardFooter className="justify-end gap-2 border-t bg-muted/20 px-5 py-3">
-        <Button asChild variant="outline" size="sm">
-          <Link to={projectURL(project)}>
-            {project.kind === "studio"
-              ? "Open studio"
-              : project.kind === "library"
-                ? "View images"
-                : "Reconnect"}
-            <ArrowRight />
-          </Link>
+        <Button
+          render={<Link to={projectURL(project)} />}
+          variant="outline"
+          size="sm"
+        >
+          {project.kind === "studio"
+            ? "Open studio"
+            : project.kind === "library"
+              ? "View images"
+              : "Reconnect"}
+          <ArrowRight />
         </Button>
       </CardFooter>
     </Card>

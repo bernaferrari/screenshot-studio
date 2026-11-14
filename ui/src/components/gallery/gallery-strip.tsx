@@ -138,7 +138,6 @@ export function GalleryStrip(props: StripProps) {
       <CardContent className="min-w-0 p-0">
         <ScrollArea
           ref={scroll}
-          type="auto"
           className="gallery-scroll w-full"
           onScrollCapture={update}
           role="region"

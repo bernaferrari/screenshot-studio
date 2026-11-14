@@ -71,7 +71,12 @@ export function Choice({
   className?: string;
 }) {
   return (
-    <Select value={value} onValueChange={onChange}>
+    <Select
+      value={value}
+      onValueChange={(next) => {
+        if (next != null) onChange(next);
+      }}
+    >
       <SelectTrigger aria-label={label} className={className}>
         <SelectValue />
       </SelectTrigger>
@@ -94,10 +99,12 @@ export function IconButton({
 }: ComponentProps<typeof Button> & { label: string }) {
   return (
     <Tooltip>
-      <TooltipTrigger asChild>
-        <Button variant="ghost" size="icon" aria-label={label} {...props}>
-          {children}
-        </Button>
+      <TooltipTrigger
+        render={
+          <Button variant="ghost" size="icon" aria-label={label} {...props} />
+        }
+      >
+        {children}
       </TooltipTrigger>
       <TooltipContent>{label}</TooltipContent>
     </Tooltip>

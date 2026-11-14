@@ -26,6 +26,7 @@ import {
 import {
   DropdownMenu,
   DropdownMenuContent,
+  DropdownMenuGroup,
   DropdownMenuLabel,
   DropdownMenuRadioGroup,
   DropdownMenuRadioItem,
@@ -51,6 +52,11 @@ import {
   SidebarRail,
   useSidebar,
 } from "@/components/ui/sidebar";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
 import { ProjectAvatar } from "./common";
 import { modifierKey } from "@/lib/format";
 import {
@@ -80,7 +86,7 @@ export function StudioSidebar({
   onAdd(): void;
   onSearch(): void;
 }) {
-  const { setOpenMobile, isMobile } = useSidebar(),
+  const { setOpenMobile, isMobile, state } = useSidebar(),
     { theme, setTheme } = useTheme(),
     [expanded, setExpanded] = useState(
       () => new Set(route.id ? [route.id] : []),
@@ -107,18 +113,20 @@ export function StudioSidebar({
         )}
         <SidebarMenu>
           <SidebarMenuItem>
-            <SidebarMenuButton asChild size="lg" tooltip="Screenshot Studio">
-              <Link to="/studio/" onClick={close}>
-                <img src={logo} alt="" className="size-8 shrink-0" />
-                <span className="flex flex-col text-left">
-                  <span className="text-sm font-semibold">
-                    Screenshot Studio
-                  </span>
-                  <span className="text-xs text-muted-foreground">
-                    Real screens, store art
-                  </span>
+            <SidebarMenuButton
+              render={<Link to="/studio/" onClick={close} />}
+              size="lg"
+              tooltip="Screenshot Studio"
+            >
+              <img src={logo} alt="" className="size-8 shrink-0" />
+              <span className="flex flex-col text-left">
+                <span className="text-sm font-semibold">
+                  Screenshot Studio
                 </span>
-              </Link>
+                <span className="text-xs text-muted-foreground">
+                  Real screens, store art
+                </span>
+              </span>
             </SidebarMenuButton>
           </SidebarMenuItem>
           <SidebarMenuItem>
@@ -137,14 +145,12 @@ export function StudioSidebar({
           <SidebarMenu>
             <SidebarMenuItem>
               <SidebarMenuButton
-                asChild
+                render={<Link to="/studio/" onClick={close} />}
                 isActive={!route.id && !route.editor}
                 tooltip="All projects"
               >
-                <Link to="/studio/" onClick={close}>
-                  <LayoutDashboard />
-                  <span>All projects</span>
-                </Link>
+                <LayoutDashboard />
+                <span>All projects</span>
               </SidebarMenuButton>
               <SidebarMenuBadge>{workspace.projects.length}</SidebarMenuBadge>
             </SidebarMenuItem>
@@ -162,7 +168,6 @@ export function StudioSidebar({
           <SidebarMenu aria-label="Screenshot projects">
             {workspace.projects.map((project) => (
               <Collapsible
-                asChild
                 key={project.id}
                 open={expanded.has(project.id)}
                 onOpenChange={(open) =>
@@ -173,68 +178,70 @@ export function StudioSidebar({
                     return next;
                   })
                 }
+                render={
+                  <SidebarMenuItem
+                    className={cn(
+                      "workspace-project",
+                      route.id === project.id && "current",
+                    )}
+                  />
+                }
               >
-                <SidebarMenuItem
-                  className={cn(
-                    "workspace-project",
-                    route.id === project.id && "current",
-                  )}
-                >
                   <SidebarMenuButton
-                    asChild
+                    render={
+                      <Link
+                        to={projectURL(project)}
+                        onClick={close}
+                        className="workspace-project-link"
+                      />
+                    }
                     tooltip={project.name}
                     className="pr-8"
                     isActive={
                       route.id === project.id && project.kind !== "studio"
                     }
                   >
-                    <Link
-                      to={projectURL(project)}
-                      onClick={close}
-                      className="workspace-project-link"
-                    >
-                      <ProjectAvatar
-                        project={{
-                          name: project.name,
-                          icon:
-                            project.kind === "studio"
-                              ? project.icon
-                              : undefined,
-                        }}
-                        className="size-6"
-                      />
-                      <span className="project-link-name">{project.name}</span>
-                    </Link>
+                    <ProjectAvatar
+                      project={{
+                        name: project.name,
+                        icon:
+                          project.kind === "studio" ? project.icon : undefined,
+                      }}
+                      className="size-6"
+                    />
+                    <span className="project-link-name">{project.name}</span>
                   </SidebarMenuButton>
                   {project.kind === "studio" && (
                     <>
-                      <CollapsibleTrigger asChild>
-                        <SidebarMenuAction
-                          aria-label={`Expand ${project.name}`}
-                          className="data-[state=open]:rotate-90"
-                        >
-                          <ChevronRight />
-                        </SidebarMenuAction>
+                      <CollapsibleTrigger
+                        render={
+                          <SidebarMenuAction
+                            aria-label={`Expand ${project.name}`}
+                            className="data-panel-open:rotate-90"
+                          />
+                        }
+                      >
+                        <ChevronRight />
                       </CollapsibleTrigger>
                       <CollapsibleContent>
                         <SidebarMenuSub>
                           {views.map(([value, label, Icon]) => (
                             <SidebarMenuSubItem key={value}>
                               <SidebarMenuSubButton
-                                asChild
+                                render={
+                                  <Link
+                                    to={editorURL(project, value)}
+                                    onClick={close}
+                                  />
+                                }
                                 isActive={
                                   route.id === project.id &&
                                   route.editor &&
                                   sectionOf(route.view) === value
                                 }
                               >
-                                <Link
-                                  to={editorURL(project, value)}
-                                  onClick={close}
-                                >
-                                  <Icon />
-                                  <span>{label}</span>
-                                </Link>
+                                <Icon />
+                                <span>{label}</span>
                               </SidebarMenuSubButton>
                             </SidebarMenuSubItem>
                           ))}
@@ -242,7 +249,6 @@ export function StudioSidebar({
                       </CollapsibleContent>
                     </>
                   )}
-                </SidebarMenuItem>
               </Collapsible>
             ))}
           </SidebarMenu>
@@ -252,8 +258,14 @@ export function StudioSidebar({
         <SidebarMenu>
           <SidebarMenuItem>
             <DropdownMenu>
-              <DropdownMenuTrigger asChild>
-                <SidebarMenuButton size="lg" tooltip="Appearance">
+              <Tooltip>
+                <TooltipTrigger
+                  render={
+                    <DropdownMenuTrigger
+                      render={<SidebarMenuButton size="lg" />}
+                    />
+                  }
+                >
                   <span className="flex size-8 items-center justify-center rounded-lg border bg-background">
                     <Settings2 className="size-4" />
                   </span>
@@ -264,14 +276,23 @@ export function StudioSidebar({
                     </span>
                   </span>
                   <ChevronsUpDown className="ml-auto" />
-                </SidebarMenuButton>
-              </DropdownMenuTrigger>
+                </TooltipTrigger>
+                <TooltipContent
+                  side="right"
+                  align="center"
+                  hidden={state !== "collapsed" || isMobile}
+                >
+                  Appearance
+                </TooltipContent>
+              </Tooltip>
               <DropdownMenuContent
                 side={isMobile ? "top" : "right"}
                 align="end"
                 className="min-w-48"
               >
-                <DropdownMenuLabel>Appearance</DropdownMenuLabel>
+                <DropdownMenuGroup>
+                  <DropdownMenuLabel>Appearance</DropdownMenuLabel>
+                </DropdownMenuGroup>
                 <DropdownMenuSeparator />
                 <DropdownMenuRadioGroup value={theme} onValueChange={setTheme}>
                   <DropdownMenuRadioItem value="light">

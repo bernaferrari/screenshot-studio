@@ -50,11 +50,9 @@ export function ProjectPage({
         }
         actions={
           <>
-            <Button asChild variant="outline">
-              <Link to="/studio/">
-                <ArrowLeft />
-                All projects
-              </Link>
+            <Button render={<Link to="/studio/" />} variant="outline">
+              <ArrowLeft />
+              All projects
             </Button>
             <ProjectMenu project={project} actions={actions} />
           </>

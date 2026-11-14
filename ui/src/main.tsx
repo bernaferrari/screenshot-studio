@@ -55,11 +55,12 @@ function Launch() {
             <Copy />
             Copy command
           </Button>
-          <Button asChild variant="outline">
-            <a href="http://127.0.0.1:8790/studio/">
-              Open local studio
-              <ArrowRight />
-            </a>
+          <Button
+            render={<a href="http://127.0.0.1:8790/studio/" />}
+            variant="outline"
+          >
+            Open local studio
+            <ArrowRight />
           </Button>
         </CardFooter>
       </Card>
@@ -74,7 +75,7 @@ createRoot(document.getElementById("root")!).render(
     enableSystem
     disableTransitionOnChange
   >
-    <TooltipProvider delayDuration={350}>
+    <TooltipProvider delay={350}>
       {location.protocol === "file:" ? (
         <Launch />
       ) : (

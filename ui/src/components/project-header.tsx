@@ -38,15 +38,17 @@ function LiveIndicator({ state }: { state: LiveState }) {
           ];
   return (
     <Tooltip>
-      <TooltipTrigger asChild>
-        <span
-          className="live-indicator inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-xs text-muted-foreground"
-          data-state={state}
-          tabIndex={0}
-        >
-          <span className={cn("size-1.5 rounded-full", dot)} aria-hidden />
-          {label}
-        </span>
+      <TooltipTrigger
+        render={
+          <span
+            className="live-indicator inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-xs text-muted-foreground"
+            data-state={state}
+            tabIndex={0}
+          />
+        }
+      >
+        <span className={cn("size-1.5 rounded-full", dot)} aria-hidden />
+        {label}
       </TooltipTrigger>
       <TooltipContent>{hint}</TooltipContent>
     </Tooltip>

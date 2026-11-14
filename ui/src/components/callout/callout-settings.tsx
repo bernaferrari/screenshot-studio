@@ -61,10 +61,10 @@ export function CalloutSettings({
         </div>
       </div>
       <Collapsible>
-        <CollapsibleTrigger asChild>
-          <Button type="button" variant="ghost" size="sm">
-            Precise selection
-          </Button>
+        <CollapsibleTrigger
+          render={<Button type="button" variant="ghost" size="sm" />}
+        >
+          Precise selection
         </CollapsibleTrigger>
         <CollapsibleContent className="space-y-3 pt-3">
           <div className="grid grid-cols-2 gap-3">

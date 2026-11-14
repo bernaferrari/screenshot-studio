@@ -40,17 +40,15 @@ export function MediaViewerProvider({ children }: { children: ReactNode }) {
     [],
   );
   const close = useCallback(() => setSession(null), []);
-  const restoreFocus = useCallback((event: Event) => {
-    event.preventDefault();
+  const restoreFocus = useCallback(() => {
     const element = trigger.current;
-    requestAnimationFrame(() => {
-      if (
-        element instanceof HTMLElement &&
-        element.isConnected &&
-        !element.closest("[hidden],[inert]")
-      )
-        element.focus({ preventScroll: true });
-    });
+    if (
+      element instanceof HTMLElement &&
+      element.isConnected &&
+      !element.closest("[hidden],[inert]")
+    )
+      return element;
+    return false;
   }, []);
   return (
     <ViewerContext.Provider value={open}>

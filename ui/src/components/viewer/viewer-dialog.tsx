@@ -39,7 +39,7 @@ export function ViewerDialog({
 }: {
   session: ViewerSession;
   close(): void;
-  restoreFocus(event: Event): void;
+  restoreFocus(): HTMLElement | false;
 }) {
   const { items, title, notice } = session,
     count = items.length,
@@ -121,11 +121,8 @@ export function ViewerDialog({
         showCloseButton={false}
         style={{ animation: "none" }}
         overlayClassName="bg-black/80 backdrop-blur-sm"
-        onCloseAutoFocus={restoreFocus}
-        onOpenAutoFocus={(event) => {
-          event.preventDefault();
-          closeButton.current?.focus();
-        }}
+        initialFocus={closeButton}
+        finalFocus={restoreFocus}
         onKeyDown={keyboard}
         data-image-index={index}
         data-media-type={live ? "live" : "image"}

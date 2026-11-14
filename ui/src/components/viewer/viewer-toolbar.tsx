@@ -85,28 +85,31 @@ export function ViewerToolbar({
               : "Original image"}
         </span>
         {!live && loaded && !error && (
-          <ViewerAction asChild label="Download image">
-            <a
-              href={item.src}
-              download={item.filename || item.src.split("/").at(-1)}
-            >
-              <Download />
-            </a>
+          <ViewerAction
+            label="Download image"
+            render={
+              <a
+                href={item.src}
+                download={item.filename || item.src.split("/").at(-1)}
+              />
+            }
+          >
+            <Download />
           </ViewerAction>
         )}
         <ViewerAction
-          asChild
           label={
             live ? "Open full preview in new tab" : "Open original in new tab"
           }
+          render={
+            <a
+              href={live ? `${item.previewURL}&fit` : item.src}
+              target="_blank"
+              rel="noreferrer"
+            />
+          }
         >
-          <a
-            href={live ? `${item.previewURL}&fit` : item.src}
-            target="_blank"
-            rel="noreferrer"
-          >
-            <ExternalLink />
-          </a>
+          <ExternalLink />
         </ViewerAction>
       </div>
     </div>

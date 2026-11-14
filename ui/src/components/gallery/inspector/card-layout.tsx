@@ -95,10 +95,12 @@ function EntryJson({ entry, label }: { entry: unknown; label: string }) {
   return (
     <Collapsible className="rounded-md border">
       <div className="flex items-center justify-between gap-2 py-1 pr-1 pl-3">
-        <CollapsibleTrigger asChild>
-          <Button variant="ghost" size="sm" className="-ml-2 font-mono text-xs">
-            {label}
-          </Button>
+        <CollapsibleTrigger
+          render={
+            <Button variant="ghost" size="sm" className="-ml-2 font-mono text-xs" />
+          }
+        >
+          {label}
         </CollapsibleTrigger>
         <IconButton
           label="Copy card JSON"

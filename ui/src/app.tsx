@@ -67,18 +67,20 @@ function Crumbs({ route }: { route: Route }) {
     <Breadcrumb className="min-w-0">
       <BreadcrumbList className="flex-nowrap">
         <BreadcrumbItem className="hidden sm:block">
-          <BreadcrumbLink asChild>
-            <Link to="/studio/">Workspace</Link>
+          <BreadcrumbLink render={<Link to="/studio/" />}>
+            Workspace
           </BreadcrumbLink>
         </BreadcrumbItem>
         <BreadcrumbSeparator className="hidden sm:block" />
         {project && (
           <>
             <BreadcrumbItem>
-              <BreadcrumbLink asChild>
-                <Link to={projectURL(project)} className="max-w-36 truncate">
-                  {project.name}
-                </Link>
+              <BreadcrumbLink
+                render={
+                  <Link to={projectURL(project)} className="max-w-36 truncate" />
+                }
+              >
+                {project.name}
               </BreadcrumbLink>
             </BreadcrumbItem>
             <BreadcrumbSeparator />
@@ -87,8 +89,10 @@ function Crumbs({ route }: { route: Route }) {
         {route.view === "copy" && route.editor && project ? (
           <>
             <BreadcrumbItem className="hidden sm:block">
-              <BreadcrumbLink asChild>
-                <Link to={editorURL(project, "languages")}>Languages</Link>
+              <BreadcrumbLink
+                render={<Link to={editorURL(project, "languages")} />}
+              >
+                Languages
               </BreadcrumbLink>
             </BreadcrumbItem>
             <BreadcrumbSeparator className="hidden sm:block" />
@@ -214,9 +218,7 @@ export function App() {
         title="Project not found"
         description="This project may have been removed from the workspace."
         action={
-          <Button asChild>
-            <Link to="/studio/">All projects</Link>
-          </Button>
+          <Button render={<Link to="/studio/" />}>All projects</Button>
         }
       />
     );

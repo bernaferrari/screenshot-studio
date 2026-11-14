@@ -44,12 +44,14 @@ export function GalleryToolbar({
     <Card className="gap-0 overflow-hidden py-0 shadow-none">
       <Tabs
         value={kind}
-        activationMode="manual"
-        onValueChange={chooseKind}
+        onValueChange={(next) => {
+          if (next) chooseKind(next);
+        }}
         className="hidden min-w-0 @min-[56rem]/gallery:flex"
       >
-        <ScrollArea className="w-full" type="auto">
+        <ScrollArea className="w-full">
           <TabsList
+            activateOnFocus={false}
             aria-label="Device galleries"
             variant="line"
             className="h-auto w-max min-w-full justify-start gap-1 rounded-none border-b px-3 py-2"
@@ -99,10 +101,11 @@ export function GalleryToolbar({
         />
         <Tabs
           value={route.source}
-          activationMode="manual"
-          onValueChange={(source) => route.go({ source })}
+          onValueChange={(source) => {
+            if (source) route.go({ source });
+          }}
         >
-          <TabsList aria-label="Preview source">
+          <TabsList activateOnFocus={false} aria-label="Preview source">
             <TabsTrigger value="live">Live</TabsTrigger>
             <TabsTrigger value="exported">Exported</TabsTrigger>
           </TabsList>
@@ -143,7 +146,10 @@ export function GalleryToolbar({
                 max={760}
                 step={20}
                 className="w-28"
-                onValueChange={([next]) => onHeight(next)}
+                onValueChange={(next) => {
+                  const value = Array.isArray(next) ? next[0] : next;
+                  if (value != null) onHeight(value);
+                }}
               />
               <span className="w-12 text-right text-xs text-muted-foreground tabular-nums">
                 {height} px

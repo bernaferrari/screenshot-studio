@@ -12,7 +12,10 @@
     "skipLibCheck": true,
     "verbatimModuleSyntax": false,
     "noUnusedLocals": true,
-    "noFallthroughCasesInSwitch": true
+    "noFallthroughCasesInSwitch": true,
+    "paths": {
+      "@/*": ["./ui/src/*"]
+    }
   },
   "include": ["src"]
 }

@@ -35,7 +35,6 @@ export const ThumbnailStrip = memo(function ThumbnailStrip({
   return (
     <ScrollArea
       ref={strip}
-      type="auto"
       className="w-full border-t border-white/10"
     >
       <div className="flex w-max min-w-full justify-center gap-2 px-4 py-3">
