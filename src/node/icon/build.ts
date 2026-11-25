@@ -43,7 +43,7 @@ export async function buildIcons(options: IconOptions = {}): Promise<IconResult>
       const icon = loadIcon(brand, job, rel);
       if (job.android) await writeAndroid(out, job.android, icon);
       for (const target of job.files || []) await writeFile(out, target, icon);
-      await writePreview(out, icon);
+      await writePreview(out, icon, job);
     }
   } finally {
     await browser.close();

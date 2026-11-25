@@ -5,7 +5,7 @@ import os from 'node:os';
 import {execFileSync} from 'node:child_process';
 import type {Page} from 'playwright';
 import {adaptiveIconXml, canvas, dataUri, themedIcon, visible} from './compose';
-import type {AndroidTarget, FileTarget, Shape} from './types';
+import type {AndroidTarget, FileTarget, IconJob, Shape} from './types';
 
 /** One run's output: the repository root, a page to draw on, and every file written. */
 export interface Output {
@@ -124,20 +124,54 @@ async function writeAppleIcon(out: Output, bundle: string, layers: Record<string
   }
 }
 
-/** icon-preview.png: every shape large, launcher sizes on light and dark, and the themed icon. */
-export async function writePreview(out: Output, icon: Icon): Promise<void> {
+/** One way the icon is drawn: a shape and the scale of its mark. */
+export interface PreviewShape {
+  shape: Shape;
+  scale: number;
+}
+
+/**
+ * The drawings a job ships, in order, so its preview shows what is written: Android's rounded and circle icons,
+ * then every file's shape at the scale it uses. Layer-only and Apple Icon Composer files are drawn elsewhere.
+ */
+export function previewShapes(job: IconJob): PreviewShape[] {
+  const shapes: PreviewShape[] = [];
+  const add = (shape: Shape, scale = 1): void => {
+    if (!shapes.some(s => s.shape === shape && s.scale === scale)) shapes.push({shape, scale});
+  };
+  if (job.android) {
+    add('rounded');
+    if (job.android.round !== false) add('circle');
+  }
+  for (const target of job.files || []) {
+    if (target.layer || target.path.endsWith('.icon') || target.shape === 'mark') continue;
+    add(target.shape || 'rounded', target.scale || 1);
+  }
+  if (!shapes.length) for (const shape of ['square', 'rounded', 'circle'] as const) add(shape);
+  return shapes;
+}
+
+/** icon-preview.png: each shape the job ships, and its mark, large; launcher sizes on light and dark; the themed icon. */
+export async function writePreview(out: Output, icon: Icon, job: IconJob): Promise<void> {
   const img = (svg: string, size: number): string => `<img width="${size}" height="${size}" src="${dataUri(svg)}">`;
   const themed = icon.monochrome ? themedIcon(icon.monochrome) : null;
-  const sizes: [number, Shape][] = [[72, 'rounded'], [48, 'circle'], [32, 'rounded'], [16, 'rounded']];
-  const row = (bg: string): string => `<div style="background:${bg};border-radius:18px;padding:18px;display:flex;gap:18px;align-items:end">${sizes.map(([s, shape]) => img(icon.draw(shape), s)).join('')}${themed ? img(themed, sizes[0][0]) : ''}</div>`;
+  const shapes = previewShapes(job);
+  const [first] = shapes;
+  // Android launchers mix rounded and circle masks; anything else is shown as it ships.
+  const circle = shapes.find(s => s.shape === 'circle');
+  const sizes: [number, PreviewShape][] = [[72, first], [48, job.android && circle ? circle : first], [32, first], [16, first]];
+  const draw = ({shape, scale}: PreviewShape): string => icon.draw(shape, scale);
+  const row = (bg: string): string => `<div style="background:${bg};border-radius:18px;padding:18px;display:flex;gap:18px;align-items:end">${sizes.map(([s, shape]) => img(draw(shape), s)).join('')}${themed ? img(themed, sizes[0][0]) : ''}</div>`;
   await out.page.setViewportSize({width: 1200, height: 600});
-  await out.page.setContent(`<body style="margin:0;padding:24px;background:#fff;font:14px sans-serif;display:flex;flex-direction:column;gap:18px">
-      <div style="display:flex;gap:24px;align-items:end">${img(icon.draw('square'), 220)}${img(icon.draw('rounded'), 180)}${img(icon.draw('circle'), 180)}${img(icon.draw('mark'), 180)}</div>
-      ${row('#ece6e2')}
-      ${row('#1d1b20')}
+  await out.page.setContent(`<body style="margin:0;background:#fff;font:14px sans-serif">
+      <main style="width:fit-content;padding:24px;display:flex;flex-direction:column;gap:18px">
+        <div style="display:flex;gap:24px;align-items:end">${shapes.map(shape => img(draw(shape), 180)).join('')}${img(icon.draw('mark', first.scale), 180)}</div>
+        ${row('#ece6e2')}
+        ${row('#1d1b20')}
+      </main>
     </body>`);
   await out.page.waitForTimeout(200);
-  out.write(path.join(icon.dir, 'icon-preview.png'), await out.page.screenshot({fullPage: true}));
+  out.write(path.join(icon.dir, 'icon-preview.png'), await out.page.locator('main').screenshot());
 }
 
 /** A Windows .ico of PNG-compressed entries (they keep every size crisp), in ICO_SIZES order. */

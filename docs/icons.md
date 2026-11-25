@@ -64,4 +64,4 @@ npx screenshot-studio icons --import drawable.xml > store-listing/brand/foregrou
 
 Widget or shortcut icons, or a build flavour's icon, are listed as `{"icons": [{"layers": "todo", "android": {...}, "files": [...]}]}`, each drawn in `brand/<layers>/`. A layer missing there comes from `brand/`, so a variant redraws only what changes. `"monochrome": false` leaves out the themed layer.
 
-Every run writes `icon-preview.png` beside the layers: the icon in each shape, at launcher sizes on light and dark, and themed.
+Every run writes `icon-preview.png` beside the layers: each shape the icon ships (Android's rounded and circle, then every file's shape at its `scale`) and its mark, at launcher sizes on light and dark, and themed.

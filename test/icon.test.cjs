@@ -91,6 +91,21 @@ test('icons says which layer is missing or misdrawn', t => {
   assert.match(run.stderr, /store-listing\/brand\/foreground\.svg must be an <svg viewBox="0 0 108 108">/);
 });
 
+test('the preview draws what each job ships, at the scale its files use', () => {
+  const {previewShapes} = require(CLI);
+  // Android's masks first, then each file's shape once.
+  assert.deepEqual(previewShapes({
+    android: {res: 'res'},
+    files: [{path: 'a.png', shape: 'square'}, {path: 'b.svg', shape: 'square'}, {path: 'c.svg', shape: 'mark'}],
+  }), [{shape: 'rounded', scale: 1}, {shape: 'circle', scale: 1}, {shape: 'square', scale: 1}]);
+  // A desktop icon drawn smaller on its ground is previewed at that size, not full bleed.
+  assert.deepEqual(previewShapes({
+    files: [{path: 'icon_16.png', size: 16, shape: 'square', scale: 0.8}, {path: 'icon_32.png', size: 32, shape: 'square', scale: 0.8}],
+  }), [{shape: 'square', scale: 0.8}]);
+  assert.deepEqual(previewShapes({android: {res: 'res', round: false}}), [{shape: 'rounded', scale: 1}]);
+  assert.deepEqual(previewShapes({files: [{path: 'x.icon'}]}).map(s => s.shape), ['square', 'rounded', 'circle']);
+});
+
 test('Apple icon bundles preserve custom background layer names', t => {
   const root=app(t),brand=path.join(root,'store-listing/brand');
   fs.writeFileSync(path.join(brand,'icon.json'),JSON.stringify({files:[{path:'Test.icon',apple:{Backdrop:'background',Mark:'foreground'}}]}));

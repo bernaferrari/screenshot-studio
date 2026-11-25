@@ -18,6 +18,7 @@ import {buildIcons} from './build';
 import {importVector} from './vector';
 
 export {buildIcons} from './build';
+export {previewShapes} from './targets';
 export {importVector, vectorToSvg} from './vector';
 export type {IconOptions, IconResult, IconSpec} from './types';
 

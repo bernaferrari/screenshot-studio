@@ -142,6 +142,7 @@ export {validate} from '../core/validate';
 export {matcher, TapMap} from '../node/capture/screen';
 export {parseCli, parseIntOption, parseListOption} from '../node/cli-args';
 export {parseLucideSource} from '../node/fixture-apps';
+export {previewShapes} from '../node/icon/targets';
 
 if (require.main === module) main(process.argv.slice(2)).then(code => { process.exitCode = code; }, (error: Error) => { console.error(error.message); process.exitCode = 1; });
 export {parseHeadline, parseHighlight, frameSize, boundsFor, boundsProblem, calloutPlacement, isWidow, hasDeviceRatio} from '../core/layout';
