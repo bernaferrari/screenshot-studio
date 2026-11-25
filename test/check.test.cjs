@@ -68,3 +68,42 @@ test('translation checks exclude reference-only cards and survive broken inherit
   fs.writeFileSync(path.join(listing,'gallery.json'),JSON.stringify({phone:{inherits:'phone',cards:[{}]}}));
   assert.equal(checkListing(listing).ok,false);
 });
+
+test('listing.json is checked once per locale against schema and store limits', () => {
+  const listing = fixture(dir => {
+    fs.writeFileSync(path.join(dir, 'en-US/listing.json'), JSON.stringify({
+      $schema: '../studio/schemas/listing.schema.json',
+      title: 'A'.repeat(40),
+      shortDescription: 'Too long '.repeat(15),
+    }));
+  });
+  const listingIssues = checkListing(listing).issues.filter(i => i.file === 'en-US/listing.json');
+  assert.equal(listingIssues.length, 2, 'each limit error is reported once, not duplicated');
+  const badSchema = fixture(dir => {
+    fs.writeFileSync(path.join(dir, 'en-US/listing.json'), JSON.stringify({title: 123}));
+  });
+  const schemaIssues = checkListing(badSchema).issues.filter(i => i.file === 'en-US/listing.json' && i.level === 'error');
+  assert.equal(schemaIssues.length, 1);
+  assert.equal(schemaIssues[0].path, 'title');
+});
+
+test('CLI arg parser and Lucide icon parser handle edge cases without eval', () => {
+  const {parseCli, parseIntOption, parseListOption, parseLucideSource} = require('../studio/studio.cjs');
+  const parsed = parseCli(['--locale=de-DE', '--card=2', '--strict'], {
+    locale: {type: 'string'},
+    card: {type: 'string'},
+    strict: {type: 'boolean'},
+  });
+  assert.equal(parsed.values.locale, 'de-DE');
+  assert.equal(parseIntOption(parsed.values.card, '--card', {min: 0}), 2);
+  assert.equal(parsed.values.strict, true);
+  assert.deepEqual(parseListOption('en-US, de-DE , '), ['en-US', 'de-DE']);
+  assert.throws(() => parseCli(['--unknown'], {strict: {type: 'boolean'}}), /Unknown option/);
+  assert.throws(() => parseIntOption('abc', '--jobs', {min: 1}), /must be a whole number/);
+
+  const modSource = `const __iconData = { name: "map", size: 24, node: [["path", { d: "M1 2", key: "k1" }], ["circle", { cx: 12, cy: 12, r: 4, key: "k2" }]] };`;
+  assert.equal(parseLucideSource(modSource), '<path d="M1 2"/><circle cx="12" cy="12" r="4"/>');
+  const nodeSource = `const __iconNode = [['line', { x1: '1', y1: '2', x2: '3', y2: '4', key: 'k3' }]];`;
+  assert.equal(parseLucideSource(nodeSource), '<line x1="1" y1="2" x2="3" y2="4"/>');
+  assert.equal(parseLucideSource('<svg viewBox="0 0 24 24"><path d="M0 0h24"/></svg>', true), '<path d="M0 0h24"/>');
+});

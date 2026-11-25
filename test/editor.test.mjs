@@ -309,3 +309,26 @@ test('live reload recognizes a pending save without losing later typing', {skip}
   assert.equal(draft.data.home.title,'Continued typing');
   rebase(draft,{home:{title:'External change'}});assert.equal(draft.conflict,true);
 });
+
+test('drafts strip $schema from editor data while preserving it on save and rebase', {skip}, async () => {
+  const {createDraftStore, isDirty, rebase, serializeDraft} = await lib('drafts');
+  const {writtenFields} = await lib('copy');
+  const values = new Map();
+  const storage = {getItem: k => values.get(k) ?? null, setItem: (k, v) => values.set(k, v), removeItem: k => values.delete(k)};
+  const store = createDraftStore('/p/test/', storage);
+  const disk = {$schema: '../studio/schemas/copy.schema.json', home: {title: 'Hello', body: 'World'}};
+  const draft = store.restore('en-US', disk);
+  assert.equal('$schema' in draft.data, false);
+  assert.equal(draft.schema, '../studio/schemas/copy.schema.json');
+  assert.equal(draft.savedRaw, JSON.stringify(disk));
+  assert.equal(isDirty(draft), false);
+  assert.deepEqual(writtenFields(disk, '$schema', false), []);
+  draft.data = {home: {title: 'Edited', body: 'World'}};
+  assert.equal(isDirty(draft), true);
+  assert.deepEqual(JSON.parse(serializeDraft(draft)), {$schema: '../studio/schemas/copy.schema.json', home: {title: 'Edited', body: 'World'}});
+  const updatedDisk = {$schema: '../studio/schemas/copy.schema.json', home: {title: 'Edited', body: 'World'}};
+  draft.pending = JSON.stringify(draft.data);
+  assert.equal(rebase(draft, updatedDisk), true);
+  assert.equal(draft.conflict, false);
+  assert.equal(draft.savedRaw, JSON.stringify(updatedDisk));
+});

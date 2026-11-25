@@ -13,10 +13,16 @@ import {installTheme, themes} from './init';
 const DEMO = path.resolve(__dirname, '..', 'templates', 'demo');
 
 export async function run(argv: string[]): Promise<number> {
-  const option = (name: string) => { const i = argv.indexOf(`--${name}`); return i >= 0 ? argv[i + 1] : undefined; };
-  const theme = option('theme') || 'aurora';
-  const folder = path.resolve(argv.find((word, i) => !word.startsWith('--') && argv[i - 1] !== '--theme') || 'screenshot-studio-demo');
-  const depth = argv.includes('--3d');
+  const {parseCli} = await import('./cli-args');
+  const {values, positionals} = parseCli(argv, {
+    theme: {type: 'string'},
+    '3d': {type: 'boolean'},
+    'no-open': {type: 'boolean'},
+  }, {allowPositionals: true, usage: 'Usage: npx screenshot-studio demo [folder] [--theme aurora] [--3d] [--no-open]'});
+  if (positionals.length > 1) { console.error('Usage: npx screenshot-studio demo [folder] [--theme aurora] [--3d] [--no-open]'); return 1; }
+  const theme = values.theme || 'aurora';
+  const folder = path.resolve(positionals[0] || 'screenshot-studio-demo');
+  const depth = !!values['3d'];
   const listing = path.join(folder, 'store-listing');
   if (!themes().some(t => t.name === theme)) { console.error(`No theme "${theme}". Available: ${themes().map(t => t.name).join(', ')}`); return 1; }
   if (fs.existsSync(listing)) {
@@ -42,7 +48,7 @@ export async function run(argv: string[]): Promise<number> {
   if (!result.ok) { console.error(`\n${result.error}`); return 1; }
   const where = path.relative(process.cwd(), listing);
   console.log(`\nThe cards are in ${where}/<language>/phone/. Try another look: npx screenshot-studio demo --theme paper${depth ? '' : ', or real 3D phones: --3d'}`);
-  if (argv.includes('--no-open')) return 0;
+  if (values['no-open']) return 0;
   console.log('Opening the editor (Ctrl-C to stop)…');
   process.chdir(folder);
   return (await import('./server')).run(['--open']);

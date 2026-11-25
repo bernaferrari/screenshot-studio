@@ -7,7 +7,7 @@ import {pathToFileURL} from 'node:url';
 import type {Profiles, StudioConfig, Tour, TourDevice, TourStep} from '../../core/types';
 import {spawnSync} from 'node:child_process';
 import {missingEmulator} from '../recapture';
-import {STUDIO_DIR} from '../project';
+import {readJson, STUDIO_DIR} from '../project';
 import {Emulator, SCALES, sleep} from './emulator';
 import {goBack, matcher, openApp, readTree, swipePoints, TapMap, tapNode, tapPoint, type Target, type TreeNode, typeText} from './screen';
 import {appleLanguage, Simulator} from './simulator';
@@ -40,8 +40,8 @@ export async function loadTour(file: string): Promise<Tour> {
 export async function runTour(file: string, options: TourOptions): Promise<string[]> {
   const log = options.log || ((line: string) => console.log(line));
   const tour = await loadTour(file);
-  const read = (relative: string) => JSON.parse(fs.readFileSync(path.join(options.listing, relative), 'utf8'));
-  const config: StudioConfig = read('studio.json'), profiles: Profiles = read('profiles.json');
+  const config = readJson<StudioConfig>(path.join(options.listing, 'studio.json'));
+  const profiles = readJson<Profiles>(path.join(options.listing, 'profiles.json'));
   const defaultLocale = config.defaultLocale || 'en-US';
   const ios = config.capture?.platform === 'ios';
   // Android profiles have a capture size and density; iOS ones a capture size and the simulator that has it.
@@ -142,7 +142,10 @@ export async function runTour(file: string, options: TourOptions): Promise<strin
           node = taps ? taps.resolve(slot, nodes, matches) : nodes.find(matches);
           if (!node) throw new Error(`Nothing on screen matches "${label}"`);
         } catch (error) {
-          if (Date.now() > end) throw new Error(`${(error as Error).message} ${where()}. npx screenshot-studio screen shows what is there.`);
+          const message = (error as Error).message;
+          if (/^No (?:recorded tap|tap map)/.test(message) || Date.now() > end) {
+            throw new Error(`${message} ${where()}. npx screenshot-studio screen shows what is there.`);
+          }
         }
       }
       await tapNode(target, node);
@@ -178,9 +181,15 @@ export async function runTour(file: string, options: TourOptions): Promise<strin
       const slop = ios ? Math.round(10 * d.width / 400) : Math.round(8 * android().density / 160), goal = d.height * top;
       let scrolled = 0;
       const move = async (distance: number) => {
-        if (distance > 0) await d.drag(Math.min(Math.floor(distance), Math.floor(d.height * .55)) + slop);
-        else await d.swipe(d.width / 2, d.height * .3, d.width / 2, d.height * .3 - distance + slop, {duration: 1400});
-        scrolled += distance > 0 ? Math.min(Math.floor(distance), Math.floor(d.height * .55)) : distance;
+        const cap = Math.floor(d.height * .55);
+        const step = Math.min(Math.floor(Math.abs(distance)), cap);
+        if (distance > 0) {
+          await d.drag(step + slop);
+          scrolled += step;
+        } else {
+          await d.swipe(d.width / 2, d.height * .3, d.width / 2, d.height * .3 + step + slop, {duration: 1400});
+          scrolled -= step;
+        }
       };
       // Bring the matching element to the target height; false when none shows up.
       const align = async (matches: (node: TreeNode) => boolean, search: boolean) => {

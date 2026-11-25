@@ -1505,3 +1505,52 @@ test('a partial export report refreshes exported image URLs',async t=>{
   write(roots[0]+'/store-listing/export-report.json',{ok:true,cards:[{locale:'en-US'}],options:{kind:'phone',card:0}});
   await page.waitForFunction(previous=>document.querySelector('[data-card-frame=exported] img')?.getAttribute('src')!==previous,before);
 });
+
+test('copy editor ignores $schema in copy.json and preserves it on save', async t => {
+  const {page, base, projects, roots, write} = await setup(t);
+  const copyFile = roots[0] + '/store-listing/en-US/copy.json';
+  const original = JSON.parse(fs.readFileSync(copyFile, 'utf8'));
+  const schemaUri = '../studio/schemas/copy.schema.json';
+  write(copyFile, {$schema: schemaUri, ...original});
+
+  await page.goto(base + projects[0].editorURL + '?view=copy');
+  const titleBox = page.getByRole('textbox', {name: 'en-US hello title', exact: true});
+  await titleBox.waitFor();
+  const bodyText = await page.locator('#main').textContent();
+  assert.doesNotMatch(bodyText, /\$schema/);
+  assert.equal(await page.locator('#main textarea').count(), 2);
+
+  await titleBox.fill('Updated *headline*');
+  await page.getByRole('button', {name: /Save/}).click();
+  await page.waitForFunction(() => {
+    const btn = [...document.querySelectorAll('#main button')].find(b => b.textContent?.includes('Saved') || b.textContent?.includes('Save'));
+    return btn && btn.disabled;
+  });
+  const saved = JSON.parse(fs.readFileSync(copyFile, 'utf8'));
+  assert.equal(saved.$schema, schemaUri);
+  assert.equal(saved.hello.title, 'Updated *headline*');
+});
+
+test('store preview adapts to App Store for iOS listings', async t => {
+  const {page, base, projects, roots, write} = await setup(t);
+  const listing = roots[0] + '/store-listing';
+  write(listing + '/profiles.json', {
+    iphone: {width: 400, height: 800, captureWidth: 400, captureHeight: 800, frame: 'iphone', platform: 'ios', label: 'iPhone'},
+  });
+  write(listing + '/gallery.json', {
+    iphone: [{feature: 'hello', raw: 'phone/home.png'}],
+  });
+  write(listing + '/en-US/listing.json', {
+    title: 'iOS App',
+    subtitle: 'Clean subtitle',
+    description: 'Short App Store overview.',
+  });
+  await page.goto(base + projects[0].editorURL + '?view=gallery');
+  await page.getByRole('button', {name: 'Store preview', exact: true}).click();
+  const store = page.getByRole('region', {name: 'App Store product page preview, American English'});
+  await store.waitFor();
+  await store.locator('iframe.preview-ready').first().waitFor();
+  const text = await store.textContent();
+  assert.match(text, /Clean subtitle/);
+  assert.match(text, /Get/);
+});

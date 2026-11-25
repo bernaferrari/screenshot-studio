@@ -8,9 +8,11 @@
 import http from 'node:http';
 import fs from 'node:fs';
 import path from 'node:path';
-import {createHash} from 'node:crypto';
+import {createHash, randomUUID} from 'node:crypto';
 import {inside, createWorkspaceStore} from './workspace/store';
-import {findListing, STUDIO_DIR} from './project';
+import {findListing, readJson, STUDIO_DIR} from './project';
+import {withoutMeta} from '../core/gallery';
+import {validate, type Schema} from '../core/validate';
 import type {WorkspaceStore} from './workspace/store';
 import {workspaceRoutes} from './workspace/routes';
 import type {ServeFileOptions, WorkspaceHandler} from './workspace/routes';
@@ -61,13 +63,28 @@ export function serve(root: string, port = 0, {editable = false, workspace = nul
           let body = '', bytes = 0;
           for await (const chunk of request as AsyncIterable<Buffer>) { bytes += chunk.length; if (bytes > 1024 * 1024) { response.writeHead(413).end('Copy file is too large'); return; } body += chunk; }
           const value: unknown = JSON.parse(body);
+          if (!value || typeof value !== 'object' || Array.isArray(value)) {
+            response.writeHead(400, {'Content-Type': 'application/json'}).end(JSON.stringify({error: 'Expected a JSON object.'})); return;
+          }
+          const schemaName = path.basename(file) === 'gallery.json' ? 'gallery' : 'copy';
+          const schema = readJson<Schema | null>(path.join(STUDIO_DIR, 'schemas', `${schemaName}.schema.json`), null);
+          const problems = schema ? validate(withoutMeta(value), schema) : [];
+          if (problems.length) {
+            response.writeHead(400, {'Content-Type': 'application/json'}).end(JSON.stringify({error: `${problems[0].path}: ${problems[0].message}`})); return;
+          }
           const expected = request.headers['x-studio-base'];
           const current = JSON.stringify(fs.existsSync(file) ? JSON.parse(fs.readFileSync(file, 'utf8')) : {});
           if (expected !== undefined && expected !== createHash('sha256').update(current).digest('hex')) {
             response.writeHead(409, {'Content-Type': 'application/json'}).end(JSON.stringify({error: 'The saved copy changed. Reload to resolve your draft.'})); return;
           }
           fs.mkdirSync(path.dirname(file), {recursive: true});
-          fs.writeFileSync(file, JSON.stringify(value, null, 2) + '\n');
+          const temporary = `${file}.${randomUUID()}.tmp`;
+          try {
+            fs.writeFileSync(temporary, JSON.stringify(value, null, 2) + '\n');
+            fs.renameSync(temporary, file);
+          } finally {
+            if (fs.existsSync(temporary)) fs.unlinkSync(temporary);
+          }
           response.writeHead(204).end(); return;
         }
         if (!['GET', 'HEAD'].includes(request.method || '')) { response.writeHead(405).end(); return; }
@@ -100,19 +117,26 @@ export function serve(root: string, port = 0, {editable = false, workspace = nul
  * app; from the studio itself it opens the workspace of every connected project. Keeps running until stopped.
  */
 export async function run(argv: string[]): Promise<number> {
-  const value = (flag: string): string | undefined => { const index = argv.indexOf(flag); return index < 0 ? undefined : argv[index + 1]; };
-  const port = Number(value('--port') || (argv[0] && !argv[0].startsWith('--') ? argv[0] : 8790));
-  const workspace = createWorkspaceStore({registryFile: value('--registry')});
+  const {parseCli, parseIntOption} = await import('./cli-args');
+  const {values, positionals} = parseCli(argv, {
+    port: {type: 'string'},
+    add: {type: 'string', multiple: true},
+    registry: {type: 'string'},
+    open: {type: 'boolean'},
+  }, {allowPositionals: true, usage: 'Usage: npx screenshot-studio studio [port] [--port 8790] [--add /path/to/app]… [--registry projects.json] [--open]'});
+  if (positionals.length > 1) throw new Error(`Unexpected argument "${positionals[1]}": pass at most one port.`);
+  const port = parseIntOption(values.port ?? positionals[0], 'port', {min: 0, max: 65535}) ?? 8790;
+  const workspace = createWorkspaceStore({registryFile: values.registry});
   const listing = findListing();
   const app = listing !== null;
   const root = listing ? path.dirname(listing) : path.dirname(STUDIO_DIR);
   let activeProjectId: string | null = null;
   if (app) activeProjectId = (await workspace.add([root]))[0].id;
-  for (let index = 0; index < argv.length; index++) if (argv[index] === '--add') await workspace.add([argv[++index]]);
+  for (const dir of values.add || []) await workspace.add([dir]);
   await serve(root, port, {editable: true, workspace, activeProjectId});
   const url = listing ? `http://127.0.0.1:${port}/${path.relative(root, listing).split(path.sep).join('/')}/studio/` : `http://127.0.0.1:${port}/studio/`;
   console.log(`Screenshot Studio: ${url}`);
-  if (argv.includes('--open')) {
+  if (values.open) {
     const opener = process.platform === 'darwin' ? 'open' : process.platform === 'win32' ? 'explorer.exe' : 'xdg-open';
     (await import('node:child_process')).spawn(opener, [url], {detached: true, stdio: 'ignore'}).unref();
   }

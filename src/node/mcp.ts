@@ -171,8 +171,11 @@ interface Request {jsonrpc: '2.0'; id?: number | string | null; method: string; 
 
 /** `mcp [--listing path]`: serve until stdin closes. */
 export async function run(argv: string[]): Promise<number> {
-  const at = argv.indexOf('--listing');
-  const tools = createTools(at >= 0 ? argv[at + 1] : undefined);
+  const {parseCli} = await import('./cli-args');
+  const {values} = parseCli(argv, {
+    listing: {type: 'string'},
+  }, {usage: 'Usage: npx screenshot-studio mcp [--listing path/to/app]'});
+  const tools = createTools(values.listing);
   const send = (message: unknown) => process.stdout.write(JSON.stringify(message) + '\n');
   const version = (() => { try { return fs.readFileSync(path.join(__dirname, 'VERSION'), 'utf8').trim(); } catch { return '1.0'; } })();
   // Anything a command prints must not corrupt the protocol stream.

@@ -390,3 +390,37 @@ test('gallery saves reject a stale base and preserve the first edit', async t =>
   assert.equal((await fetch(url,{method:'PUT',headers,body:JSON.stringify(original)})).status,409);
   assert.deepEqual(JSON.parse(fs.readFileSync(file)),first);
 });
+
+test('PUT rejects non-object and schema-invalid copy and gallery payloads', async t => {
+  const f = fixture(t), root = f.app('ValidatePut');
+  const [project] = await f.store.add([root]);
+  const server = await serve(f.root, 0, {workspace: f.store, editable: true});
+  t.after(() => { server.closeAllConnections(); return new Promise(resolve => server.close(resolve)); });
+  const copyUrl = `http://127.0.0.1:${server.address().port}/p/${project.id}/store-listing/de-DE/copy.json`;
+  const galleryUrl = `http://127.0.0.1:${server.address().port}/p/${project.id}/store-listing/gallery.json`;
+  assert.equal((await fetch(copyUrl, {method: 'PUT', body: '"just a string"'})).status, 400);
+  assert.equal((await fetch(copyUrl, {method: 'PUT', body: '[]'})).status, 400);
+  assert.equal((await fetch(copyUrl, {method: 'PUT', body: JSON.stringify({home: 'not-an-object'})})).status, 400);
+  assert.equal((await fetch(galleryUrl, {method: 'PUT', body: JSON.stringify({phone: 'invalid'})})).status, 400);
+});
+
+test('review matches stale warnings with --prune suffix and uses store-aware listing limits', async t => {
+  const f = fixture(t), root = f.app('ReviewStale'), listing = path.join(root, 'store-listing');
+  f.write(path.join(listing, 'profiles.json'), {iphone: {width: 1320, height: 2868, frame: 'iphone', platform: 'ios'}});
+  f.write(path.join(listing, 'gallery.json'), {iphone: [{feature: 'home', raw: 'iphone/home.png'}]});
+  f.write(path.join(listing, 'en-US/listing.json'), {title: 'A'.repeat(40)});
+  f.write(path.join(listing, 'export-report.json'), {
+    ok: true, cards: [], locales: [{locale: 'en-US'}],
+    warnings: ['en-US/iphone/99-old.jpg is no longer in the gallery; delete it, or export with --prune'],
+    finishedAt: '2026-01-01T00:00:00.000Z',
+  });
+  const [project] = await f.store.add([root]);
+  const server = await serve(f.root, 0, {workspace: f.store, editable: true});
+  t.after(() => { server.closeAllConnections(); return new Promise(resolve => server.close(resolve)); });
+  const review = await (await fetch(`http://127.0.0.1:${server.address().port}/api/projects/${project.id}/review`)).json();
+  const stale = review.issues.find(i => i.message.includes('99-old.jpg'));
+  assert.equal(stale.file, 'en-US/iphone/99-old.jpg');
+  assert.match(stale.fix, /--prune/);
+  const limit = review.issues.find(i => i.file === 'en-US/listing.json');
+  assert.match(limit.fix, /App Store/);
+});

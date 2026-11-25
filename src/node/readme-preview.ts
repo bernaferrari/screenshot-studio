@@ -66,7 +66,8 @@ export async function previewReadme(options: ReadmePreviewOptions = {}): Promise
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/github-markdown-css@5/github-markdown-light.css">
 <style>body{margin:0;background:#fff}.markdown-body{box-sizing:border-box;max-width:${width}px;margin:0 auto;padding:32px}</style>
 <article class="markdown-body">${body}</article>`;
-  const page = path.join(fs.mkdtempSync(path.join(os.tmpdir(), 'readme-preview-')), 'readme.html');
+  const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'readme-preview-'));
+  const page = path.join(tmpDir, 'readme.html');
   fs.writeFileSync(page, html);
 
   const browser = await launchBrowser();
@@ -82,6 +83,7 @@ export async function previewReadme(options: ReadmePreviewOptions = {}): Promise
     return {file: out, missingImages};
   } finally {
     await browser.close();
+    fs.rmSync(tmpDir, {recursive: true, force: true});
   }
 }
 
@@ -89,17 +91,18 @@ const USAGE = 'Usage: npx screenshot-studio readme [--repo <folder>] [--out <fil
 
 export async function run(argv: string[]): Promise<number> {
   if (argv.includes('--help') || argv.includes('-h')) { console.log(USAGE); return 0; }
-  const options: ReadmePreviewOptions = {};
-  for (let i = 0; i < argv.length; i += 2) {
-    const [flag, value] = [argv[i], argv[i + 1]];
-    if (value === undefined || value.startsWith('--')) { console.error(USAGE); return 1; }
-    if (flag === '--repo') options.repo = value;
-    else if (flag === '--out') options.out = value;
-    else if (flag === '--width') options.width = Number(value);
-    else { console.error(USAGE); return 1; }
-  }
+  const {parseCli, parseIntOption} = await import('./cli-args');
   try {
-    const {file, missingImages} = await previewReadme(options);
+    const {values} = parseCli(argv, {
+      repo: {type: 'string'},
+      out: {type: 'string'},
+      width: {type: 'string'},
+    }, {usage: USAGE});
+    const {file, missingImages} = await previewReadme({
+      repo: values.repo,
+      out: values.out,
+      width: parseIntOption(values.width, '--width', {min: 1}),
+    });
     console.log(file);
     if (missingImages.length) { console.error(`Missing images:\n${missingImages.join('\n')}`); return 1; }
     return 0;

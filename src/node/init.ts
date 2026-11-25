@@ -40,7 +40,7 @@ export interface InitOptions {
   log?: (line: string) => void;
 }
 
-export interface InitResult {listing: string; created: string[]; kept: string[]; cards: number; theme: string; locales: string[]}
+export interface InitResult {listing: string; created: string[]; kept: string[]; cards: number; theme: string; locales: string[]; imported: boolean}
 
 /** Every theme the package ships, with its one-line description. */
 export function themes(): {name: string; description: string}[] {
@@ -215,12 +215,13 @@ export function init(options: InitOptions = {}): InitResult {
   const ios = options.platform === 'ios';
   if (options.platform && !['android', 'ios'].includes(options.platform)) throw new Error(`Unknown platform "${options.platform}": use android or ios`);
   if (!fs.existsSync(path.join(THEMES, theme, 'theme.css'))) throw new Error(`No theme "${theme}". Available: ${themes().map(t => t.name).join(', ')}`);
-  const reference = found?.reference || 'en-US';
+  const reference = found?.reference || options.locales?.[0] || 'en-US';
   const locales = [...new Set([reference, ...Object.keys(found?.byLocale || {}), ...(options.locales || [])])];
-  const result: InitResult = {listing, created: [], kept: [], cards: 0, theme, locales};
+  const result: InitResult = {listing, created: [], kept: [], cards: 0, theme, locales, imported: false};
   const sims = ios ? defaultSimulators() : null;
   const fill = (text: string) => text.replaceAll('{{name}}', name).replaceAll('{{package}}', pkg || 'com.example.app')
     .replaceAll('{{scheme}}', name.toLowerCase().replace(/[^a-z0-9]+/g, '') || 'myapp')
+    .replaceAll('{{defaultLocale}}', reference)
     .replaceAll('{{iphoneSimulator}}', sims?.iphone || '').replaceAll('{{ipadSimulator}}', sims?.ipad || '');
   const write = (relative: string, content: string | object) => {
     const file = path.join(listing, relative);
@@ -235,7 +236,7 @@ export function init(options: InitOptions = {}): InitResult {
   const template = (relative: string, target = relative) => write(target, fill(fs.readFileSync(source(relative), 'utf8')));
 
   fs.mkdirSync(listing, {recursive: true});
-  const config: StudioConfig & {$schema: string} = {...readJson<StudioConfig & {$schema: string}>(path.join(TEMPLATES, 'studio.json')), app: name, locales, defaultLocale: reference};
+  const config: StudioConfig & {$schema: string} = {$schema: 'https://unpkg.com/screenshot-studio/studio/schemas/studio.schema.json', ...readJson<StudioConfig>(path.join(TEMPLATES, 'studio.json')), app: name, locales, defaultLocale: reference};
   if (pkg) config.package = pkg; else delete config.package;
   const screenshots = found ? found.byLocale[reference].join(',') : options.screenshots;
   if (screenshots) {
@@ -253,6 +254,7 @@ export function init(options: InitOptions = {}): InitResult {
       write(`${locale}/copy.json`, {$schema: 'https://unpkg.com/screenshot-studio/studio/schemas/copy.schema.json', ...blank});
     }
     result.cards = Object.values(imported.galleries).reduce((n, gallery) => n + (Array.isArray(gallery) ? gallery : gallery.cards).length, 0);
+    result.imported = true;
   } else {
     // An app to capture: the starter cards, a scene tour, and how to build and install the capture app.
     if (pkg && ios) config.capture = {
@@ -270,7 +272,7 @@ export function init(options: InitOptions = {}): InitResult {
     write('studio.json', config);
     template('profiles.json');
     template('gallery.json');
-    template('en-US/copy.json');
+    template('en-US/copy.json', `${reference}/copy.json`);
     if (pkg && !ios) template('capture.tour.mjs');
     result.cards = ios ? 5 : 4;
   }
@@ -310,22 +312,29 @@ export function installTheme(listing: string, theme: string, options: {fill: (te
   }
 }
 
-/** `init [app] [--name …] [--package …] [--theme …] [--screenshots folder] [--locales a,b]` */
+/** `init [app] [--name …] [--package …] [--theme …] [--screenshots folder] [--locales a,b] [--platform android|ios]` */
 export async function run(argv: string[]): Promise<number> {
-  const option = (name: string) => { const i = argv.indexOf(`--${name}`); return i >= 0 ? argv[i + 1] : undefined; };
-  const values = new Set(['name', 'package', 'theme', 'screenshots', 'locales', 'platform'].map(option));
-  const app = argv.find(word => !word.startsWith('--') && !values.has(word));
   try {
-    const result = init({app, name: option('name'), package: option('package'), theme: option('theme'), screenshots: option('screenshots'),
-      locales: option('locales')?.split(',').map(l => l.trim()).filter(Boolean), platform: option('platform') as InitOptions['platform']});
+    const {parseCli, parseListOption} = await import('./cli-args');
+    const {values, positionals} = parseCli(argv, {
+      name: {type: 'string'},
+      package: {type: 'string'},
+      theme: {type: 'string'},
+      screenshots: {type: 'string'},
+      locales: {type: 'string'},
+      platform: {type: 'string'},
+    }, {allowPositionals: true, usage: 'Usage: npx screenshot-studio init [app] [--name "My App"] [--package com.example.app] [--theme starter] [--screenshots ./folder] [--locales en-US,de-DE] [--platform android|ios]'});
+    if (positionals.length > 1) throw new Error(`Unexpected argument "${positionals[1]}": pass at most one app folder.`);
+    const result = init({app: positionals[0], name: values.name, package: values.package, theme: values.theme, screenshots: values.screenshots,
+      locales: parseListOption(values.locales), platform: values.platform as InitOptions['platform']});
     const where = path.relative(process.cwd(), path.dirname(result.listing)) || '.';
     const cd = where === '.' ? '' : `cd ${where} && `;
     console.log(`\nReady: ${result.cards} card(s) with the ${result.theme} theme.\n`);
     const others = result.locales.slice(1);
     // Spelled out for whoever runs this next, often an agent: what to fill in, then how to check and render.
-    console.log(option('screenshots') || result.cards
+    console.log(result.imported
       ? `Next:\n  1. Write the headlines in store-listing/${result.locales[0]}/copy.json (one per card, *highlight* a key word)${others.length ? `\n  2. Translate them into the empty fields of ${others.map(l => `${l}/copy.json`).join(', ')}` : ''}\n  ${others.length ? 3 : 2}. ${cd}npx screenshot-studio check, then export (or studio --open for the editor)`
-      : option('platform') === 'ios'
+      : values.platform === 'ios'
         ? `Next:\n  1. Make the app's Debug build open on fictional sample data (docs/capture.md, iOS)\n  2. Write the tour in store-listing/capture.tour.mjs (npx screenshot-studio screen --simulator NAME shows what to tap); check capture.build in studio.json\n  3. ${cd}npx screenshot-studio recapture --boot`
         : `Next:\n  1. Add a capture build that fills the app with sample data (docs/playbook.md, section 1)\n  2. Write the tour in store-listing/capture.tour.mjs (npx screenshot-studio screen shows what to tap)\n  3. ${cd}npx screenshot-studio recapture --boot`);
     return 0;

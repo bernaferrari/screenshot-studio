@@ -6,10 +6,13 @@ export const writtenFields = (
   reference: Copy,
   key: string,
   translating: boolean,
-): string[] =>
-  Object.keys(reference[key] || {}).filter(
-    (field) => !translating || reference[key][field]?.trim(),
+): string[] => {
+  const entry = reference[key];
+  if (!entry || typeof entry !== "object") return [];
+  return Object.keys(entry).filter(
+    (field) => !translating || entry[field]?.trim(),
   );
+};
 
 /** A card's fields as [key, field] pairs from its copy keys; a card with no words yet gets a headline and a line in the reference. */
 export function cardFields(

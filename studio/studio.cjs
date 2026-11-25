@@ -46,10 +46,10 @@ node_path = __toESM(node_path, 1);
 let node_os = require("node:os");
 node_os = __toESM(node_os, 1);
 let node_crypto = require("node:crypto");
+let node_util = require("node:util");
 let node_http = require("node:http");
 node_http = __toESM(node_http, 1);
 let node_child_process = require("node:child_process");
-let node_util = require("node:util");
 let node_url = require("node:url");
 let node_readline = require("node:readline");
 node_readline = __toESM(node_readline, 1);
@@ -941,6 +941,43 @@ var init_stores = __esmMin((() => {
 		"App Store": 10
 	};
 }));
+// src/node/cli-args.ts
+/** Shared CLI option parsing built on node:util parseArgs: supports --flag value and --flag=value, and rejects typos. */
+var cli_args_exports = /* @__PURE__ */ __exportAll({
+	parseCli: () => parseCli,
+	parseIntOption: () => parseIntOption,
+	parseListOption: () => parseListOption
+});
+/** Parse command-line arguments strictly, turning Node's low-level parse errors into clear messages with usage. */
+function parseCli(argv, options, { allowPositionals = false, usage } = {}) {
+	try {
+		return (0, node_util.parseArgs)({
+			args: argv,
+			options,
+			allowPositionals,
+			strict: true
+		});
+	} catch (error) {
+		const message = error instanceof Error ? error.message : String(error);
+		throw new Error(usage ? `${message}\n${usage}` : message);
+	}
+}
+/** Parse an optional integer option (e.g. --port, --card, --jobs) with bounds validation. */
+function parseIntOption(value, name, { min, max } = {}) {
+	if (value === void 0) return void 0;
+	const parsed = Number(value);
+	if (!value.trim() || !Number.isInteger(parsed)) throw new Error(`${name} must be a whole number, not "${value}".`);
+	if (min !== void 0 && parsed < min) throw new Error(`${name} must be at least ${min}, not ${parsed}.`);
+	if (max !== void 0 && parsed > max) throw new Error(`${name} must be at most ${max}, not ${parsed}.`);
+	return parsed;
+}
+/** Parse a comma-separated option into trimmed non-empty strings. */
+function parseListOption(value) {
+	if (value === void 0) return void 0;
+	const items = value.split(",").map((item) => item.trim()).filter(Boolean);
+	return items.length ? items : void 0;
+}
+var init_cli_args = __esmMin((() => {}));
 // src/node/check.ts
 /**
 * Check an app's listing without rendering anything: every file against its schema, then what schemas can't see
@@ -1139,14 +1176,6 @@ function checkListing(listingDir) {
 		code: "placeholder",
 		fix: field === "title" ? "Write a benefit headline for this screen: what it does for the person, in a few words." : "Write one short line that backs the headline up."
 	});
-	for (const locale of locales) {
-		const words = load(`${locale}/listing.json`, "listing", null);
-		for (const [field, value] of Object.entries(words || {})) if (typeof value === "string" && PLACEHOLDER.test(value)) warn(`${locale}/listing.json`, `is still the starter placeholder`, {
-			path: field,
-			code: "placeholder",
-			fix: "Write the store text."
-		});
-	}
 	for (const key of Object.keys(defaultCopy)) if (!used.has(key)) warn(`${defaultLocale}/copy.json`, `"${key}" isn't used by any card`, {
 		path: key,
 		fix: "Remove it, or fix the card's feature name."
@@ -1165,7 +1194,15 @@ function checkListing(listingDir) {
 			}
 		}
 		const words = load(`${locale}/listing.json`, "listing", null);
-		for (const problem of words ? listingProblems(words, store) : []) error(`${locale}/listing.json`, problem.message, { path: problem.field });
+		for (const [field, value] of Object.entries(words || {})) if (typeof value === "string" && PLACEHOLDER.test(value)) warn(`${locale}/listing.json`, `is still the starter placeholder`, {
+			path: field,
+			code: "placeholder",
+			fix: "Write the store text."
+		});
+		for (const problem of words ? listingProblems(words, store) : []) error(`${locale}/listing.json`, problem.message, {
+			path: problem.field,
+			fix: `Shorten it in listing.json to fit ${store}'s limit.`
+		});
 	}
 	return {
 		ok: !issues.some((issue) => issue.level === "error"),
@@ -1182,9 +1219,13 @@ function formatIssues(result) {
 }
 /** `check [--json]` */
 async function run$11(argv) {
-	const at = argv.indexOf("--listing");
-	const result = checkListing(at >= 0 ? argv[at + 1] : void 0);
-	console.log(argv.includes("--json") ? JSON.stringify(result, null, 2) : formatIssues(result));
+	const { parseCli } = await Promise.resolve().then(() => (init_cli_args(), cli_args_exports));
+	const { values } = parseCli(argv, {
+		json: { type: "boolean" },
+		listing: { type: "string" }
+	}, { usage: "Usage: npx screenshot-studio check [--json] [--listing <path>]" });
+	const result = checkListing(values.listing);
+	console.log(values.json ? JSON.stringify(result, null, 2) : formatIssues(result));
 	return result.ok ? 0 : 1;
 }
 var init_check = __esmMin((() => {
@@ -1395,8 +1436,8 @@ function reviewListing(listing) {
 		});
 		(report.warnings || []).forEach((warning, n) => {
 			const seam = warning.match(/^([^/]+)\/([^:]+): the background breaks at the seam between cards (\d+) and (\d+)/);
-			const stale = warning.match(/^(.+) is no longer in the gallery; delete it$/);
-			const limit = warning.match(/^(\S+\/listing\.json) (\w+) has/);
+			const stale = warning.match(/^(.+) is no longer in the gallery; delete it(?:, or export with --prune)?$/);
+			const limit = warning.match(/^(\S+\/listing\.json) (\w+) has \d+ characters; (Google Play|App Store) allows/);
 			const output = warning.match(/^([a-z]{2,3}(?:-[A-Za-z0-9]{2,8})*)\/(\S+?\.(?:jpe?g|png|webp)): /);
 			const byOutput = output ? Object.keys(galleries).flatMap((kind) => cards(kind).map((c, i) => ({
 				kind,
@@ -1419,13 +1460,13 @@ function reviewListing(listing) {
 			else if (stale) issues.push({
 				...base,
 				file: stale[1],
-				fix: "Delete the file; no card writes it any more."
+				fix: "Delete the file, or run `npx screenshot-studio export --prune`; no card writes it any more."
 			});
 			else if (limit) issues.push({
 				...base,
 				file: limit[1],
 				path: limit[2],
-				fix: "Shorten it to fit Play's limit."
+				fix: `Shorten it to fit ${limit[3]}'s limit.`
 			});
 			else if (output) issues.push({
 				...base,
@@ -1715,6 +1756,17 @@ function serve(root, port = 0, { editable = false, workspace = null, activeProje
 						body += chunk;
 					}
 					const value = JSON.parse(body);
+					if (!value || typeof value !== "object" || Array.isArray(value)) {
+						response.writeHead(400, { "Content-Type": "application/json" }).end(JSON.stringify({ error: "Expected a JSON object." }));
+						return;
+					}
+					const schemaName = node_path.default.basename(file) === "gallery.json" ? "gallery" : "copy";
+					const schema = readJson(node_path.default.join(STUDIO_DIR, "schemas", `${schemaName}.schema.json`), null);
+					const problems = schema ? validate(withoutMeta(value), schema) : [];
+					if (problems.length) {
+						response.writeHead(400, { "Content-Type": "application/json" }).end(JSON.stringify({ error: `${problems[0].path}: ${problems[0].message}` }));
+						return;
+					}
 					const expected = request.headers["x-studio-base"];
 					const current = JSON.stringify(node_fs.default.existsSync(file) ? JSON.parse(node_fs.default.readFileSync(file, "utf8")) : {});
 					if (expected !== void 0 && expected !== (0, node_crypto.createHash)("sha256").update(current).digest("hex")) {
@@ -1722,7 +1774,13 @@ function serve(root, port = 0, { editable = false, workspace = null, activeProje
 						return;
 					}
 					node_fs.default.mkdirSync(node_path.default.dirname(file), { recursive: true });
-					node_fs.default.writeFileSync(file, JSON.stringify(value, null, 2) + "\n");
+					const temporary = `${file}.${(0, node_crypto.randomUUID)()}.tmp`;
+					try {
+						node_fs.default.writeFileSync(temporary, JSON.stringify(value, null, 2) + "\n");
+						node_fs.default.renameSync(temporary, file);
+					} finally {
+						if (node_fs.default.existsSync(temporary)) node_fs.default.unlinkSync(temporary);
+					}
 					response.writeHead(204).end();
 					return;
 				}
@@ -1768,18 +1826,31 @@ function serve(root, port = 0, { editable = false, workspace = null, activeProje
 * app; from the studio itself it opens the workspace of every connected project. Keeps running until stopped.
 */
 async function run$10(argv) {
-	const value = (flag) => {
-		const index = argv.indexOf(flag);
-		return index < 0 ? void 0 : argv[index + 1];
-	};
-	const port = Number(value("--port") || (argv[0] && !argv[0].startsWith("--") ? argv[0] : 8790));
-	const workspace = createWorkspaceStore({ registryFile: value("--registry") });
+	const { parseCli, parseIntOption } = await Promise.resolve().then(() => (init_cli_args(), cli_args_exports));
+	const { values, positionals } = parseCli(argv, {
+		port: { type: "string" },
+		add: {
+			type: "string",
+			multiple: true
+		},
+		registry: { type: "string" },
+		open: { type: "boolean" }
+	}, {
+		allowPositionals: true,
+		usage: "Usage: npx screenshot-studio studio [port] [--port 8790] [--add /path/to/app]… [--registry projects.json] [--open]"
+	});
+	if (positionals.length > 1) throw new Error(`Unexpected argument "${positionals[1]}": pass at most one port.`);
+	const port = parseIntOption(values.port ?? positionals[0], "port", {
+		min: 0,
+		max: 65535
+	}) ?? 8790;
+	const workspace = createWorkspaceStore({ registryFile: values.registry });
 	const listing = findListing();
 	const app = listing !== null;
 	const root = listing ? node_path.default.dirname(listing) : node_path.default.dirname(STUDIO_DIR);
 	let activeProjectId = null;
 	if (app) activeProjectId = (await workspace.add([root]))[0].id;
-	for (let index = 0; index < argv.length; index++) if (argv[index] === "--add") await workspace.add([argv[++index]]);
+	for (const dir of values.add || []) await workspace.add([dir]);
 	await serve(root, port, {
 		editable: true,
 		workspace,
@@ -1787,7 +1858,7 @@ async function run$10(argv) {
 	});
 	const url = listing ? `http://127.0.0.1:${port}/${node_path.default.relative(root, listing).split(node_path.default.sep).join("/")}/studio/` : `http://127.0.0.1:${port}/studio/`;
 	console.log(`Screenshot Studio: ${url}`);
-	if (argv.includes("--open")) {
+	if (values.open) {
 		const opener = process.platform === "darwin" ? "open" : process.platform === "win32" ? "explorer.exe" : "xdg-open";
 		(await import("node:child_process")).spawn(opener, [url], {
 			detached: true,
@@ -1800,6 +1871,8 @@ var types;
 var init_server = __esmMin((() => {
 	init_store();
 	init_project();
+	init_gallery();
+	init_validate();
 	init_routes();
 	types = {
 		".html": "text/html",
@@ -2155,18 +2228,30 @@ function plan(run) {
 		};
 	});
 }
-function fastlaneConfig({ config, defaultLocale }) {
+function fastlaneConfig({ config, profiles, defaultLocale }) {
+	const ios = storeFor(config, profiles) === "App Store";
+	const defaultScreenshots = ios ? Object.fromEntries(Object.keys(profiles).filter((k) => profiles[k].platform === "ios" && !profiles[k].defaultLocaleOnly).map((k) => [k, ""])) : { phone: "images/phoneScreenshots" };
 	return {
-		dir: "fastlane/metadata/android",
-		screenshots: { phone: "images/phoneScreenshots" },
+		ios,
+		dir: ios ? "fastlane/metadata" : "fastlane/metadata/android",
+		screenshots: defaultScreenshots,
 		screenshotLocales: [defaultLocale],
 		locales: {},
 		...config.fastlane
 	};
 }
 function laneShots(run, locale, kind) {
-	const { screenshots, screenshotLocales } = fastlaneConfig(run);
-	return run.options.fastlane && screenshots[kind] && (screenshotLocales === "all" || screenshotLocales.includes(locale)) ? node_path.default.join(laneDir(run, locale), screenshots[kind]) : null;
+	const { ios, screenshots, screenshotLocales, locales } = fastlaneConfig(run);
+	if (!run.options.fastlane || !(kind in screenshots) || !(screenshotLocales === "all" || screenshotLocales.includes(locale))) return null;
+	const target = screenshots[kind];
+	if (ios && !target) return {
+		dir: node_path.default.join(run.repo, "fastlane/screenshots", locales[locale] || locale),
+		prefix: `${kind}-`
+	};
+	return target ? {
+		dir: node_path.default.join(laneDir(run, locale), target),
+		prefix: ""
+	} : null;
 }
 /** Use a fresh page, in a context of its own, sized for a card of `kind`; it closes even when the card fails. */
 async function withCardPage(run, browser, locale, kind, use) {
@@ -2271,14 +2356,15 @@ async function writeCards(run, { locale, dir }, gallery, manifest, written, tall
 	const shots = destination ? node_fs.default.mkdtempSync(node_path.default.join(node_os.default.tmpdir(), "studio-fastlane-")) : null;
 	if (shots && destination) run.staged.push({
 		shots,
-		destination
+		destination: destination.dir,
+		prefix: destination.prefix
 	});
 	for (const { index: i, slide, file, label, rendered } of gallery.cards) {
 		const { report, bytes, fastlane, edges: edge } = await rendered();
 		node_fs.default.mkdirSync(node_path.default.dirname(node_path.default.join(dir, file)), { recursive: true });
 		node_fs.default.writeFileSync(node_path.default.join(dir, file), bytes);
 		written.add(node_path.default.join(dir, file));
-		if (shots && fastlane) node_fs.default.writeFileSync(node_path.default.join(shots, `${i + 1}.png`), fastlane);
+		if (shots && fastlane && destination) node_fs.default.writeFileSync(node_path.default.join(shots, `${destination.prefix}${i + 1}.png`), fastlane);
 		if (edge) edges[i] = edge;
 		const notes = [];
 		if (locale !== defaultLocale) {
@@ -2390,20 +2476,29 @@ function staleOutputs(run, { dir }, manifest, written) {
 }
 /** Check <locale>/listing.json against the store's limits, and write it as fastlane text when asked. */
 function writeListingText(run, locale) {
+	const store = storeFor(run.config, run.profiles);
 	const json = readJson(node_path.default.join(run.listing, locale, "listing.json"), null);
 	const words = json && {
 		...json,
 		title: json.title ?? json.appName
 	};
-	for (const problem of words ? listingProblems(words, storeFor(run.config, run.profiles)) : []) run.warn(`${locale}/listing.json ${problem.message}`);
+	for (const problem of words ? listingProblems(words, store) : []) run.warn(`${locale}/listing.json ${problem.message}`);
 	if (!run.options.fastlane || !words) return;
 	const dir = laneDir(run, locale);
-	for (const [field, name] of [
+	const fields = store === "App Store" ? [
+		["title", "name"],
+		["subtitle", "subtitle"],
+		["promotionalText", "promotional_text"],
+		["keywords", "keywords"],
+		["description", "description"],
+		["whatsNew", "release_notes"]
+	] : [
 		["title", "title"],
 		["shortDescription", "short_description"],
 		["fullDescription", "full_description"]
-	]) {
-		const value = words[field];
+	];
+	for (const [field, name] of fields) {
+		const value = field === "description" ? words.description ?? words.fullDescription : words[field];
 		if (typeof value === "string") run.textFiles.push({
 			file: node_path.default.join(dir, `${name}.txt`),
 			value: `${value.trimEnd()}\n`
@@ -2412,9 +2507,14 @@ function writeListingText(run, locale) {
 }
 /** Replace each fastlane screenshot folder's images with the staged ones; only a successful export gets here. */
 function commitFastlane(staged) {
-	for (const { shots, destination } of staged) {
+	const cleared = /* @__PURE__ */ new Set();
+	for (const { shots, destination, prefix } of staged) {
 		node_fs.default.mkdirSync(destination, { recursive: true });
-		for (const f of node_fs.default.readdirSync(destination)) if (IMAGES.test(f)) node_fs.default.rmSync(node_path.default.join(destination, f));
+		const key = `${destination}\0${prefix}`;
+		if (!cleared.has(key)) {
+			cleared.add(key);
+			for (const f of node_fs.default.readdirSync(destination)) if (IMAGES.test(f) && (!prefix || f.startsWith(prefix))) node_fs.default.rmSync(node_path.default.join(destination, f));
+		}
 		for (const f of node_fs.default.readdirSync(shots)) node_fs.default.copyFileSync(node_path.default.join(shots, f), node_path.default.join(destination, f));
 	}
 }
@@ -2427,21 +2527,28 @@ function formatSummary(result) {
 }
 /** `export [--locale de-DE] [--kind phone] [--card 3] [--strict] [--fastlane] [--prune] [--jobs 4] [--json]` */
 async function run$9(argv) {
-	const arg = (name) => {
-		const i = argv.indexOf(`--${name}`);
-		return i >= 0 ? argv[i + 1] : void 0;
-	};
-	const json = argv.includes("--json");
-	const card = arg("card"), jobs = arg("jobs");
+	const { parseCli, parseIntOption } = await Promise.resolve().then(() => (init_cli_args(), cli_args_exports));
+	const { values } = parseCli(argv, {
+		locale: { type: "string" },
+		kind: { type: "string" },
+		card: { type: "string" },
+		strict: { type: "boolean" },
+		fastlane: { type: "boolean" },
+		prune: { type: "boolean" },
+		jobs: { type: "string" },
+		json: { type: "boolean" },
+		listing: { type: "string" }
+	}, { usage: "Usage: npx screenshot-studio export [--locale de-DE] [--kind phone] [--card 0] [--strict] [--fastlane] [--prune] [--jobs 4] [--json]" });
+	const json = !!values.json;
 	const result = await exportListing({
-		locales: arg("locale") ? [arg("locale")] : void 0,
-		kind: arg("kind"),
-		card: card === void 0 ? void 0 : Number(card),
-		strict: argv.includes("--strict"),
-		fastlane: argv.includes("--fastlane"),
-		prune: argv.includes("--prune"),
-		listing: arg("listing"),
-		jobs: jobs === void 0 ? void 0 : Number(jobs),
+		locales: values.locale ? [values.locale] : void 0,
+		kind: values.kind,
+		card: parseIntOption(values.card, "--card", { min: 0 }),
+		strict: !!values.strict,
+		fastlane: !!values.fastlane,
+		prune: !!values.prune,
+		listing: values.listing,
+		jobs: parseIntOption(values.jobs, "--jobs", { min: 1 }),
 		log: json ? () => {} : void 0
 	});
 	if (json) console.log(JSON.stringify(result, null, 2));
@@ -3217,8 +3324,8 @@ async function loadTour(file) {
 async function runTour(file, options) {
 	const log = options.log || ((line) => console.log(line));
 	const tour = await loadTour(file);
-	const read = (relative) => JSON.parse(node_fs.default.readFileSync(node_path.default.join(options.listing, relative), "utf8"));
-	const config = read("studio.json"), profiles = read("profiles.json");
+	const config = readJson(node_path.default.join(options.listing, "studio.json"));
+	const profiles = readJson(node_path.default.join(options.listing, "profiles.json"));
 	const defaultLocale = config.defaultLocale || "en-US";
 	const ios = config.capture?.platform === "ios";
 	const sizes = Object.entries(profiles).filter(([name, p]) => p.captureWidth && p.captureHeight && (ios ? p.platform === "ios" : p.captureDensity && p.platform !== "ios") && (!options.profiles?.length || options.profiles.includes(name)));
@@ -3343,7 +3450,8 @@ async function runTour(file, options) {
 				node = taps ? taps.resolve(slot, nodes, matches) : nodes.find(matches);
 				if (!node) throw new Error(`Nothing on screen matches "${label}"`);
 			} catch (error) {
-				if (Date.now() > end) throw new Error(`${error.message} ${where()}. npx screenshot-studio screen shows what is there.`);
+				const message = error.message;
+				if (/^No (?:recorded tap|tap map)/.test(message) || Date.now() > end) throw new Error(`${message} ${where()}. npx screenshot-studio screen shows what is there.`);
 			}
 			await tapNode(target, node);
 			await sleep(wait);
@@ -3391,9 +3499,15 @@ async function runTour(file, options) {
 			const slop = ios ? Math.round(10 * d.width / 400) : Math.round(8 * android().density / 160), goal = d.height * top;
 			let scrolled = 0;
 			const move = async (distance) => {
-				if (distance > 0) await d.drag(Math.min(Math.floor(distance), Math.floor(d.height * .55)) + slop);
-				else await d.swipe(d.width / 2, d.height * .3, d.width / 2, d.height * .3 - distance + slop, { duration: 1400 });
-				scrolled += distance > 0 ? Math.min(Math.floor(distance), Math.floor(d.height * .55)) : distance;
+				const cap = Math.floor(d.height * .55);
+				const step = Math.min(Math.floor(Math.abs(distance)), cap);
+				if (distance > 0) {
+					await d.drag(step + slop);
+					scrolled += step;
+				} else {
+					await d.swipe(d.width / 2, d.height * .3, d.width / 2, d.height * .3 + step + slop, { duration: 1400 });
+					scrolled -= step;
+				}
 			};
 			const align = async (matches, search) => {
 				let last;
@@ -3691,7 +3805,7 @@ async function bootEmulator(serial, avd, log) {
 	if (booted(serial)) return;
 	const port = Number(serial.replace("emulator-", ""));
 	if (!Number.isInteger(port)) throw new Error(`Can't boot ${serial}: the serial must look like emulator-5578`);
-	const emulator = node_path.default.join(sdkRoot(), "emulator", "emulator");
+	const emulator = node_path.default.join(sdkRoot(), "emulator", process.platform === "win32" ? "emulator.exe" : "emulator");
 	if (!node_fs.default.existsSync(emulator)) throw new Error("No Android emulator found. Set ANDROID_HOME to your Android SDK.");
 	const images = (0, node_child_process.spawnSync)(emulator, ["-list-avds"], { encoding: "utf8" }).stdout.split("\n").map((line) => line.trim()).filter(Boolean);
 	const name = avd || images[0];
@@ -3772,10 +3886,11 @@ async function recapture(options = {}) {
 		const run = (command, { check = true } = {}) => {
 			log(`\n$ ${command}`);
 			if (options.dryRun) return true;
-			const done = (0, node_child_process.spawnSync)("sh", ["-c", command], {
+			const done = (0, node_child_process.spawnSync)(command, {
 				cwd: repo,
 				env,
-				stdio: "inherit"
+				stdio: "inherit",
+				shell: true
 			});
 			if (done.status !== 0 && check) throw new Error(`Failed (${done.status ?? done.signal}): ${command}`);
 			return done.status === 0;
@@ -3867,28 +3982,32 @@ async function recapture(options = {}) {
 }
 /** `recapture [locale…] [--profile phone] [--simulator name] [--boot] [--no-build] [--no-capture] [--no-export] [--dry-run]` */
 async function run$8(argv) {
-	const flag = (name) => argv.includes(`--${name}`);
-	const option = (name) => {
-		const i = argv.indexOf(`--${name}`);
-		return i >= 0 ? argv[i + 1] : void 0;
-	};
-	const values = new Set([
-		"profile",
-		"serial",
-		"simulator",
-		"listing"
-	].map(option).filter(Boolean));
+	const { parseCli } = await Promise.resolve().then(() => (init_cli_args(), cli_args_exports));
+	const { values, positionals } = parseCli(argv, {
+		profile: { type: "string" },
+		serial: { type: "string" },
+		simulator: { type: "string" },
+		listing: { type: "string" },
+		boot: { type: "boolean" },
+		"no-build": { type: "boolean" },
+		"no-capture": { type: "boolean" },
+		"no-export": { type: "boolean" },
+		"dry-run": { type: "boolean" }
+	}, {
+		allowPositionals: true,
+		usage: "Usage: npx screenshot-studio recapture [locale…] [--profile phone] [--serial emulator-5578] [--simulator name] [--boot] [--no-build] [--no-capture] [--no-export] [--dry-run]"
+	});
 	const result = await recapture({
-		locales: argv.filter((word) => !word.startsWith("--") && !values.has(word)),
-		profile: option("profile"),
-		serial: option("serial"),
-		simulator: option("simulator"),
-		listing: option("listing"),
-		boot: flag("boot"),
-		build: !flag("no-build"),
-		capture: !flag("no-capture"),
-		export: !flag("no-export"),
-		dryRun: flag("dry-run")
+		locales: positionals,
+		profile: values.profile,
+		serial: values.serial,
+		simulator: values.simulator,
+		listing: values.listing,
+		boot: !!values.boot,
+		build: !values["no-build"],
+		capture: !values["no-capture"],
+		export: !values["no-export"],
+		dryRun: !!values["dry-run"]
 	});
 	if (result.error) console.error(result.error);
 	return result.ok ? 0 : 1;
@@ -3902,15 +4021,397 @@ var init_recapture = __esmMin((() => {
 	init_ios();
 	init_playwright();
 	DEFAULT_SERIAL = "emulator-5578";
-	sdkRoot = () => process.env.ANDROID_HOME || process.env.ANDROID_SDK_ROOT || [node_path.default.join(node_os.default.homedir(), "Library/Android/sdk"), node_path.default.join(node_os.default.homedir(), "Android/Sdk")].find((dir) => node_fs.default.existsSync(dir)) || "";
+	sdkRoot = () => process.env.ANDROID_HOME || process.env.ANDROID_SDK_ROOT || [
+		node_path.default.join(node_os.default.homedir(), "Library/Android/sdk"),
+		node_path.default.join(node_os.default.homedir(), "Android/Sdk"),
+		...process.env.LOCALAPPDATA ? [node_path.default.join(process.env.LOCALAPPDATA, "Android/Sdk")] : []
+	].find((dir) => node_fs.default.existsSync(dir)) || "";
 	adb = (serial, ...args) => (0, node_child_process.spawnSync)("adb", [
 		"-s",
 		serial,
 		...args
 	], { encoding: "utf8" });
 }));
+// src/node/fixture-apps.ts
+/**
+* Fictional third-party apps for capture emulators: tiny code-free APKs with a name, a drawn adaptive
+* icon and (optionally) the INTERNET permission, so firewalls, launchers and app pickers list them
+* through the real PackageManager with no fixture code in the app under test.
+*
+*   npx screenshot-studio fixtures store-listing/fixture-apps.json [--install emulator-5578] [--uninstall emulator-5578]
+*
+* Spec: {"apps": [{"package": "app.fernway.maps", "label": "Fernway Maps", "colors": ["#3fb27f", "#1e8a5c"],
+*         "glyph": "map", "tint": "#ffffff", "internet": true, "category": "maps"}]}
+* glyph: a Lucide icon name (resolved from lucide-react in the studio master's node_modules or LUCIDE_DIR),
+* {"svg": "<path d=\"...\"/>"} drawn on a 24-unit stroke grid, or {"text": "Aa"}.
+* category: an android:appCategory value (game, audio, video, image, social, news, maps, productivity).
+* targetSdk (default 34; Android refuses installs below 24), versionCode (1) and versionName ("1.0") set the
+* manifest, for apps that read them (an SDK tracker).
+* Needs the Android SDK (ANDROID_HOME or ~/Library/Android/sdk) and Playwright for the icons.
+* Builds into <spec dir>/.fixture-apps/ (keep it git-ignored) and signs with the local debug keystore; an unchanged
+* spec reuses the APKs already there. --install and --uninstall only ever talk to an emulator, never a phone.
+* buildFixtureApps() does the same from code and returns the packages and APKs.
+*/
+var fixture_apps_exports = /* @__PURE__ */ __exportAll({
+	buildFixtureApps: () => buildFixtureApps,
+	parseLucideSource: () => parseLucideSource,
+	run: () => run$7
+});
+/** Walk up from `start` looking for any of `relativePaths` under `node_modules`. */
+function findInNodeModules(start, relativePaths) {
+	let dir = node_path.default.resolve(start);
+	while (true) {
+		for (const rel of relativePaths) {
+			const candidate = node_path.default.join(dir, "node_modules", rel);
+			if (node_fs.default.existsSync(candidate)) return candidate;
+		}
+		const parent = node_path.default.dirname(dir);
+		if (parent === dir) return void 0;
+		dir = parent;
+	}
+}
+/** LUCIDE_DIR, or lucide-static / lucide-react / lucide in nearby node_modules. */
+function lucideDir() {
+	if (process.env.LUCIDE_DIR && node_fs.default.existsSync(process.env.LUCIDE_DIR)) return process.env.LUCIDE_DIR;
+	const rels = [
+		"lucide-static/icons",
+		"lucide-react/dist/esm/icons",
+		"lucide/dist/esm/icons"
+	];
+	return findInNodeModules(__dirname, rels) || findInNodeModules(process.cwd(), rels);
+}
+/**
+* Parse a JS object/array literal (as emitted by lucide-react / lucide icon modules) without eval or Function().
+* Supports double- and single-quoted strings, unquoted identifier keys, numbers, booleans, null and trailing commas.
+*/
+function parseJsLiteral(source, startIndex) {
+	let i = startIndex;
+	const skipWs = () => {
+		while (i < source.length && /\s/.test(source[i])) i++;
+	};
+	const parseString = () => {
+		const quote = source[i++];
+		let out = "";
+		while (i < source.length && source[i] !== quote) {
+			if (source[i] === "\\" && i + 1 < source.length) {
+				const next = source[++i];
+				out += next === "n" ? "\n" : next === "r" ? "\r" : next === "t" ? "	" : next;
+			} else out += source[i];
+			i++;
+		}
+		if (source[i] !== quote) throw new Error("Unterminated string in Lucide icon module");
+		i++;
+		return out;
+	};
+	const parseValue = () => {
+		skipWs();
+		const ch = source[i];
+		if (ch === "\"" || ch === "'") return parseString();
+		if (ch === "[") {
+			i++;
+			const arr = [];
+			while (true) {
+				skipWs();
+				if (source[i] === "]") {
+					i++;
+					return arr;
+				}
+				arr.push(parseValue());
+				skipWs();
+				if (source[i] === ",") i++;
+				else if (source[i] === "]") {
+					i++;
+					return arr;
+				} else throw new Error(`Expected "," or "]" in Lucide icon module at ${i}`);
+			}
+		}
+		if (ch === "{") {
+			i++;
+			const obj = {};
+			while (true) {
+				skipWs();
+				if (source[i] === "}") {
+					i++;
+					return obj;
+				}
+				let key;
+				if (source[i] === "\"" || source[i] === "'") key = parseString();
+				else {
+					const match = source.slice(i).match(/^[A-Za-z_$][\w$-]*/);
+					if (!match) throw new Error(`Expected object key in Lucide icon module at ${i}`);
+					key = match[0];
+					i += key.length;
+				}
+				skipWs();
+				if (source[i] !== ":") throw new Error(`Expected ":" in Lucide icon module at ${i}`);
+				i++;
+				obj[key] = parseValue();
+				skipWs();
+				if (source[i] === ",") i++;
+				else if (source[i] === "}") {
+					i++;
+					return obj;
+				} else throw new Error(`Expected "," or "}" in Lucide icon module at ${i}`);
+			}
+		}
+		const token = source.slice(i).match(/^(?:true|false|null|-?\d+(?:\.\d+)?(?:[eE][+-]?\d+)?)/);
+		if (!token) throw new Error(`Unexpected token in Lucide icon module at ${i}`);
+		i += token[0].length;
+		if (token[0] === "true") return true;
+		if (token[0] === "false") return false;
+		if (token[0] === "null") return null;
+		return Number(token[0]);
+	};
+	return parseValue();
+}
+/** Turn a Lucide icon module (.mjs/.js) or raw .svg source into inner SVG elements without eval. */
+function parseLucideSource(source, isSvg = false) {
+	if (isSvg) {
+		const match = source.match(/<svg\b[^>]*>([\s\S]*?)<\/svg>/i);
+		if (!match) throw new Error("Expected an <svg> element in Lucide SVG icon.");
+		return match[1].trim();
+	}
+	const dataAt = source.indexOf("const __iconData");
+	const nodeAt = source.indexOf("const __iconNode");
+	let elements;
+	if (dataAt >= 0) {
+		const parsed = parseJsLiteral(source, source.indexOf("{", dataAt));
+		if (!Array.isArray(parsed?.node)) throw new Error("Lucide icon module has no __iconData.node array.");
+		elements = parsed.node;
+	} else if (nodeAt >= 0) {
+		const parsed = parseJsLiteral(source, source.indexOf("[", nodeAt));
+		if (!Array.isArray(parsed)) throw new Error("Lucide icon module has no __iconNode array.");
+		elements = parsed;
+	} else throw new Error("Unsupported Lucide icon module format (expected __iconData or __iconNode).");
+	return elements.map(([tag, attrs]) => `<${tag} ${Object.entries(attrs).filter(([k]) => k !== "key").map(([k, v]) => `${k}="${escapeXml(String(v))}"`).join(" ")}/>`).join("");
+}
+function glyphMarkup(glyph) {
+	if (glyph && typeof glyph === "object" && "svg" in glyph && glyph.svg) return glyph.svg;
+	if (typeof glyph !== "string") return "";
+	const dir = lucideDir();
+	if (!dir) throw new Error("Lucide icons not found: install `lucide-static` or `lucide-react`, or set LUCIDE_DIR to a folder of Lucide icons.");
+	const svgFile = node_path.default.join(dir, `${glyph}.svg`);
+	if (node_fs.default.existsSync(svgFile)) return parseLucideSource(node_fs.default.readFileSync(svgFile, "utf8"), true);
+	const modFile = [node_path.default.join(dir, `${glyph}.mjs`), node_path.default.join(dir, `${glyph}.js`)].find((f) => node_fs.default.existsSync(f));
+	if (!modFile) throw new Error(`No Lucide icon named ${glyph}`);
+	let source = node_fs.default.readFileSync(modFile, "utf8");
+	const alias = source.match(/from '\.\/([\w-]+)\.(m?js)'/);
+	if (!source.includes("__iconData") && !source.includes("__iconNode") && alias) source = node_fs.default.readFileSync(node_path.default.join(dir, `${alias[1]}.${alias[2]}`), "utf8");
+	return parseLucideSource(source, false);
+}
+/** Adaptive icon layers, 432 px (108 dp at xxxhdpi): a gradient field and a glyph inside the 66 dp safe zone. */
+function layers(app) {
+	const [top, bottom = top] = app.colors;
+	const tint = app.tint || "#ffffff";
+	const background = `<svg xmlns="http://www.w3.org/2000/svg" width="432" height="432" viewBox="0 0 432 432">
+    <defs><linearGradient id="g" x1="0" y1="0" x2="0.35" y2="1"><stop offset="0" stop-color="${escapeXml(top)}"/><stop offset="1" stop-color="${escapeXml(bottom)}"/></linearGradient>
+    <radialGradient id="h" cx=".3" cy=".22" r=".8"><stop offset="0" stop-color="#fff" stop-opacity=".22"/><stop offset=".6" stop-color="#fff" stop-opacity="0"/></radialGradient></defs>
+    <rect width="432" height="432" fill="url(#g)"/><rect width="432" height="432" fill="url(#h)"/></svg>`;
+	let mark;
+	if (app.glyph && typeof app.glyph === "object" && "text" in app.glyph && app.glyph.text) mark = `<text x="216" y="216" dy=".35em" text-anchor="middle" font-family="Google Sans, Roboto, Helvetica, Arial, sans-serif"
+      font-weight="700" font-size="${app.glyph.text.length > 1 ? 104 : 140}" fill="${escapeXml(tint)}">${escapeXml(app.glyph.text)}</text>`;
+	else mark = `<g transform="translate(132 132) scale(7)" fill="none" stroke="${escapeXml(tint)}" stroke-width="${app.strokeWidth || 2.1}"
+      stroke-linecap="round" stroke-linejoin="round">${glyphMarkup(app.glyph)}</g>`;
+	return {
+		background,
+		foreground: `<svg xmlns="http://www.w3.org/2000/svg" width="432" height="432" viewBox="0 0 432 432">${mark}</svg>`
+	};
+}
+async function renderIcons(apps, out) {
+	const browser = await launchBrowser();
+	try {
+		const page = await browser.newPage({ viewport: {
+			width: 432,
+			height: 432
+		} });
+		for (const app of apps) {
+			const dir = node_path.default.join(out, app.package, "res", "drawable-nodpi");
+			node_fs.default.mkdirSync(dir, { recursive: true });
+			for (const [name, svg] of Object.entries(layers(app))) {
+				await page.setContent(`<style>html,body{margin:0;background:transparent}</style>${svg}`);
+				await page.locator("svg").screenshot({
+					path: node_path.default.join(dir, `ic_${name}.png`),
+					omitBackground: true
+				});
+			}
+		}
+	} finally {
+		await browser.close();
+	}
+}
+/** The newest build-tools and android.jar in the Android SDK, with an error that says what to install. */
+function androidSdk() {
+	const sdk = process.env.ANDROID_HOME || process.env.ANDROID_SDK_ROOT || [
+		node_path.default.join(node_os.default.homedir(), "Library/Android/sdk"),
+		node_path.default.join(node_os.default.homedir(), "Android/Sdk"),
+		...process.env.LOCALAPPDATA ? [node_path.default.join(process.env.LOCALAPPDATA, "Android/Sdk")] : []
+	].find((dir) => node_fs.default.existsSync(dir));
+	if (!sdk || !node_fs.default.existsSync(sdk)) throw new Error("No Android SDK found. Set ANDROID_HOME to your Android SDK.");
+	const list = (dir) => node_fs.default.existsSync(dir) ? node_fs.default.readdirSync(dir) : [];
+	const buildTools = list(node_path.default.join(sdk, "build-tools")).filter((v) => /^\d/.test(v) && !/rc|preview/i.test(v)).sort(numeric).pop();
+	if (!buildTools) throw new Error(`No build-tools in ${sdk}. Install them with the SDK Manager (sdkmanager "build-tools;35.0.0").`);
+	const platform = list(node_path.default.join(sdk, "platforms")).filter((p) => node_fs.default.existsSync(node_path.default.join(sdk, "platforms", p, "android.jar"))).sort(numeric).pop();
+	if (!platform) throw new Error(`No Android platform in ${sdk}. Install one with the SDK Manager (sdkmanager "platforms;android-35").`);
+	return {
+		tools: node_path.default.join(sdk, "build-tools", buildTools),
+		androidJar: node_path.default.join(sdk, "platforms", platform, "android.jar")
+	};
+}
+/** Build one code-free APK from the rendered icons in <out>/<package>/; returns its path. */
+function build(app, out, sdk) {
+	const toolBin = (tool) => {
+		if (process.platform !== "win32") return node_path.default.join(sdk.tools, tool);
+		for (const ext of [
+			".exe",
+			".bat",
+			""
+		]) {
+			const candidate = node_path.default.join(sdk.tools, `${tool}${ext}`);
+			if (node_fs.default.existsSync(candidate)) return candidate;
+		}
+		return node_path.default.join(sdk.tools, tool);
+	};
+	const run = (tool, ...rest) => (0, node_child_process.execFileSync)(toolBin(tool), rest, { stdio: [
+		"ignore",
+		"pipe",
+		"inherit"
+	] });
+	const root = node_path.default.join(out, app.package);
+	node_fs.default.mkdirSync(node_path.default.join(root, "res", "mipmap-anydpi-v26"), { recursive: true });
+	node_fs.default.writeFileSync(node_path.default.join(root, "res", "mipmap-anydpi-v26", "ic_launcher.xml"), `<?xml version="1.0" encoding="utf-8"?>
+<adaptive-icon xmlns:android="http://schemas.android.com/apk/res/android">
+  <background android:drawable="@drawable/ic_background"/>
+  <foreground android:drawable="@drawable/ic_foreground"/>
+</adaptive-icon>
+`);
+	const label = app.label.replace(/&/g, "&amp;").replace(/"/g, "&quot;").replace(/</g, "&lt;");
+	node_fs.default.writeFileSync(node_path.default.join(root, "AndroidManifest.xml"), `<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android" package="${app.package}">
+  ${app.internet === false ? "" : "<uses-permission android:name=\"android.permission.INTERNET\"/>"}
+  <application android:label="${label}" android:icon="@mipmap/ic_launcher" android:hasCode="false"${app.category ? ` android:appCategory="${app.category}"` : ""}/>
+</manifest>
+`);
+	const compiled = node_path.default.join(root, "compiled.zip");
+	run("aapt2", "compile", "--dir", node_path.default.join(root, "res"), "-o", compiled);
+	const unsigned = node_path.default.join(root, "unsigned.apk"), aligned = node_path.default.join(root, "aligned.apk");
+	run("aapt2", "link", "-o", unsigned, "-I", sdk.androidJar, "--manifest", node_path.default.join(root, "AndroidManifest.xml"), "--min-sdk-version", "26", "--target-sdk-version", String(app.targetSdk || 34), "--version-code", String(app.versionCode || 1), "--version-name", app.versionName || "1.0", compiled);
+	run("zipalign", "-p", "-f", "4", unsigned, aligned);
+	const apk = node_path.default.join(out, `${app.package}.apk`);
+	const keystore = node_path.default.join(node_os.default.homedir(), ".android", "debug.keystore");
+	if (!node_fs.default.existsSync(keystore)) throw new Error(`No debug keystore at ${keystore}. Build any Android app once (or run keytool) to create it.`);
+	run("apksigner", "sign", "--ks", keystore, "--ks-pass", "pass:android", "--ks-key-alias", "androiddebugkey", "--key-pass", "pass:android", "--out", apk, aligned);
+	return apk;
+}
+/** Build the spec's fixture APKs (reusing them when the spec is unchanged), and install or uninstall them on an emulator. */
+async function buildFixtureApps(options) {
+	const log = options.log || ((line) => console.log(line));
+	const specFile = node_path.default.resolve(options.spec);
+	if (!node_fs.default.existsSync(specFile) || !node_fs.default.statSync(specFile).isFile()) throw new Error(`No fixture spec at ${specFile}`);
+	if (options.install && options.uninstall) throw new Error("Pass --install or --uninstall, not both.");
+	const serial = options.install || options.uninstall;
+	if (serial && !serial.startsWith("emulator-")) throw new Error(`Install fixture apps on a dedicated emulator only (emulator-N), not ${serial}.`);
+	const spec = readJson(specFile);
+	if (!Array.isArray(spec.apps) || !spec.apps.length) throw new Error(`${specFile} lists no apps: {"apps": [{"package": …, "label": …, "colors": […]}]}`);
+	for (const app of spec.apps) if (!app.package || !app.label || !app.colors?.length) throw new Error(`Every app in ${specFile} needs "package", "label" and "colors" (${app.package || app.label || "unnamed"} doesn't).`);
+	const packages = spec.apps.map((app) => app.package);
+	const result = {
+		packages,
+		apks: [],
+		built: false,
+		installed: [],
+		uninstalled: []
+	};
+	const adb = (...rest) => (0, node_child_process.execFileSync)("adb", [
+		"-s",
+		serial,
+		...rest
+	], { stdio: [
+		"ignore",
+		"pipe",
+		"pipe"
+	] }).toString();
+	if (options.uninstall) {
+		for (const id of packages) {
+			try {
+				adb("uninstall", id);
+			} catch {
+				continue;
+			}
+			result.uninstalled.push(id);
+			log(`removed   ${id}`);
+		}
+		return result;
+	}
+	const out = node_path.default.join(node_path.default.dirname(specFile), ".fixture-apps");
+	const apkFor = (app) => node_path.default.join(out, `${app.package}.apk`);
+	const fingerprint = JSON.stringify(spec.apps);
+	const stamp = node_path.default.join(out, "spec.json");
+	if (!(node_fs.default.existsSync(stamp) && node_fs.default.readFileSync(stamp, "utf8") === fingerprint && spec.apps.every((app) => node_fs.default.existsSync(apkFor(app))))) {
+		const sdk = androidSdk();
+		node_fs.default.rmSync(out, {
+			recursive: true,
+			force: true
+		});
+		node_fs.default.mkdirSync(out, { recursive: true });
+		await renderIcons(spec.apps, out);
+		for (const app of spec.apps) log(`built     ${node_path.default.relative(process.cwd(), build(app, out, sdk))}`);
+		node_fs.default.writeFileSync(stamp, fingerprint);
+		result.built = true;
+	}
+	result.apks = spec.apps.map(apkFor);
+	if (options.install) for (const app of spec.apps) {
+		try {
+			adb("install", "-r", "-t", apkFor(app));
+		} catch (error) {
+			const stderr = String(error.stderr || "").trim();
+			throw new Error(`Couldn't install ${app.package} on ${serial}${stderr ? `: ${stderr}` : ""}. Is the emulator running (adb devices)?`);
+		}
+		result.installed.push(app.package);
+		log(`installed ${app.package}`);
+	}
+	return result;
+}
+async function run$7(argv) {
+	if (argv.includes("--help") || argv.includes("-h")) {
+		console.log(USAGE$3);
+		return 0;
+	}
+	const { parseCli } = await Promise.resolve().then(() => (init_cli_args(), cli_args_exports));
+	try {
+		const { values, positionals } = parseCli(argv, {
+			install: { type: "string" },
+			uninstall: { type: "string" }
+		}, {
+			allowPositionals: true,
+			usage: USAGE$3
+		});
+		if (positionals.length !== 1) {
+			console.error(USAGE$3);
+			return 1;
+		}
+		await buildFixtureApps({
+			spec: positionals[0],
+			install: values.install,
+			uninstall: values.uninstall
+		});
+		return 0;
+	} catch (error) {
+		console.error(error instanceof Error ? error.message : String(error));
+		return 1;
+	}
+}
+var escapeXml, numeric, USAGE$3;
+var init_fixture_apps = __esmMin((() => {
+	init_project();
+	init_playwright();
+	escapeXml = (value) => value.replace(/&/g, "&amp;").replace(/"/g, "&quot;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+	numeric = (a, b) => a.localeCompare(b, void 0, { numeric: true });
+	USAGE$3 = "Usage: npx screenshot-studio fixtures fixture-apps.json [--install <emulator-serial>] [--uninstall <emulator-serial>]";
+}));
 // src/core/layout.ts
+init_cli_args();
 init_export();
+init_fixture_apps();
 const TAGS = {
 	"*": "em",
 	"~": "del",
@@ -4056,7 +4557,7 @@ var init_exports = /* @__PURE__ */ __exportAll({
 	existingScreenshots: () => existingScreenshots,
 	init: () => init,
 	installTheme: () => installTheme,
-	run: () => run$7,
+	run: () => run$6,
 	screenshotSets: () => screenshotSets,
 	themes: () => themes
 });
@@ -4281,7 +4782,7 @@ function init(options = {}) {
 	const ios = options.platform === "ios";
 	if (options.platform && !["android", "ios"].includes(options.platform)) throw new Error(`Unknown platform "${options.platform}": use android or ios`);
 	if (!node_fs.default.existsSync(node_path.default.join(THEMES, theme, "theme.css"))) throw new Error(`No theme "${theme}". Available: ${themes().map((t) => t.name).join(", ")}`);
-	const reference = found?.reference || "en-US";
+	const reference = found?.reference || options.locales?.[0] || "en-US";
 	const locales = [.../* @__PURE__ */ new Set([
 		reference,
 		...Object.keys(found?.byLocale || {}),
@@ -4293,10 +4794,11 @@ function init(options = {}) {
 		kept: [],
 		cards: 0,
 		theme,
-		locales
+		locales,
+		imported: false
 	};
 	const sims = ios ? defaultSimulators() : null;
-	const fill = (text) => text.replaceAll("{{name}}", name).replaceAll("{{package}}", pkg || "com.example.app").replaceAll("{{scheme}}", name.toLowerCase().replace(/[^a-z0-9]+/g, "") || "myapp").replaceAll("{{iphoneSimulator}}", sims?.iphone || "").replaceAll("{{ipadSimulator}}", sims?.ipad || "");
+	const fill = (text) => text.replaceAll("{{name}}", name).replaceAll("{{package}}", pkg || "com.example.app").replaceAll("{{scheme}}", name.toLowerCase().replace(/[^a-z0-9]+/g, "") || "myapp").replaceAll("{{defaultLocale}}", reference).replaceAll("{{iphoneSimulator}}", sims?.iphone || "").replaceAll("{{ipadSimulator}}", sims?.ipad || "");
 	const write = (relative, content) => {
 		const file = node_path.default.join(listing, relative);
 		if (node_fs.default.existsSync(file)) {
@@ -4314,6 +4816,7 @@ function init(options = {}) {
 	const template = (relative, target = relative) => write(target, fill(node_fs.default.readFileSync(source(relative), "utf8")));
 	node_fs.default.mkdirSync(listing, { recursive: true });
 	const config = {
+		$schema: "https://unpkg.com/screenshot-studio/studio/schemas/studio.schema.json",
 		...readJson(node_path.default.join(TEMPLATES, "studio.json")),
 		app: name,
 		locales,
@@ -4349,6 +4852,7 @@ function init(options = {}) {
 			});
 		}
 		result.cards = Object.values(imported.galleries).reduce((n, gallery) => n + (Array.isArray(gallery) ? gallery : gallery.cards).length, 0);
+		result.imported = true;
 	} else {
 		if (pkg && ios) config.capture = {
 			platform: "ios",
@@ -4370,7 +4874,7 @@ function init(options = {}) {
 		write("studio.json", config);
 		template("profiles.json");
 		template("gallery.json");
-		template("en-US/copy.json");
+		template("en-US/copy.json", `${reference}/copy.json`);
 		if (pkg && !ios) template("capture.tour.mjs");
 		result.cards = ios ? 5 : 4;
 	}
@@ -4415,36 +4919,36 @@ function installTheme(listing, theme, options) {
 		options.result?.created.push(`assets/${asset}`);
 	}
 }
-/** `init [app] [--name …] [--package …] [--theme …] [--screenshots folder] [--locales a,b]` */
-async function run$7(argv) {
-	const option = (name) => {
-		const i = argv.indexOf(`--${name}`);
-		return i >= 0 ? argv[i + 1] : void 0;
-	};
-	const values = new Set([
-		"name",
-		"package",
-		"theme",
-		"screenshots",
-		"locales",
-		"platform"
-	].map(option));
-	const app = argv.find((word) => !word.startsWith("--") && !values.has(word));
+/** `init [app] [--name …] [--package …] [--theme …] [--screenshots folder] [--locales a,b] [--platform android|ios]` */
+async function run$6(argv) {
 	try {
+		const { parseCli, parseListOption } = await Promise.resolve().then(() => (init_cli_args(), cli_args_exports));
+		const { values, positionals } = parseCli(argv, {
+			name: { type: "string" },
+			package: { type: "string" },
+			theme: { type: "string" },
+			screenshots: { type: "string" },
+			locales: { type: "string" },
+			platform: { type: "string" }
+		}, {
+			allowPositionals: true,
+			usage: "Usage: npx screenshot-studio init [app] [--name \"My App\"] [--package com.example.app] [--theme starter] [--screenshots ./folder] [--locales en-US,de-DE] [--platform android|ios]"
+		});
+		if (positionals.length > 1) throw new Error(`Unexpected argument "${positionals[1]}": pass at most one app folder.`);
 		const result = init({
-			app,
-			name: option("name"),
-			package: option("package"),
-			theme: option("theme"),
-			screenshots: option("screenshots"),
-			locales: option("locales")?.split(",").map((l) => l.trim()).filter(Boolean),
-			platform: option("platform")
+			app: positionals[0],
+			name: values.name,
+			package: values.package,
+			theme: values.theme,
+			screenshots: values.screenshots,
+			locales: parseListOption(values.locales),
+			platform: values.platform
 		});
 		const where = node_path.default.relative(process.cwd(), node_path.default.dirname(result.listing)) || ".";
 		const cd = where === "." ? "" : `cd ${where} && `;
 		console.log(`\nReady: ${result.cards} card(s) with the ${result.theme} theme.\n`);
 		const others = result.locales.slice(1);
-		console.log(option("screenshots") || result.cards ? `Next:\n  1. Write the headlines in store-listing/${result.locales[0]}/copy.json (one per card, *highlight* a key word)${others.length ? `\n  2. Translate them into the empty fields of ${others.map((l) => `${l}/copy.json`).join(", ")}` : ""}\n  ${others.length ? 3 : 2}. ${cd}npx screenshot-studio check, then export (or studio --open for the editor)` : option("platform") === "ios" ? `Next:\n  1. Make the app's Debug build open on fictional sample data (docs/capture.md, iOS)\n  2. Write the tour in store-listing/capture.tour.mjs (npx screenshot-studio screen --simulator NAME shows what to tap); check capture.build in studio.json\n  3. ${cd}npx screenshot-studio recapture --boot` : `Next:\n  1. Add a capture build that fills the app with sample data (docs/playbook.md, section 1)\n  2. Write the tour in store-listing/capture.tour.mjs (npx screenshot-studio screen shows what to tap)\n  3. ${cd}npx screenshot-studio recapture --boot`);
+		console.log(result.imported ? `Next:\n  1. Write the headlines in store-listing/${result.locales[0]}/copy.json (one per card, *highlight* a key word)${others.length ? `\n  2. Translate them into the empty fields of ${others.map((l) => `${l}/copy.json`).join(", ")}` : ""}\n  ${others.length ? 3 : 2}. ${cd}npx screenshot-studio check, then export (or studio --open for the editor)` : values.platform === "ios" ? `Next:\n  1. Make the app's Debug build open on fictional sample data (docs/capture.md, iOS)\n  2. Write the tour in store-listing/capture.tour.mjs (npx screenshot-studio screen --simulator NAME shows what to tap); check capture.build in studio.json\n  3. ${cd}npx screenshot-studio recapture --boot` : `Next:\n  1. Add a capture build that fills the app with sample data (docs/playbook.md, section 1)\n  2. Write the tour in store-listing/capture.tour.mjs (npx screenshot-studio screen shows what to tap)\n  3. ${cd}npx screenshot-studio recapture --boot`);
 		return 0;
 	} catch (error) {
 		console.error(error.message);
@@ -4500,15 +5004,24 @@ var init_init = __esmMin((() => {
 * Run it again with another --theme to see the same cards in another look; your edits to the words are kept. --3d
 * draws the phones as real 3D devices, tilted (the theme's `depth` and the `tilt` layout word).
 */
-var demo_exports = /* @__PURE__ */ __exportAll({ run: () => run$6 });
-async function run$6(argv) {
-	const option = (name) => {
-		const i = argv.indexOf(`--${name}`);
-		return i >= 0 ? argv[i + 1] : void 0;
-	};
-	const theme = option("theme") || "aurora";
-	const folder = node_path.default.resolve(argv.find((word, i) => !word.startsWith("--") && argv[i - 1] !== "--theme") || "screenshot-studio-demo");
-	const depth = argv.includes("--3d");
+var demo_exports = /* @__PURE__ */ __exportAll({ run: () => run$5 });
+async function run$5(argv) {
+	const { parseCli } = await Promise.resolve().then(() => (init_cli_args(), cli_args_exports));
+	const { values, positionals } = parseCli(argv, {
+		theme: { type: "string" },
+		"3d": { type: "boolean" },
+		"no-open": { type: "boolean" }
+	}, {
+		allowPositionals: true,
+		usage: "Usage: npx screenshot-studio demo [folder] [--theme aurora] [--3d] [--no-open]"
+	});
+	if (positionals.length > 1) {
+		console.error("Usage: npx screenshot-studio demo [folder] [--theme aurora] [--3d] [--no-open]");
+		return 1;
+	}
+	const theme = values.theme || "aurora";
+	const folder = node_path.default.resolve(positionals[0] || "screenshot-studio-demo");
+	const depth = !!values["3d"];
 	const listing = node_path.default.join(folder, "store-listing");
 	if (!themes().some((t) => t.name === theme)) {
 		console.error(`No theme "${theme}". Available: ${themes().map((t) => t.name).join(", ")}`);
@@ -4546,7 +5059,7 @@ async function run$6(argv) {
 	}
 	const where = node_path.default.relative(process.cwd(), listing);
 	console.log(`\nThe cards are in ${where}/<language>/phone/. Try another look: npx screenshot-studio demo --theme paper${depth ? "" : ", or real 3D phones: --3d"}`);
-	if (argv.includes("--no-open")) return 0;
+	if (values["no-open"]) return 0;
 	console.log("Opening the editor (Ctrl-C to stop)…");
 	process.chdir(folder);
 	return (await Promise.resolve().then(() => (init_server(), server_exports))).run(["--open"]);
@@ -4570,7 +5083,7 @@ var emulator_exports = /* @__PURE__ */ __exportAll({
 	emulator: () => emulator,
 	formatScreen: () => formatScreen,
 	readScreen: () => readScreen,
-	run: () => run$5,
+	run: () => run$4,
 	tapScreen: () => tapScreen
 });
 /** The emulator (checked: attached, booted, an emulator), or with `simulator` a booted iOS simulator. */
@@ -4660,22 +5173,28 @@ async function tapScreen(target, device = emulator()) {
 	return hit.text || hit.desc || hit.id || hit.path;
 }
 /** `screen [--serial s | --simulator name] [--out file.png] [--json] [--tap label | --tap x,y | --back]` */
-async function run$5(argv) {
-	const option = (name) => {
-		const i = argv.indexOf(`--${name}`);
-		return i >= 0 ? argv[i + 1] : void 0;
-	};
+async function run$4(argv) {
+	const { parseCli } = await Promise.resolve().then(() => (init_cli_args(), cli_args_exports));
+	const { values } = parseCli(argv, {
+		serial: { type: "string" },
+		simulator: { type: "string" },
+		app: { type: "string" },
+		out: { type: "string" },
+		tap: { type: "string" },
+		back: { type: "boolean" },
+		json: { type: "boolean" }
+	}, { usage: "Usage: npx screenshot-studio screen [--serial emulator-5578 | --simulator \"iPhone 17 Pro Max\"] [--app com.example.app] [--out screen.png] [--json] [--tap \"Settings\" | --tap 540,1200 | --back]" });
 	try {
-		const device = emulator(option("serial"), option("simulator"), option("app"));
-		const tap = argv.includes("--back") ? "back" : option("tap");
+		const device = emulator(values.serial, values.simulator, values.app);
+		const tap = values.back ? "back" : values.tap;
 		if (tap) {
 			console.log(`tapped ${await tapScreen(tap, device)}`);
 			await sleep(1200);
 		}
 		const screen = await readScreen(device);
-		const out = node_path.default.resolve(option("out") || "screen.png");
+		const out = node_path.default.resolve(values.out || "screen.png");
 		node_fs.default.writeFileSync(out, screen.png);
-		if (argv.includes("--json")) console.log(JSON.stringify({
+		if (values.json) console.log(JSON.stringify({
 			device: screen.serial,
 			width: screen.width,
 			height: screen.height,
@@ -4721,7 +5240,7 @@ var locales_exports = /* @__PURE__ */ __exportAll({
 	addLocale: () => addLocale,
 	formatCoverage: () => formatCoverage,
 	localeCoverage: () => localeCoverage,
-	run: () => run$4
+	run: () => run$3
 });
 /** Every capture a locale's cards draw (device screens and callout crops); galleries marked defaultLocaleOnly count only for the default. */
 function capturesFor({ galleries, profiles, defaultLocale }, locale) {
@@ -4773,12 +5292,23 @@ function formatCoverage(report) {
 		...report.rows.map((row) => `${row.locale.padEnd(10)}  ${tally(row.words).padEnd(11)}  ${tally(row.captures).padEnd(11)}  ${tally(row.sidecars)}`)
 	].join("\n");
 }
+/** Read the optional "$schema" header of a JSON file so updates can preserve it. */
+function readSchemaUrl(file) {
+	if (!node_fs.default.existsSync(file)) return void 0;
+	try {
+		const parsed = JSON.parse(node_fs.default.readFileSync(file, "utf8"));
+		return typeof parsed?.$schema === "string" ? parsed.$schema : void 0;
+	} catch {
+		return;
+	}
+}
 /** Add a locale to studio.json and give it every default-locale copy field, empty (existing words are kept). */
 function addLocale(locale, listing) {
 	if (!LOCALE.test(locale)) throw new Error(`"${locale}" is not a locale code; use one like de-DE or pt-BR.`);
 	const files = loadListing(resolveListing(listing));
 	const { defaultLocale, locales } = files;
 	const copyFile = node_path.default.join(files.listing, locale, "copy.json");
+	const existingCopySchema = readSchemaUrl(copyFile) ?? readSchemaUrl(node_path.default.join(files.listing, defaultLocale, "copy.json"));
 	const copy = readCopy(files.listing, locale);
 	let addedFields = 0;
 	for (const [key, entry] of Object.entries(readCopy(files.listing, defaultLocale))) {
@@ -4788,12 +5318,20 @@ function addLocale(locale, listing) {
 			addedFields++;
 		}
 	}
-	writeJson(copyFile, copy);
+	writeJson(copyFile, existingCopySchema ? {
+		$schema: existingCopySchema,
+		...copy
+	} : copy);
 	const alreadyListed = locales.includes(locale);
-	if (!alreadyListed) writeJson(node_path.default.join(files.listing, "studio.json"), {
-		...files.config,
-		locales: [...locales, locale]
-	});
+	if (!alreadyListed) {
+		const studioFile = node_path.default.join(files.listing, "studio.json");
+		const studioSchema = readSchemaUrl(studioFile);
+		writeJson(studioFile, {
+			...studioSchema ? { $schema: studioSchema } : {},
+			...files.config,
+			locales: [...locales, locale]
+		});
+	}
 	return {
 		locale,
 		copyFile,
@@ -4801,24 +5339,18 @@ function addLocale(locale, listing) {
 		alreadyListed
 	};
 }
-async function run$4(argv) {
+async function run$3(argv) {
 	if (argv.includes("--help") || argv.includes("-h")) {
-		console.log(USAGE$3);
+		console.log(USAGE$2);
 		return 0;
 	}
 	try {
-		if (argv[0] === "--init") {
-			if (argv.length !== 2) {
-				console.error(USAGE$3);
-				return 1;
-			}
-			const added = addLocale(argv[1]);
+		const { parseCli } = await Promise.resolve().then(() => (init_cli_args(), cli_args_exports));
+		const { values } = parseCli(argv, { init: { type: "string" } }, { usage: USAGE$2 });
+		if (values.init !== void 0) {
+			const added = addLocale(values.init);
 			console.log(`Added ${added.locale}: fill ${node_path.default.relative(process.cwd(), added.copyFile)} in the editor, and capture into ${added.locale}/raw/.`);
 			return 0;
-		}
-		if (argv.length) {
-			console.error(USAGE$3);
-			return 1;
 		}
 		console.log(formatCoverage(localeCoverage()));
 		return 0;
@@ -4827,14 +5359,14 @@ async function run$4(argv) {
 		return 1;
 	}
 }
-var LOCALE, resolveListing, mapped, USAGE$3;
+var LOCALE, resolveListing, mapped, USAGE$2;
 var init_locales = __esmMin((() => {
 	init_gallery();
 	init_project();
 	LOCALE = /^[a-z]{2,3}(-[A-Za-z0-9]{2,8})*$/;
 	resolveListing = (listing) => requireListing(listing);
 	mapped = ({ galleries, profiles, defaultLocale }, locale) => [...new Set(Object.keys(galleries).filter((kind) => locale === defaultLocale || !profiles[kind]?.defaultLocaleOnly).flatMap((kind) => cardsFor(galleries, kind).flatMap((card) => (card.callouts || []).map((c) => c.raw || devicesFor(card)[c.device || 0]?.raw).filter((raw) => !!raw))))];
-	USAGE$3 = `Usage:
+	USAGE$2 = `Usage:
   npx screenshot-studio locales                 words translated, captures present and layout sidecars per locale
   npx screenshot-studio locales --init de-DE    add a locale with empty copy fields to fill in the editor`;
 }));
@@ -5023,27 +5555,35 @@ async function writeFile(out, target, icon) {
 			out.log(`Skipped ${target.path}: iconutil needs macOS`);
 			return;
 		}
-		const set = node_path.default.join(node_fs.default.mkdtempSync(node_path.default.join(node_os.default.tmpdir(), "icon-")), "AppIcon.iconset");
-		node_fs.default.mkdirSync(set);
-		for (const s of [
-			16,
-			32,
-			128,
-			256,
-			512
-		]) {
-			node_fs.default.writeFileSync(node_path.default.join(set, `icon_${s}x${s}.png`), await out.raster(draw(), s));
-			node_fs.default.writeFileSync(node_path.default.join(set, `icon_${s}x${s}@2x.png`), await out.raster(draw(), s * 2));
+		const tmp = node_fs.default.mkdtempSync(node_path.default.join(node_os.default.tmpdir(), "icon-"));
+		const set = node_path.default.join(tmp, "AppIcon.iconset");
+		try {
+			node_fs.default.mkdirSync(set);
+			for (const s of [
+				16,
+				32,
+				128,
+				256,
+				512
+			]) {
+				node_fs.default.writeFileSync(node_path.default.join(set, `icon_${s}x${s}.png`), await out.raster(draw(), s));
+				node_fs.default.writeFileSync(node_path.default.join(set, `icon_${s}x${s}@2x.png`), await out.raster(draw(), s * 2));
+			}
+			node_fs.default.mkdirSync(node_path.default.dirname(file), { recursive: true });
+			(0, node_child_process.execFileSync)("/usr/bin/iconutil", [
+				"-c",
+				"icns",
+				"-o",
+				file,
+				set
+			]);
+			out.wrote(file);
+		} finally {
+			node_fs.default.rmSync(tmp, {
+				recursive: true,
+				force: true
+			});
 		}
-		node_fs.default.mkdirSync(node_path.default.dirname(file), { recursive: true });
-		(0, node_child_process.execFileSync)("/usr/bin/iconutil", [
-			"-c",
-			"icns",
-			"-o",
-			file,
-			set
-		]);
-		out.wrote(file);
 	} else out.write(file, await out.raster(draw(), size(), target.opaque));
 }
 /** An Icon Composer bundle: each layer as Assets/<Name>.png, an icon.json unless one is kept, checked with ictool. */
@@ -5090,6 +5630,11 @@ async function writeAppleIcon(out, bundle, layers, icon) {
 		} catch (error) {
 			const failure = error;
 			throw new Error(`Xcode rejected ${out.rel(bundle)}: ${failure.stderr || failure.message}`);
+		} finally {
+			node_fs.default.rmSync(compiled, {
+				recursive: true,
+				force: true
+			});
 		}
 	}
 }
@@ -5367,281 +5912,46 @@ var init_vector = __esmMin((() => {
 var icon_exports = /* @__PURE__ */ __exportAll({
 	buildIcons: () => buildIcons,
 	importVector: () => importVector,
-	run: () => run$3,
+	run: () => run$2,
 	vectorToSvg: () => vectorToSvg
 });
-async function run$3(argv) {
-	if (argv.includes("--help") || argv.includes("-h")) {
-		console.log(USAGE$2);
-		return 0;
-	}
-	try {
-		if (argv[0] === "--import") {
-			if (argv.length !== 2) {
-				console.error(USAGE$2);
-				return 1;
-			}
-			process.stdout.write(importVector(node_path.default.resolve(argv[1])));
-			return 0;
-		}
-		if (argv.length > 1 || argv.some((arg) => arg.startsWith("-"))) {
-			console.error(USAGE$2);
-			return 1;
-		}
-		await buildIcons({ spec: argv[0] });
-		return 0;
-	} catch (error) {
-		console.error(error instanceof Error ? error.message : String(error));
-		return 1;
-	}
-}
-var USAGE$2;
-var init_icon = __esmMin((() => {
-	init_build();
-	init_vector();
-	USAGE$2 = `Usage:
-  npx screenshot-studio icons [store-listing/brand/icon.json]   draw every icon icon.json lists
-  npx screenshot-studio icons --import drawable.xml             print an Android vector drawable as a 108 x 108 SVG layer`;
-}));
-// src/node/fixture-apps.ts
-/**
-* Fictional third-party apps for capture emulators: tiny code-free APKs with a name, a drawn adaptive
-* icon and (optionally) the INTERNET permission, so firewalls, launchers and app pickers list them
-* through the real PackageManager with no fixture code in the app under test.
-*
-*   npx screenshot-studio fixtures store-listing/fixture-apps.json [--install emulator-5578] [--uninstall emulator-5578]
-*
-* Spec: {"apps": [{"package": "app.fernway.maps", "label": "Fernway Maps", "colors": ["#3fb27f", "#1e8a5c"],
-*         "glyph": "map", "tint": "#ffffff", "internet": true, "category": "maps"}]}
-* glyph: a Lucide icon name (resolved from lucide-react in the studio master's node_modules or LUCIDE_DIR),
-* {"svg": "<path d=\"...\"/>"} drawn on a 24-unit stroke grid, or {"text": "Aa"}.
-* category: an android:appCategory value (game, audio, video, image, social, news, maps, productivity).
-* targetSdk (default 34; Android refuses installs below 24), versionCode (1) and versionName ("1.0") set the
-* manifest, for apps that read them (an SDK tracker).
-* Needs the Android SDK (ANDROID_HOME or ~/Library/Android/sdk) and Playwright for the icons.
-* Builds into <spec dir>/.fixture-apps/ (keep it git-ignored) and signs with the local debug keystore; an unchanged
-* spec reuses the APKs already there. --install and --uninstall only ever talk to an emulator, never a phone.
-* buildFixtureApps() does the same from code and returns the packages and APKs.
-*/
-var fixture_apps_exports = /* @__PURE__ */ __exportAll({
-	buildFixtureApps: () => buildFixtureApps,
-	run: () => run$2
-});
-/** LUCIDE_DIR, or lucide-react in the studio master's node_modules (studio/ sits beside it). */
-function lucideDir() {
-	return [process.env.LUCIDE_DIR, node_path.default.join(__dirname, "../node_modules/lucide-react/dist/esm/icons")].find((dir) => Boolean(dir) && node_fs.default.existsSync(dir));
-}
-function glyphMarkup(glyph) {
-	if (glyph && typeof glyph === "object" && "svg" in glyph && glyph.svg) return glyph.svg;
-	if (typeof glyph !== "string") return "";
-	const dir = lucideDir();
-	if (!dir) throw new Error("Lucide icons not found: set LUCIDE_DIR to lucide-react/dist/esm/icons");
-	const file = node_path.default.join(dir, `${glyph}.mjs`);
-	if (!node_fs.default.existsSync(file)) throw new Error(`No Lucide icon named ${glyph}`);
-	let source = node_fs.default.readFileSync(file, "utf8");
-	const alias = source.match(/from '\.\/([\w-]+)\.mjs'/);
-	if (!source.includes("__iconData") && alias) source = node_fs.default.readFileSync(node_path.default.join(dir, `${alias[1]}.mjs`), "utf8");
-	const start = source.indexOf("{", source.indexOf("const __iconData"));
-	const literal = source.slice(start, source.indexOf("__iconData.node", start)).trim().replace(/;$/, "");
-	return Function(`return (${literal})`)().node.map(([tag, attrs]) => `<${tag} ${Object.entries(attrs).filter(([k]) => k !== "key").map(([k, v]) => `${k}="${v}"`).join(" ")}/>`).join("");
-}
-/** Adaptive icon layers, 432 px (108 dp at xxxhdpi): a gradient field and a glyph inside the 66 dp safe zone. */
-function layers(app) {
-	const [top, bottom = top] = app.colors;
-	const tint = app.tint || "#ffffff";
-	const background = `<svg xmlns="http://www.w3.org/2000/svg" width="432" height="432" viewBox="0 0 432 432">
-    <defs><linearGradient id="g" x1="0" y1="0" x2="0.35" y2="1"><stop offset="0" stop-color="${top}"/><stop offset="1" stop-color="${bottom}"/></linearGradient>
-    <radialGradient id="h" cx=".3" cy=".22" r=".8"><stop offset="0" stop-color="#fff" stop-opacity=".22"/><stop offset=".6" stop-color="#fff" stop-opacity="0"/></radialGradient></defs>
-    <rect width="432" height="432" fill="url(#g)"/><rect width="432" height="432" fill="url(#h)"/></svg>`;
-	let mark;
-	if (app.glyph && typeof app.glyph === "object" && "text" in app.glyph && app.glyph.text) mark = `<text x="216" y="216" dy=".35em" text-anchor="middle" font-family="Google Sans, Roboto, Helvetica, Arial, sans-serif"
-      font-weight="700" font-size="${app.glyph.text.length > 1 ? 104 : 140}" fill="${tint}">${app.glyph.text}</text>`;
-	else mark = `<g transform="translate(132 132) scale(7)" fill="none" stroke="${tint}" stroke-width="${app.strokeWidth || 2.1}"
-      stroke-linecap="round" stroke-linejoin="round">${glyphMarkup(app.glyph)}</g>`;
-	return {
-		background,
-		foreground: `<svg xmlns="http://www.w3.org/2000/svg" width="432" height="432" viewBox="0 0 432 432">${mark}</svg>`
-	};
-}
-async function renderIcons(apps, out) {
-	const browser = await launchBrowser();
-	try {
-		const page = await browser.newPage({ viewport: {
-			width: 432,
-			height: 432
-		} });
-		for (const app of apps) {
-			const dir = node_path.default.join(out, app.package, "res", "drawable-nodpi");
-			node_fs.default.mkdirSync(dir, { recursive: true });
-			for (const [name, svg] of Object.entries(layers(app))) {
-				await page.setContent(`<style>html,body{margin:0;background:transparent}</style>${svg}`);
-				await page.locator("svg").screenshot({
-					path: node_path.default.join(dir, `ic_${name}.png`),
-					omitBackground: true
-				});
-			}
-		}
-	} finally {
-		await browser.close();
-	}
-}
-/** The newest build-tools and android.jar in the Android SDK, with an error that says what to install. */
-function androidSdk() {
-	const sdk = process.env.ANDROID_HOME || process.env.ANDROID_SDK_ROOT || [node_path.default.join(node_os.default.homedir(), "Library/Android/sdk"), node_path.default.join(node_os.default.homedir(), "Android/Sdk")].find((dir) => node_fs.default.existsSync(dir));
-	if (!sdk || !node_fs.default.existsSync(sdk)) throw new Error("No Android SDK found. Set ANDROID_HOME to your Android SDK.");
-	const list = (dir) => node_fs.default.existsSync(dir) ? node_fs.default.readdirSync(dir) : [];
-	const buildTools = list(node_path.default.join(sdk, "build-tools")).filter((v) => /^\d/.test(v) && !/rc|preview/i.test(v)).sort(numeric).pop();
-	if (!buildTools) throw new Error(`No build-tools in ${sdk}. Install them with the SDK Manager (sdkmanager "build-tools;35.0.0").`);
-	const platform = list(node_path.default.join(sdk, "platforms")).filter((p) => node_fs.default.existsSync(node_path.default.join(sdk, "platforms", p, "android.jar"))).sort(numeric).pop();
-	if (!platform) throw new Error(`No Android platform in ${sdk}. Install one with the SDK Manager (sdkmanager "platforms;android-35").`);
-	return {
-		tools: node_path.default.join(sdk, "build-tools", buildTools),
-		androidJar: node_path.default.join(sdk, "platforms", platform, "android.jar")
-	};
-}
-/** Build one code-free APK from the rendered icons in <out>/<package>/; returns its path. */
-function build(app, out, sdk) {
-	const run = (tool, ...rest) => (0, node_child_process.execFileSync)(node_path.default.join(sdk.tools, tool), rest, { stdio: [
-		"ignore",
-		"pipe",
-		"inherit"
-	] });
-	const root = node_path.default.join(out, app.package);
-	node_fs.default.mkdirSync(node_path.default.join(root, "res", "mipmap-anydpi-v26"), { recursive: true });
-	node_fs.default.writeFileSync(node_path.default.join(root, "res", "mipmap-anydpi-v26", "ic_launcher.xml"), `<?xml version="1.0" encoding="utf-8"?>
-<adaptive-icon xmlns:android="http://schemas.android.com/apk/res/android">
-  <background android:drawable="@drawable/ic_background"/>
-  <foreground android:drawable="@drawable/ic_foreground"/>
-</adaptive-icon>
-`);
-	const label = app.label.replace(/&/g, "&amp;").replace(/"/g, "&quot;").replace(/</g, "&lt;");
-	node_fs.default.writeFileSync(node_path.default.join(root, "AndroidManifest.xml"), `<?xml version="1.0" encoding="utf-8"?>
-<manifest xmlns:android="http://schemas.android.com/apk/res/android" package="${app.package}">
-  ${app.internet === false ? "" : "<uses-permission android:name=\"android.permission.INTERNET\"/>"}
-  <application android:label="${label}" android:icon="@mipmap/ic_launcher" android:hasCode="false"${app.category ? ` android:appCategory="${app.category}"` : ""}/>
-</manifest>
-`);
-	const compiled = node_path.default.join(root, "compiled.zip");
-	run("aapt2", "compile", "--dir", node_path.default.join(root, "res"), "-o", compiled);
-	const unsigned = node_path.default.join(root, "unsigned.apk"), aligned = node_path.default.join(root, "aligned.apk");
-	run("aapt2", "link", "-o", unsigned, "-I", sdk.androidJar, "--manifest", node_path.default.join(root, "AndroidManifest.xml"), "--min-sdk-version", "26", "--target-sdk-version", String(app.targetSdk || 34), "--version-code", String(app.versionCode || 1), "--version-name", app.versionName || "1.0", compiled);
-	run("zipalign", "-p", "-f", "4", unsigned, aligned);
-	const apk = node_path.default.join(out, `${app.package}.apk`);
-	const keystore = node_path.default.join(node_os.default.homedir(), ".android", "debug.keystore");
-	if (!node_fs.default.existsSync(keystore)) throw new Error(`No debug keystore at ${keystore}. Build any Android app once (or run keytool) to create it.`);
-	run("apksigner", "sign", "--ks", keystore, "--ks-pass", "pass:android", "--ks-key-alias", "androiddebugkey", "--key-pass", "pass:android", "--out", apk, aligned);
-	return apk;
-}
-/** Build the spec's fixture APKs (reusing them when the spec is unchanged), and install or uninstall them on an emulator. */
-async function buildFixtureApps(options) {
-	const log = options.log || ((line) => console.log(line));
-	const specFile = node_path.default.resolve(options.spec);
-	if (!node_fs.default.existsSync(specFile) || !node_fs.default.statSync(specFile).isFile()) throw new Error(`No fixture spec at ${specFile}`);
-	if (options.install && options.uninstall) throw new Error("Pass --install or --uninstall, not both.");
-	const serial = options.install || options.uninstall;
-	if (serial && !serial.startsWith("emulator-")) throw new Error(`Install fixture apps on a dedicated emulator only (emulator-N), not ${serial}.`);
-	const spec = readJson(specFile);
-	if (!Array.isArray(spec.apps) || !spec.apps.length) throw new Error(`${specFile} lists no apps: {"apps": [{"package": …, "label": …, "colors": […]}]}`);
-	for (const app of spec.apps) if (!app.package || !app.label || !app.colors?.length) throw new Error(`Every app in ${specFile} needs "package", "label" and "colors" (${app.package || app.label || "unnamed"} doesn't).`);
-	const packages = spec.apps.map((app) => app.package);
-	const result = {
-		packages,
-		apks: [],
-		built: false,
-		installed: [],
-		uninstalled: []
-	};
-	const adb = (...rest) => (0, node_child_process.execFileSync)("adb", [
-		"-s",
-		serial,
-		...rest
-	], { stdio: [
-		"ignore",
-		"pipe",
-		"pipe"
-	] }).toString();
-	if (options.uninstall) {
-		for (const id of packages) {
-			try {
-				adb("uninstall", id);
-			} catch {
-				continue;
-			}
-			result.uninstalled.push(id);
-			log(`removed   ${id}`);
-		}
-		return result;
-	}
-	const out = node_path.default.join(node_path.default.dirname(specFile), ".fixture-apps");
-	const apkFor = (app) => node_path.default.join(out, `${app.package}.apk`);
-	const fingerprint = JSON.stringify(spec.apps);
-	const stamp = node_path.default.join(out, "spec.json");
-	if (!(node_fs.default.existsSync(stamp) && node_fs.default.readFileSync(stamp, "utf8") === fingerprint && spec.apps.every((app) => node_fs.default.existsSync(apkFor(app))))) {
-		const sdk = androidSdk();
-		node_fs.default.rmSync(out, {
-			recursive: true,
-			force: true
-		});
-		node_fs.default.mkdirSync(out, { recursive: true });
-		await renderIcons(spec.apps, out);
-		for (const app of spec.apps) log(`built     ${node_path.default.relative(process.cwd(), build(app, out, sdk))}`);
-		node_fs.default.writeFileSync(stamp, fingerprint);
-		result.built = true;
-	}
-	result.apks = spec.apps.map(apkFor);
-	if (options.install) for (const app of spec.apps) {
-		try {
-			adb("install", "-r", "-t", apkFor(app));
-		} catch (error) {
-			const stderr = String(error.stderr || "").trim();
-			throw new Error(`Couldn't install ${app.package} on ${serial}${stderr ? `: ${stderr}` : ""}. Is the emulator running (adb devices)?`);
-		}
-		result.installed.push(app.package);
-		log(`installed ${app.package}`);
-	}
-	return result;
-}
 async function run$2(argv) {
 	if (argv.includes("--help") || argv.includes("-h")) {
 		console.log(USAGE$1);
 		return 0;
 	}
-	const options = {};
-	for (let i = 0; i < argv.length; i++) {
-		const arg = argv[i];
-		if (arg === "--install" || arg === "--uninstall") {
-			const value = argv[++i];
-			if (!value || value.startsWith("-")) {
-				console.error(`${arg} needs an emulator serial, e.g. emulator-5578\n${USAGE$1}`);
+	const { parseCli } = await Promise.resolve().then(() => (init_cli_args(), cli_args_exports));
+	try {
+		const { values, positionals } = parseCli(argv, { import: { type: "string" } }, {
+			allowPositionals: true,
+			usage: USAGE$1
+		});
+		if (values.import !== void 0) {
+			if (positionals.length) {
+				console.error(USAGE$1);
 				return 1;
 			}
-			options[arg === "--install" ? "install" : "uninstall"] = value;
-		} else if (arg.startsWith("-") || options.spec) {
+			process.stdout.write(importVector(node_path.default.resolve(values.import)));
+			return 0;
+		}
+		if (positionals.length > 1) {
 			console.error(USAGE$1);
 			return 1;
-		} else options.spec = arg;
-	}
-	if (!options.spec) {
-		console.error(USAGE$1);
-		return 1;
-	}
-	try {
-		await buildFixtureApps({
-			...options,
-			spec: options.spec
-		});
+		}
+		await buildIcons({ spec: positionals[0] });
 		return 0;
 	} catch (error) {
 		console.error(error instanceof Error ? error.message : String(error));
 		return 1;
 	}
 }
-var numeric, USAGE$1;
-var init_fixture_apps = __esmMin((() => {
-	init_project();
-	init_playwright();
-	numeric = (a, b) => a.localeCompare(b, void 0, { numeric: true });
-	USAGE$1 = "Usage: npx screenshot-studio fixtures fixture-apps.json [--install <emulator-serial>] [--uninstall <emulator-serial>]";
+var USAGE$1;
+var init_icon = __esmMin((() => {
+	init_build();
+	init_vector();
+	USAGE$1 = `Usage:
+  npx screenshot-studio icons [store-listing/brand/icon.json]   draw every icon icon.json lists
+  npx screenshot-studio icons --import drawable.xml             print an Android vector drawable as a 108 x 108 SVG layer`;
 }));
 // src/node/mcp.ts
 /**
@@ -5909,8 +6219,9 @@ async function image(source, maxSide) {
 }
 /** `mcp [--listing path]`: serve until stdin closes. */
 async function run$1(argv) {
-	const at = argv.indexOf("--listing");
-	const tools = createTools(at >= 0 ? argv[at + 1] : void 0);
+	const { parseCli } = await Promise.resolve().then(() => (init_cli_args(), cli_args_exports));
+	const { values } = parseCli(argv, { listing: { type: "string" } }, { usage: "Usage: npx screenshot-studio mcp [--listing path/to/app]" });
+	const tools = createTools(values.listing);
 	const send = (message) => process.stdout.write(JSON.stringify(message) + "\n");
 	const version = (() => {
 		try {
@@ -6088,7 +6399,8 @@ async function previewReadme(options = {}) {
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/github-markdown-css@5/github-markdown-light.css">
 <style>body{margin:0;background:#fff}.markdown-body{box-sizing:border-box;max-width:${width}px;margin:0 auto;padding:32px}</style>
 <article class="markdown-body">${body}</article>`;
-	const page = node_path.default.join(node_fs.default.mkdtempSync(node_path.default.join(node_os.default.tmpdir(), "readme-preview-")), "readme.html");
+	const tmpDir = node_fs.default.mkdtempSync(node_path.default.join(node_os.default.tmpdir(), "readme-preview-"));
+	const page = node_path.default.join(tmpDir, "readme.html");
 	node_fs.default.writeFileSync(page, html);
 	const browser = await launchBrowser();
 	try {
@@ -6113,6 +6425,10 @@ async function previewReadme(options = {}) {
 		};
 	} finally {
 		await browser.close();
+		node_fs.default.rmSync(tmpDir, {
+			recursive: true,
+			force: true
+		});
 	}
 }
 async function run(argv) {
@@ -6120,23 +6436,18 @@ async function run(argv) {
 		console.log(USAGE);
 		return 0;
 	}
-	const options = {};
-	for (let i = 0; i < argv.length; i += 2) {
-		const [flag, value] = [argv[i], argv[i + 1]];
-		if (value === void 0 || value.startsWith("--")) {
-			console.error(USAGE);
-			return 1;
-		}
-		if (flag === "--repo") options.repo = value;
-		else if (flag === "--out") options.out = value;
-		else if (flag === "--width") options.width = Number(value);
-		else {
-			console.error(USAGE);
-			return 1;
-		}
-	}
+	const { parseCli, parseIntOption } = await Promise.resolve().then(() => (init_cli_args(), cli_args_exports));
 	try {
-		const { file, missingImages } = await previewReadme(options);
+		const { values } = parseCli(argv, {
+			repo: { type: "string" },
+			out: { type: "string" },
+			width: { type: "string" }
+		}, { usage: USAGE });
+		const { file, missingImages } = await previewReadme({
+			repo: values.repo,
+			out: values.out,
+			width: parseIntOption(values.width, "--width", { min: 1 })
+		});
 		console.log(file);
 		if (missingImages.length) {
 			console.error(`Missing images:\n${missingImages.join("\n")}`);
@@ -6214,26 +6525,28 @@ const COMMANDS = {
 		summary: "Run the capture tour by hand: one language, on the capture emulator or simulators",
 		usage: "tour [--locale en-US] [--profile phone,tablet7] [--only 01-home,02-log] [--serial emulator-5578 | --simulator \"iPhone 17 Pro Max\"] [--<option> value…]",
 		run: async (argv) => {
-			const option = (name) => {
-				const i = argv.indexOf(`--${name}`);
-				return i >= 0 ? argv[i + 1] : void 0;
-			};
 			const { requireListing, loadListing } = await Promise.resolve().then(() => (init_project(), project_exports));
+			const { parseListOption } = await Promise.resolve().then(() => (init_cli_args(), cli_args_exports));
 			const listing = requireListing();
 			const { tourFile } = await Promise.resolve().then(() => (init_recapture(), recapture_exports));
-			const list = (name) => option(name)?.split(",").map((s) => s.trim()).filter(Boolean);
+			const known = {};
 			const options = {};
+			const reserved = /* @__PURE__ */ new Set([
+				"locale",
+				"profile",
+				"only",
+				"serial",
+				"simulator"
+			]);
 			for (let i = 0; i < argv.length; i++) {
-				const name = argv[i].match(/^--(.+)$/)?.[1];
-				if (!name) continue;
-				const value = argv[i + 1] !== void 0 && !argv[i + 1].startsWith("--") ? argv[++i] : true;
-				if (![
-					"locale",
-					"profile",
-					"only",
-					"serial",
-					"simulator"
-				].includes(name)) options[name.replace(/-(\w)/g, (_, c) => c.toUpperCase())] = value;
+				const match = argv[i].match(/^--([^=]+)(?:=(.*))?$/);
+				if (!match) throw new Error(`Unexpected argument "${argv[i]}".\nUsage: npx screenshot-studio ${COMMANDS.tour.usage}`);
+				const [, name, inline] = match;
+				const value = inline !== void 0 ? inline : argv[i + 1] !== void 0 && !argv[i + 1].startsWith("--") ? argv[++i] : true;
+				if (reserved.has(name)) {
+					if (typeof value !== "string" || !value) throw new Error(`--${name} requires a value.`);
+					known[name] = value;
+				} else options[name.replace(/-(\w)/g, (_, c) => c.toUpperCase())] = value;
 			}
 			try {
 				const file = tourFile(listing);
@@ -6241,11 +6554,11 @@ const COMMANDS = {
 				const { DEFAULT_SERIAL } = await Promise.resolve().then(() => (init_recapture(), recapture_exports));
 				const written = await runTour(file, {
 					listing,
-					locale: option("locale") || loadListing(listing).defaultLocale,
-					profiles: list("profile"),
-					only: list("only"),
-					serial: option("serial") || process.env.CAPTURE_SERIAL || DEFAULT_SERIAL,
-					simulator: option("simulator") || process.env.CAPTURE_SIMULATOR,
+					locale: known.locale || loadListing(listing).defaultLocale,
+					profiles: parseListOption(known.profile),
+					only: parseListOption(known.only),
+					serial: known.serial || process.env.CAPTURE_SERIAL || DEFAULT_SERIAL,
+					simulator: known.simulator || process.env.CAPTURE_SIMULATOR,
 					options
 				});
 				console.log(`${written.length} capture(s) written`);
@@ -6265,22 +6578,23 @@ const COMMANDS = {
 		summary: "Undo a capture that was interrupted (display size, density, demo mode; a simulator's status bar and appearance)",
 		usage: "reset [--serial emulator-5578 | --simulator \"iPhone 17 Pro Max\"]",
 		run: async (argv) => {
-			const option = (name) => {
-				const i = argv.indexOf(`--${name}`);
-				return i >= 0 ? argv[i + 1] : void 0;
-			};
+			const { parseCli } = await Promise.resolve().then(() => (init_cli_args(), cli_args_exports));
+			const { values } = parseCli(argv, {
+				serial: { type: "string" },
+				simulator: { type: "string" }
+			}, { usage: "Usage: npx screenshot-studio reset [--serial emulator-5578 | --simulator \"iPhone 17 Pro Max\"]" });
 			try {
-				if (option("simulator")) {
+				if (values.simulator) {
 					const { findSimulator } = await Promise.resolve().then(() => (init_ios(), ios_exports));
 					const { Simulator } = await Promise.resolve().then(() => (init_simulator(), simulator_exports));
-					const found = findSimulator(option("simulator"));
+					const found = findSimulator(values.simulator);
 					new Simulator(found.udid, found.name).reset();
 					console.log(`${found.name} reset`);
 					return 0;
 				}
 				const { Emulator } = await Promise.resolve().then(() => (init_emulator$1(), emulator_exports$1));
 				const { DEFAULT_SERIAL } = await Promise.resolve().then(() => (init_recapture(), recapture_exports));
-				const serial = option("serial") || process.env.CAPTURE_SERIAL || DEFAULT_SERIAL;
+				const serial = values.serial || process.env.CAPTURE_SERIAL || DEFAULT_SERIAL;
 				new Emulator(serial).reset();
 				console.log(`${serial} reset`);
 				return 0;
@@ -6337,15 +6651,21 @@ function help() {
 	console.log("Run `npx screenshot-studio <command> --help` for its options. Docs: https://github.com/bernaferrari/screenshot-studio");
 }
 async function main(argv) {
-	const at = argv.indexOf("--listing");
+	const at = argv.findIndex((arg) => arg === "--listing" || arg.startsWith("--listing="));
 	if (at >= 0) {
-		const target = node_path.default.resolve(argv[at + 1] || "");
+		const inline = argv[at].startsWith("--listing=");
+		const rawTarget = inline ? argv[at].slice(10) : argv[at + 1];
+		if (!rawTarget) {
+			console.error("--listing requires a path.");
+			return 1;
+		}
+		const target = node_path.default.resolve(rawTarget);
 		if (!node_fs.default.existsSync(target)) {
 			console.error(`No folder ${target}`);
 			return 1;
 		}
 		process.chdir(node_path.default.basename(target) === "store-listing" ? node_path.default.dirname(target) : target);
-		argv = argv.filter((_, i) => i !== at && i !== at + 1);
+		argv = argv.filter((_, i) => i !== at && (inline || i !== at + 1));
 	}
 	const [first, ...rest] = argv;
 	if (!first || first === "help" || first === "--help" || first === "-h") {
@@ -6405,8 +6725,12 @@ exports.main = main;
 exports.matcher = matcher;
 exports.nodesFile = nodesFile;
 exports.outputFile = outputFile;
+exports.parseCli = parseCli;
 exports.parseHeadline = parseHeadline;
 exports.parseHighlight = parseHighlight;
+exports.parseIntOption = parseIntOption;
+exports.parseListOption = parseListOption;
+exports.parseLucideSource = parseLucideSource;
 exports.readJson = readJson;
 exports.recapture = recapture;
 exports.requireListing = requireListing;

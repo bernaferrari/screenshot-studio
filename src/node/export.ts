@@ -194,7 +194,7 @@ interface GalleryPlan {
   slides: Card[];
   cards: (CardJob & {rendered: () => Promise<RenderedCard>})[];
   /** Where fastlane wants these cards, if it does. */
-  destination: string | null;
+  destination: {dir: string; prefix: string} | null;
 }
 
 interface StripPlan {
@@ -224,7 +224,7 @@ interface Run extends ListingFiles {
   cards: ExportedCard[];
   tallies: LocaleTally[];
   /** Fastlane screenshots, in temp folders until the export succeeds. */
-  staged: {shots: string; destination: string}[];
+  staged: {shots: string; destination: string; prefix: string}[];
   textFiles: {file: string; value: string}[];
   log: (line: string) => void;
   warn: (message: string) => void;
@@ -323,20 +323,25 @@ function plan(run: Run): LocalePlan[] {
   });
 }
 
-// fastlane: "fastlane": {"dir": "fastlane/metadata/android", "screenshots": {"phone": "images/phoneScreenshots"},
-// "screenshotLocales": ["en-US"] (or "all"), "locales": {"ru-RU": "ru"}} (all optional; these are the defaults but
-// the locale map). Text comes from <locale>/listing.json, screenshots are the gallery's cards as 1.png, 2.png, ….
-function fastlaneConfig({config, defaultLocale}: Run) {
-  return {dir: 'fastlane/metadata/android', screenshots: {phone: 'images/phoneScreenshots'} as Record<string, string>,
+// fastlane: Google Play defaults to fastlane/metadata/android/<locale>/images/phoneScreenshots; App Store defaults to
+// fastlane/metadata/<locale>/ for text and fastlane/screenshots/<locale>/ for screenshots (prefixed by gallery).
+function fastlaneConfig({config, profiles, defaultLocale}: Run) {
+  const ios = storeFor(config, profiles) === 'App Store';
+  const defaultScreenshots: Record<string, string> = ios
+    ? Object.fromEntries(Object.keys(profiles).filter(k => profiles[k].platform === 'ios' && !profiles[k].defaultLocaleOnly).map(k => [k, '']))
+    : {phone: 'images/phoneScreenshots'};
+  return {ios, dir: ios ? 'fastlane/metadata' : 'fastlane/metadata/android', screenshots: defaultScreenshots,
     screenshotLocales: [defaultLocale] as string[] | 'all', locales: {} as Record<string, string>, ...config.fastlane};
 }
 
 const laneDir = (run: Run, locale: string) => { const {dir, locales} = fastlaneConfig(run); return path.join(run.repo, dir, locales[locale] || locale); };
 
-function laneShots(run: Run, locale: string, kind: string): string | null {
-  const {screenshots, screenshotLocales} = fastlaneConfig(run);
-  return run.options.fastlane && screenshots[kind] && (screenshotLocales === 'all' || screenshotLocales.includes(locale))
-    ? path.join(laneDir(run, locale), screenshots[kind]) : null;
+function laneShots(run: Run, locale: string, kind: string): {dir: string; prefix: string} | null {
+  const {ios, screenshots, screenshotLocales, locales} = fastlaneConfig(run);
+  if (!run.options.fastlane || !(kind in screenshots) || !(screenshotLocales === 'all' || screenshotLocales.includes(locale))) return null;
+  const target = screenshots[kind];
+  if (ios && !target) return {dir: path.join(run.repo, 'fastlane/screenshots', locales[locale] || locale), prefix: `${kind}-`};
+  return target ? {dir: path.join(laneDir(run, locale), target), prefix: ''} : null;
 }
 
 /** Use a fresh page, in a context of its own, sized for a card of `kind`; it closes even when the card fails. */
@@ -414,13 +419,13 @@ async function writeCards(run: Run, {locale, dir}: LocalePlan, gallery: GalleryP
   const {kind, width, height, destination} = gallery;
   const edges: Edges[] = [];
   const shots = destination ? fs.mkdtempSync(path.join(os.tmpdir(), 'studio-fastlane-')) : null;
-  if (shots && destination) run.staged.push({shots, destination});
+  if (shots && destination) run.staged.push({shots, destination: destination.dir, prefix: destination.prefix});
   for (const {index: i, slide, file, label, rendered} of gallery.cards) {
     const {report, bytes, fastlane, edges: edge} = await rendered();
     fs.mkdirSync(path.dirname(path.join(dir, file)), {recursive: true});
     fs.writeFileSync(path.join(dir, file), bytes);
     written.add(path.join(dir, file));
-    if (shots && fastlane) fs.writeFileSync(path.join(shots, `${i + 1}.png`), fastlane);
+    if (shots && fastlane && destination) fs.writeFileSync(path.join(shots, `${destination.prefix}${i + 1}.png`), fastlane);
     if (edge) edges[i] = edge;
 
     const notes: string[] = [];
@@ -500,22 +505,32 @@ function staleOutputs(run: Run, {dir}: LocalePlan, manifest: Manifest, written: 
 
 /** Check <locale>/listing.json against the store's limits, and write it as fastlane text when asked. */
 function writeListingText(run: Run, locale: string) {
+  const store = storeFor(run.config, run.profiles);
   const json = readJson<Listing | null>(path.join(run.listing, locale, 'listing.json'), null);
   const words = json && {...json, title: json.title ?? json.appName};
-  for (const problem of words ? listingProblems(words, storeFor(run.config, run.profiles)) : []) run.warn(`${locale}/listing.json ${problem.message}`);
+  for (const problem of words ? listingProblems(words, store) : []) run.warn(`${locale}/listing.json ${problem.message}`);
   if (!run.options.fastlane || !words) return;
   const dir = laneDir(run, locale);
-  for (const [field, name] of [['title', 'title'], ['shortDescription', 'short_description'], ['fullDescription', 'full_description']] as const) {
-    const value = words[field];
+  type ListingField = 'title' | 'subtitle' | 'promotionalText' | 'keywords' | 'description' | 'whatsNew' | 'shortDescription' | 'fullDescription';
+  const fields: readonly (readonly [ListingField, string])[] = store === 'App Store'
+    ? [['title', 'name'], ['subtitle', 'subtitle'], ['promotionalText', 'promotional_text'], ['keywords', 'keywords'], ['description', 'description'], ['whatsNew', 'release_notes']]
+    : [['title', 'title'], ['shortDescription', 'short_description'], ['fullDescription', 'full_description']];
+  for (const [field, name] of fields) {
+    const value = field === 'description' ? (words.description ?? words.fullDescription) : words[field];
     if (typeof value === 'string') run.textFiles.push({file: path.join(dir, `${name}.txt`), value: `${value.trimEnd()}\n`});
   }
 }
 
 /** Replace each fastlane screenshot folder's images with the staged ones; only a successful export gets here. */
 function commitFastlane(staged: Run['staged']) {
-  for (const {shots, destination} of staged) {
+  const cleared = new Set<string>();
+  for (const {shots, destination, prefix} of staged) {
     fs.mkdirSync(destination, {recursive: true});
-    for (const f of fs.readdirSync(destination)) if (IMAGES.test(f)) fs.rmSync(path.join(destination, f));
+    const key = `${destination}\0${prefix}`;
+    if (!cleared.has(key)) {
+      cleared.add(key);
+      for (const f of fs.readdirSync(destination)) if (IMAGES.test(f) && (!prefix || f.startsWith(prefix))) fs.rmSync(path.join(destination, f));
+    }
     for (const f of fs.readdirSync(shots)) fs.copyFileSync(path.join(shots, f), path.join(destination, f));
   }
 }
@@ -530,13 +545,24 @@ export function formatSummary(result: ExportResult): string {
 
 /** `export [--locale de-DE] [--kind phone] [--card 3] [--strict] [--fastlane] [--prune] [--jobs 4] [--json]` */
 export async function run(argv: string[]): Promise<number> {
-  const arg = (name: string) => { const i = argv.indexOf(`--${name}`); return i >= 0 ? argv[i + 1] : undefined; };
-  const json = argv.includes('--json');
-  const card = arg('card'), jobs = arg('jobs');
+  const {parseCli, parseIntOption} = await import('./cli-args');
+  const {values} = parseCli(argv, {
+    locale: {type: 'string'},
+    kind: {type: 'string'},
+    card: {type: 'string'},
+    strict: {type: 'boolean'},
+    fastlane: {type: 'boolean'},
+    prune: {type: 'boolean'},
+    jobs: {type: 'string'},
+    json: {type: 'boolean'},
+    listing: {type: 'string'},
+  }, {usage: 'Usage: npx screenshot-studio export [--locale de-DE] [--kind phone] [--card 0] [--strict] [--fastlane] [--prune] [--jobs 4] [--json]'});
+  const json = !!values.json;
   const result = await exportListing({
-    locales: arg('locale') ? [arg('locale')!] : undefined, kind: arg('kind'), card: card === undefined ? undefined : Number(card),
-    strict: argv.includes('--strict'), fastlane: argv.includes('--fastlane'), prune: argv.includes('--prune'), listing: arg('listing'),
-    jobs: jobs === undefined ? undefined : Number(jobs), log: json ? () => {} : undefined,
+    locales: values.locale ? [values.locale] : undefined, kind: values.kind,
+    card: parseIntOption(values.card, '--card', {min: 0}),
+    strict: !!values.strict, fastlane: !!values.fastlane, prune: !!values.prune, listing: values.listing,
+    jobs: parseIntOption(values.jobs, '--jobs', {min: 1}), log: json ? () => {} : undefined,
   });
   if (json) console.log(JSON.stringify(result, null, 2));
   else {

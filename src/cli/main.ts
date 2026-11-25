@@ -25,25 +25,34 @@ const COMMANDS: Record<string, Command> = {
     run: async argv => (await import('../node/recapture')).run(argv)},
   tour: {summary: 'Run the capture tour by hand: one language, on the capture emulator or simulators', usage: 'tour [--locale en-US] [--profile phone,tablet7] [--only 01-home,02-log] [--serial emulator-5578 | --simulator "iPhone 17 Pro Max"] [--<option> value…]',
     run: async argv => {
-      const option = (name: string) => { const i = argv.indexOf(`--${name}`); return i >= 0 ? argv[i + 1] : undefined; };
       const {requireListing, loadListing} = await import('../node/project');
+      const {parseListOption} = await import('../node/cli-args');
       const listing = requireListing();
       const {tourFile} = await import('../node/recapture');
-      const list = (name: string) => option(name)?.split(',').map(s => s.trim()).filter(Boolean);
-      // Any other --name value is the tour's d.options.name (--some-flag alone is true), as studio.json runs' "options".
+      // Parse known options plus arbitrary --name value / --name=value / --flag passthrough options for d.options.
+      const known: Record<string, string | undefined> = {};
       const options: Record<string, unknown> = {};
+      const reserved = new Set(['locale', 'profile', 'only', 'serial', 'simulator']);
       for (let i = 0; i < argv.length; i++) {
-        const name = argv[i].match(/^--(.+)$/)?.[1];
-        if (!name) continue;
-        const value = argv[i + 1] !== undefined && !argv[i + 1].startsWith('--') ? argv[++i] : true;
-        if (!['locale', 'profile', 'only', 'serial', 'simulator'].includes(name)) options[name.replace(/-(\w)/g, (_, c: string) => c.toUpperCase())] = value;
+        const match = argv[i].match(/^--([^=]+)(?:=(.*))?$/);
+        if (!match) throw new Error(`Unexpected argument "${argv[i]}".\nUsage: npx screenshot-studio ${COMMANDS.tour.usage}`);
+        const [, name, inline] = match;
+        const value = inline !== undefined ? inline
+          : (argv[i + 1] !== undefined && !argv[i + 1].startsWith('--') ? argv[++i] : true);
+        if (reserved.has(name)) {
+          if (typeof value !== 'string' || !value) throw new Error(`--${name} requires a value.`);
+          known[name] = value;
+        } else {
+          options[name.replace(/-(\w)/g, (_, c: string) => c.toUpperCase())] = value;
+        }
       }
       try {
         const file = tourFile(listing);
         const {runTour} = await import('../node/capture/tour');
         const {DEFAULT_SERIAL} = await import('../node/recapture');
-        const written = await runTour(file, {listing, locale: option('locale') || loadListing(listing).defaultLocale, profiles: list('profile'), only: list('only'),
-          serial: option('serial') || process.env.CAPTURE_SERIAL || DEFAULT_SERIAL, simulator: option('simulator') || process.env.CAPTURE_SIMULATOR, options});
+        const written = await runTour(file, {listing, locale: known.locale || loadListing(listing).defaultLocale,
+          profiles: parseListOption(known.profile), only: parseListOption(known.only),
+          serial: known.serial || process.env.CAPTURE_SERIAL || DEFAULT_SERIAL, simulator: known.simulator || process.env.CAPTURE_SIMULATOR, options});
         console.log(`${written.length} capture(s) written`);
         return 0;
       } catch (error) { console.error((error as Error).message); return 1; }
@@ -52,19 +61,23 @@ const COMMANDS: Record<string, Command> = {
     run: async argv => (await import('../node/emulator')).run(argv)},
   reset: {summary: 'Undo a capture that was interrupted (display size, density, demo mode; a simulator\'s status bar and appearance)', usage: 'reset [--serial emulator-5578 | --simulator "iPhone 17 Pro Max"]',
     run: async argv => {
-      const option = (name: string) => { const i = argv.indexOf(`--${name}`); return i >= 0 ? argv[i + 1] : undefined; };
+      const {parseCli} = await import('../node/cli-args');
+      const {values} = parseCli(argv, {
+        serial: {type: 'string'},
+        simulator: {type: 'string'},
+      }, {usage: 'Usage: npx screenshot-studio reset [--serial emulator-5578 | --simulator "iPhone 17 Pro Max"]'});
       try {
-        if (option('simulator')) {
+        if (values.simulator) {
           const {findSimulator} = await import('../node/ios');
           const {Simulator} = await import('../node/capture/simulator');
-          const found = findSimulator(option('simulator')!);
+          const found = findSimulator(values.simulator);
           new Simulator(found.udid, found.name).reset();
           console.log(`${found.name} reset`);
           return 0;
         }
         const {Emulator} = await import('../node/capture/emulator');
         const {DEFAULT_SERIAL} = await import('../node/recapture');
-        const serial = option('serial') || process.env.CAPTURE_SERIAL || DEFAULT_SERIAL;
+        const serial = values.serial || process.env.CAPTURE_SERIAL || DEFAULT_SERIAL;
         new Emulator(serial).reset();
         console.log(`${serial} reset`);
         return 0;
@@ -93,13 +106,16 @@ function help(): void {
 }
 
 export async function main(argv: string[]): Promise<number> {
-  // --listing <path> works for every command: it's where the command runs.
-  const at = argv.indexOf('--listing');
+  // --listing <path> or --listing=<path> works for every command: it's where the command runs.
+  const at = argv.findIndex(arg => arg === '--listing' || arg.startsWith('--listing='));
   if (at >= 0) {
-    const target = path.resolve(argv[at + 1] || '');
+    const inline = argv[at].startsWith('--listing=');
+    const rawTarget = inline ? argv[at].slice('--listing='.length) : argv[at + 1];
+    if (!rawTarget) { console.error('--listing requires a path.'); return 1; }
+    const target = path.resolve(rawTarget);
     if (!fs.existsSync(target)) { console.error(`No folder ${target}`); return 1; }
     process.chdir(path.basename(target) === 'store-listing' ? path.dirname(target) : target);
-    argv = argv.filter((_, i) => i !== at && i !== at + 1);
+    argv = argv.filter((_, i) => i !== at && (inline || i !== at + 1));
   }
   const [first, ...rest] = argv;
   if (!first || first === 'help' || first === '--help' || first === '-h') { help(); return 0; }
@@ -124,6 +140,8 @@ export {createWorkspaceStore} from '../node/workspace/store';
 export {cardsFor, withCopy, copyKeys, devicesFor, outputFile, nodesFile, followCallout, withoutMeta, requiredCopyFields} from '../core/gallery';
 export {validate} from '../core/validate';
 export {matcher, TapMap} from '../node/capture/screen';
+export {parseCli, parseIntOption, parseListOption} from '../node/cli-args';
+export {parseLucideSource} from '../node/fixture-apps';
 
 if (require.main === module) main(process.argv.slice(2)).then(code => { process.exitCode = code; }, (error: Error) => { console.error(error.message); process.exitCode = 1; });
 export {parseHeadline, parseHighlight, frameSize, boundsFor, boundsProblem, calloutPlacement, isWidow, hasDeviceRatio} from '../core/layout';

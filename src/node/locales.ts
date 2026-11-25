@@ -100,21 +100,35 @@ export function formatCoverage(report: CoverageReport): string {
   ].join('\n');
 }
 
+/** Read the optional "$schema" header of a JSON file so updates can preserve it. */
+function readSchemaUrl(file: string): string | undefined {
+  if (!fs.existsSync(file)) return undefined;
+  try {
+    const parsed = JSON.parse(fs.readFileSync(file, 'utf8')) as {$schema?: unknown};
+    return typeof parsed?.$schema === 'string' ? parsed.$schema : undefined;
+  } catch { return undefined; }
+}
+
 /** Add a locale to studio.json and give it every default-locale copy field, empty (existing words are kept). */
 export function addLocale(locale: string, listing?: string): AddedLocale {
   if (!LOCALE.test(locale)) throw new Error(`"${locale}" is not a locale code; use one like de-DE or pt-BR.`);
   const files = loadListing(resolveListing(listing));
   const {defaultLocale, locales} = files;
   const copyFile = path.join(files.listing, locale, 'copy.json');
+  const existingCopySchema = readSchemaUrl(copyFile) ?? readSchemaUrl(path.join(files.listing, defaultLocale, 'copy.json'));
   const copy = readCopy(files.listing, locale);
   let addedFields = 0;
   for (const [key, entry] of Object.entries(readCopy(files.listing, defaultLocale))) {
     const target = copy[key] ||= {};
     for (const field of Object.keys(entry)) if (!(field in target)) { target[field] = ''; addedFields++; }
   }
-  writeJson(copyFile, copy);
+  writeJson(copyFile, existingCopySchema ? {$schema: existingCopySchema, ...copy} : copy);
   const alreadyListed = locales.includes(locale);
-  if (!alreadyListed) writeJson(path.join(files.listing, 'studio.json'), {...files.config, locales: [...locales, locale]});
+  if (!alreadyListed) {
+    const studioFile = path.join(files.listing, 'studio.json');
+    const studioSchema = readSchemaUrl(studioFile);
+    writeJson(studioFile, {...(studioSchema ? {$schema: studioSchema} : {}), ...files.config, locales: [...locales, locale]});
+  }
   return {locale, copyFile, addedFields, alreadyListed};
 }
 
@@ -125,13 +139,13 @@ const USAGE = `Usage:
 export async function run(argv: string[]): Promise<number> {
   if (argv.includes('--help') || argv.includes('-h')) { console.log(USAGE); return 0; }
   try {
-    if (argv[0] === '--init') {
-      if (argv.length !== 2) { console.error(USAGE); return 1; }
-      const added = addLocale(argv[1]);
+    const {parseCli} = await import('./cli-args');
+    const {values} = parseCli(argv, {init: {type: 'string'}}, {usage: USAGE});
+    if (values.init !== undefined) {
+      const added = addLocale(values.init);
       console.log(`Added ${added.locale}: fill ${path.relative(process.cwd(), added.copyFile)} in the editor, and capture into ${added.locale}/raw/.`);
       return 0;
     }
-    if (argv.length) { console.error(USAGE); return 1; }
     console.log(formatCoverage(localeCoverage()));
     return 0;
   } catch (error) {

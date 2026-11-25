@@ -76,15 +76,20 @@ export async function writeFile(out: Output, target: FileTarget, icon: Icon): Pr
     out.write(file, ico(images));
   } else if (file.endsWith('.icns')) {
     if (process.platform !== 'darwin') { out.log(`Skipped ${target.path}: iconutil needs macOS`); return; }
-    const set = path.join(fs.mkdtempSync(path.join(os.tmpdir(), 'icon-')), 'AppIcon.iconset');
-    fs.mkdirSync(set);
-    for (const s of [16, 32, 128, 256, 512]) {
-      fs.writeFileSync(path.join(set, `icon_${s}x${s}.png`), await out.raster(draw(), s));
-      fs.writeFileSync(path.join(set, `icon_${s}x${s}@2x.png`), await out.raster(draw(), s * 2));
+    const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'icon-'));
+    const set = path.join(tmp, 'AppIcon.iconset');
+    try {
+      fs.mkdirSync(set);
+      for (const s of [16, 32, 128, 256, 512]) {
+        fs.writeFileSync(path.join(set, `icon_${s}x${s}.png`), await out.raster(draw(), s));
+        fs.writeFileSync(path.join(set, `icon_${s}x${s}@2x.png`), await out.raster(draw(), s * 2));
+      }
+      fs.mkdirSync(path.dirname(file), {recursive: true});
+      execFileSync('/usr/bin/iconutil', ['-c', 'icns', '-o', file, set]);
+      out.wrote(file);
+    } finally {
+      fs.rmSync(tmp, {recursive: true, force: true});
     }
-    fs.mkdirSync(path.dirname(file), {recursive: true});
-    execFileSync('/usr/bin/iconutil', ['-c', 'icns', '-o', file, set]);
-    out.wrote(file);
   } else {
     out.write(file, await out.raster(draw(), size(), target.opaque));
   }
@@ -113,6 +118,8 @@ async function writeAppleIcon(out: Output, bundle: string, layers: Record<string
     } catch (error) {
       const failure = error as {stderr?: Buffer | string; message: string};
       throw new Error(`Xcode rejected ${out.rel(bundle)}: ${failure.stderr || failure.message}`);
+    } finally {
+      fs.rmSync(compiled, {recursive: true, force: true});
     }
   }
 }

@@ -4,6 +4,7 @@ import {
   createDraftStore,
   isDirty,
   rebase,
+  serializeDraft,
   type Draft,
   type DraftStore,
 } from "./drafts";
@@ -17,7 +18,7 @@ import type {
   StudioConfig,
 } from "./types";
 
-import { cardsFor, requiredCopyFields } from "../../../src/core/gallery";
+import { cardsFor, requiredCopyFields, withoutMeta } from "../../../src/core/gallery";
 
 export {
   cardsFor,
@@ -94,9 +95,9 @@ async function loadListing(base: string, signal?: AbortSignal) {
   const locales = config.locales?.length ? config.locales : [reference];
   return {
     base,
-    config,
-    profiles: withoutSchema(profiles),
-    galleries: withoutSchema(galleries),
+    config: withoutMeta(config),
+    profiles: withoutMeta(profiles),
+    galleries: withoutMeta(galleries),
     reference,
     locales,
   };
@@ -110,12 +111,6 @@ const loadCopy = async (
     optional: true,
     signal,
   })) || {};
-/** Studio files may carry "$schema" for editors; it is not a gallery or a profile. */
-function withoutSchema<T extends object>(value: T): T {
-  if (!("$schema" in value)) return value;
-  const { $schema: _schema, ...rest } = value as Record<string, unknown>;
-  return rest as T;
-}
 
 /**
  * A studio project open in the editor: its listing files, every language's words with unsaved drafts, and live
@@ -252,14 +247,21 @@ export function useProject(
       const draft = current.current.drafts.get(locale);
       if (!draft || draft.saving || draft.conflict || !isDirty(draft)) return;
       const snapshot = JSON.stringify(draft.data);
+      const wire = serializeDraft(draft);
       update(locale, (d) => ({ ...d, saving: true, pending: snapshot, error: "" }));
       try {
         await request(asset(base, `../${locale}/copy.json`), {
           method: "PUT",
-          headers: { "X-Studio-Base": await sha256(draft.saved) },
-          body: snapshot,
+          headers: { "X-Studio-Base": await sha256(draft.savedRaw ?? draft.saved) },
+          body: wire,
         });
-        update(locale, (d) => ({ ...d, saved: d.conflict ? d.saved : snapshot, saving: false, pending: undefined }));
+        update(locale, (d) => ({
+          ...d,
+          saved: d.conflict ? d.saved : snapshot,
+          savedRaw: d.conflict ? d.savedRaw : wire,
+          saving: false,
+          pending: undefined,
+        }));
         // Without live reload, the previews still need to know.
         if (live !== "live") bump({ render: [locale] });
       } catch (e) {
@@ -284,7 +286,7 @@ export function useProject(
       });
       setModel((old) =>
         old && old.base === base
-          ? { ...old, galleries: withoutSchema(galleries) }
+          ? { ...old, galleries: withoutMeta(galleries) }
           : old,
       );
       if (live !== "live") bump({ render: "all" });

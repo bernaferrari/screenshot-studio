@@ -12,6 +12,7 @@ const SCHEMAS = {
   gallery: {type: 'Galleries', title: 'Screenshot Studio cards (store-listing/gallery.json)'},
   profiles: {type: 'Profiles', title: "Screenshot Studio galleries' sizes (store-listing/profiles.json)"},
   copy: {type: 'Copy', title: 'Screenshot Studio words (store-listing/<locale>/copy.json)'},
+  listing: {type: 'Listing', title: 'Store listing text (store-listing/<locale>/listing.json)'},
 };
 
 const generator = createGenerator({

@@ -110,16 +110,16 @@ export function reviewListing(listing: string): Review {
       fix: 'Fix what it names, then export again (`npx screenshot-studio export`).'});
     (report.warnings || []).forEach((warning, n) => {
       const seam = warning.match(/^([^/]+)\/([^:]+): the background breaks at the seam between cards (\d+) and (\d+)/);
-      const stale = warning.match(/^(.+) is no longer in the gallery; delete it$/);
-      const limit = warning.match(/^(\S+\/listing\.json) (\w+) has/);
+      const stale = warning.match(/^(.+) is no longer in the gallery; delete it(?:, or export with --prune)?$/);
+      const limit = warning.match(/^(\S+\/listing\.json) (\w+) has \d+ characters; (Google Play|App Store) allows/);
       // Card warnings start with the card's output: "de-DE/phone/02-logs.jpg: …"
       const output = warning.match(/^([a-z]{2,3}(?:-[A-Za-z0-9]{2,8})*)\/(\S+?\.(?:jpe?g|png|webp)): /);
       const byOutput = output ? Object.keys(galleries).flatMap(kind => cards(kind).map((c, i) => ({kind, i, file: outputFile(kind, c, i)}))).find(o => o.file === output[2]) : undefined;
       const base = {id: `export-warning-${n}`, source: 'export' as const, level: 'warning' as const, message: warning};
       if (seam) issues.push({...base, file: 'theme.js', locale: seam[1], card: card(seam[2], Number(seam[3]) - 1),
         fix: 'Draw the background in panorama coordinates (studio/shapes.js) so it continues from one card into the next.'});
-      else if (stale) issues.push({...base, file: stale[1], fix: 'Delete the file; no card writes it any more.'});
-      else if (limit) issues.push({...base, file: limit[1], path: limit[2], fix: 'Shorten it to fit Play\'s limit.'});
+      else if (stale) issues.push({...base, file: stale[1], fix: 'Delete the file, or run `npx screenshot-studio export --prune`; no card writes it any more.'});
+      else if (limit) issues.push({...base, file: limit[1], path: limit[2], fix: `Shorten it to fit ${limit[3]}'s limit.`});
       else if (output) issues.push({...base, message: warning.slice(output[0].length), file: `${output[1]}/${output[2]}`, locale: output[1], ...(byOutput ? {card: card(byOutput.kind, byOutput.i)} : {}),
         ...(/short last line/.test(warning) ? {fix: 'Reword or shorten the words so the last line isn\'t a lone word or two.'} : {})});
       else issues.push({...base, file: ''});

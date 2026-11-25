@@ -44,29 +44,144 @@ export interface FixtureSpec {apps: FixtureApp[]}
 /** A Lucide icon's elements: [tag, attributes]. */
 type IconNode = [string, Record<string, string | number>][];
 
-/** LUCIDE_DIR, or lucide-react in the studio master's node_modules (studio/ sits beside it). */
+const escapeXml = (value: string) => value.replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+
+/** Walk up from `start` looking for any of `relativePaths` under `node_modules`. */
+function findInNodeModules(start: string, relativePaths: string[]): string | undefined {
+  let dir = path.resolve(start);
+  while (true) {
+    for (const rel of relativePaths) {
+      const candidate = path.join(dir, 'node_modules', rel);
+      if (fs.existsSync(candidate)) return candidate;
+    }
+    const parent = path.dirname(dir);
+    if (parent === dir) return undefined;
+    dir = parent;
+  }
+}
+
+/** LUCIDE_DIR, or lucide-static / lucide-react / lucide in nearby node_modules. */
 function lucideDir(): string | undefined {
-  const candidates = [process.env.LUCIDE_DIR, path.join(__dirname, '../node_modules/lucide-react/dist/esm/icons')];
-  return candidates.find((dir): dir is string => Boolean(dir) && fs.existsSync(dir!));
+  if (process.env.LUCIDE_DIR && fs.existsSync(process.env.LUCIDE_DIR)) return process.env.LUCIDE_DIR;
+  const rels = ['lucide-static/icons', 'lucide-react/dist/esm/icons', 'lucide/dist/esm/icons'];
+  return findInNodeModules(__dirname, rels) || findInNodeModules(process.cwd(), rels);
+}
+
+/**
+ * Parse a JS object/array literal (as emitted by lucide-react / lucide icon modules) without eval or Function().
+ * Supports double- and single-quoted strings, unquoted identifier keys, numbers, booleans, null and trailing commas.
+ */
+function parseJsLiteral(source: string, startIndex: number): unknown {
+  let i = startIndex;
+  const skipWs = () => { while (i < source.length && /\s/.test(source[i])) i++; };
+  const parseString = (): string => {
+    const quote = source[i++];
+    let out = '';
+    while (i < source.length && source[i] !== quote) {
+      if (source[i] === '\\' && i + 1 < source.length) {
+        const next = source[++i];
+        out += next === 'n' ? '\n' : next === 'r' ? '\r' : next === 't' ? '\t' : next;
+      } else out += source[i];
+      i++;
+    }
+    if (source[i] !== quote) throw new Error('Unterminated string in Lucide icon module');
+    i++;
+    return out;
+  };
+  const parseValue = (): unknown => {
+    skipWs();
+    const ch = source[i];
+    if (ch === '"' || ch === "'") return parseString();
+    if (ch === '[') {
+      i++;
+      const arr: unknown[] = [];
+      while (true) {
+        skipWs();
+        if (source[i] === ']') { i++; return arr; }
+        arr.push(parseValue());
+        skipWs();
+        if (source[i] === ',') i++;
+        else if (source[i] === ']') { i++; return arr; }
+        else throw new Error(`Expected "," or "]" in Lucide icon module at ${i}`);
+      }
+    }
+    if (ch === '{') {
+      i++;
+      const obj: Record<string, unknown> = {};
+      while (true) {
+        skipWs();
+        if (source[i] === '}') { i++; return obj; }
+        let key: string;
+        if (source[i] === '"' || source[i] === "'") key = parseString();
+        else {
+          const match = source.slice(i).match(/^[A-Za-z_$][\w$-]*/);
+          if (!match) throw new Error(`Expected object key in Lucide icon module at ${i}`);
+          key = match[0];
+          i += key.length;
+        }
+        skipWs();
+        if (source[i] !== ':') throw new Error(`Expected ":" in Lucide icon module at ${i}`);
+        i++;
+        obj[key] = parseValue();
+        skipWs();
+        if (source[i] === ',') i++;
+        else if (source[i] === '}') { i++; return obj; }
+        else throw new Error(`Expected "," or "}" in Lucide icon module at ${i}`);
+      }
+    }
+    const token = source.slice(i).match(/^(?:true|false|null|-?\d+(?:\.\d+)?(?:[eE][+-]?\d+)?)/);
+    if (!token) throw new Error(`Unexpected token in Lucide icon module at ${i}`);
+    i += token[0].length;
+    if (token[0] === 'true') return true;
+    if (token[0] === 'false') return false;
+    if (token[0] === 'null') return null;
+    return Number(token[0]);
+  };
+  return parseValue();
+}
+
+/** Turn a Lucide icon module (.mjs/.js) or raw .svg source into inner SVG elements without eval. */
+export function parseLucideSource(source: string, isSvg = false): string {
+  if (isSvg) {
+    const match = source.match(/<svg\b[^>]*>([\s\S]*?)<\/svg>/i);
+    if (!match) throw new Error('Expected an <svg> element in Lucide SVG icon.');
+    return match[1].trim();
+  }
+  const dataAt = source.indexOf('const __iconData');
+  const nodeAt = source.indexOf('const __iconNode');
+  let elements: IconNode;
+  if (dataAt >= 0) {
+    const start = source.indexOf('{', dataAt);
+    const parsed = parseJsLiteral(source, start) as {node?: IconNode};
+    if (!Array.isArray(parsed?.node)) throw new Error('Lucide icon module has no __iconData.node array.');
+    elements = parsed.node;
+  } else if (nodeAt >= 0) {
+    const start = source.indexOf('[', nodeAt);
+    const parsed = parseJsLiteral(source, start);
+    if (!Array.isArray(parsed)) throw new Error('Lucide icon module has no __iconNode array.');
+    elements = parsed as IconNode;
+  } else {
+    throw new Error('Unsupported Lucide icon module format (expected __iconData or __iconNode).');
+  }
+  return elements.map(([tag, attrs]) => `<${tag} ${Object.entries(attrs).filter(([k]) => k !== 'key')
+    .map(([k, v]) => `${k}="${escapeXml(String(v))}"`).join(' ')}/>`).join('');
 }
 
 function glyphMarkup(glyph: Glyph | undefined): string {
   if (glyph && typeof glyph === 'object' && 'svg' in glyph && glyph.svg) return glyph.svg;
   if (typeof glyph !== 'string') return '';
   const dir = lucideDir();
-  if (!dir) throw new Error('Lucide icons not found: set LUCIDE_DIR to lucide-react/dist/esm/icons');
-  const file = path.join(dir, `${glyph}.mjs`);
-  if (!fs.existsSync(file)) throw new Error(`No Lucide icon named ${glyph}`);
-  let source = fs.readFileSync(file, 'utf8');
-  const alias = source.match(/from '\.\/([\w-]+)\.mjs'/);
-  if (!source.includes('__iconData') && alias) source = fs.readFileSync(path.join(dir, `${alias[1]}.mjs`), 'utf8');
-  const start = source.indexOf('{', source.indexOf('const __iconData'));
-  const literal = source.slice(start, source.indexOf('__iconData.node', start)).trim().replace(/;$/, '');
-  // A plain object literal from the installed lucide-react package.
-  // eslint-disable-next-line no-new-func
-  const elements = (Function(`return (${literal})`)() as {node: IconNode}).node;
-  return elements.map(([tag, attrs]) => `<${tag} ${Object.entries(attrs).filter(([k]) => k !== 'key')
-    .map(([k, v]) => `${k}="${v}"`).join(' ')}/>`).join('');
+  if (!dir) throw new Error('Lucide icons not found: install `lucide-static` or `lucide-react`, or set LUCIDE_DIR to a folder of Lucide icons.');
+  const svgFile = path.join(dir, `${glyph}.svg`);
+  if (fs.existsSync(svgFile)) return parseLucideSource(fs.readFileSync(svgFile, 'utf8'), true);
+  const modFile = [path.join(dir, `${glyph}.mjs`), path.join(dir, `${glyph}.js`)].find(f => fs.existsSync(f));
+  if (!modFile) throw new Error(`No Lucide icon named ${glyph}`);
+  let source = fs.readFileSync(modFile, 'utf8');
+  const alias = source.match(/from '\.\/([\w-]+)\.(m?js)'/);
+  if (!source.includes('__iconData') && !source.includes('__iconNode') && alias) {
+    source = fs.readFileSync(path.join(dir, `${alias[1]}.${alias[2]}`), 'utf8');
+  }
+  return parseLucideSource(source, false);
 }
 
 /** Adaptive icon layers, 432 px (108 dp at xxxhdpi): a gradient field and a glyph inside the 66 dp safe zone. */
@@ -74,17 +189,17 @@ function layers(app: FixtureApp): {background: string; foreground: string} {
   const [top, bottom = top] = app.colors;
   const tint = app.tint || '#ffffff';
   const background = `<svg xmlns="http://www.w3.org/2000/svg" width="432" height="432" viewBox="0 0 432 432">
-    <defs><linearGradient id="g" x1="0" y1="0" x2="0.35" y2="1"><stop offset="0" stop-color="${top}"/><stop offset="1" stop-color="${bottom}"/></linearGradient>
+    <defs><linearGradient id="g" x1="0" y1="0" x2="0.35" y2="1"><stop offset="0" stop-color="${escapeXml(top)}"/><stop offset="1" stop-color="${escapeXml(bottom)}"/></linearGradient>
     <radialGradient id="h" cx=".3" cy=".22" r=".8"><stop offset="0" stop-color="#fff" stop-opacity=".22"/><stop offset=".6" stop-color="#fff" stop-opacity="0"/></radialGradient></defs>
     <rect width="432" height="432" fill="url(#g)"/><rect width="432" height="432" fill="url(#h)"/></svg>`;
   let mark: string;
   if (app.glyph && typeof app.glyph === 'object' && 'text' in app.glyph && app.glyph.text) {
     const size = app.glyph.text.length > 1 ? 104 : 140;
     mark = `<text x="216" y="216" dy=".35em" text-anchor="middle" font-family="Google Sans, Roboto, Helvetica, Arial, sans-serif"
-      font-weight="700" font-size="${size}" fill="${tint}">${app.glyph.text}</text>`;
+      font-weight="700" font-size="${size}" fill="${escapeXml(tint)}">${escapeXml(app.glyph.text)}</text>`;
   } else {
     // 24-unit Lucide grid scaled to 168 px, centred.
-    mark = `<g transform="translate(132 132) scale(7)" fill="none" stroke="${tint}" stroke-width="${app.strokeWidth || 2.1}"
+    mark = `<g transform="translate(132 132) scale(7)" fill="none" stroke="${escapeXml(tint)}" stroke-width="${app.strokeWidth || 2.1}"
       stroke-linecap="round" stroke-linejoin="round">${glyphMarkup(app.glyph)}</g>`;
   }
   const foreground = `<svg xmlns="http://www.w3.org/2000/svg" width="432" height="432" viewBox="0 0 432 432">${mark}</svg>`;
@@ -113,7 +228,8 @@ const numeric = (a: string, b: string) => a.localeCompare(b, undefined, {numeric
 /** The newest build-tools and android.jar in the Android SDK, with an error that says what to install. */
 function androidSdk(): {tools: string; androidJar: string} {
   const sdk = process.env.ANDROID_HOME || process.env.ANDROID_SDK_ROOT ||
-    [path.join(os.homedir(), 'Library/Android/sdk'), path.join(os.homedir(), 'Android/Sdk')].find(dir => fs.existsSync(dir));
+    [path.join(os.homedir(), 'Library/Android/sdk'), path.join(os.homedir(), 'Android/Sdk'),
+      ...(process.env.LOCALAPPDATA ? [path.join(process.env.LOCALAPPDATA, 'Android/Sdk')] : [])].find(dir => fs.existsSync(dir));
   if (!sdk || !fs.existsSync(sdk)) throw new Error('No Android SDK found. Set ANDROID_HOME to your Android SDK.');
   const list = (dir: string) => fs.existsSync(dir) ? fs.readdirSync(dir) : [];
   const buildTools = list(path.join(sdk, 'build-tools')).filter(v => /^\d/.test(v) && !/rc|preview/i.test(v)).sort(numeric).pop();
@@ -125,7 +241,15 @@ function androidSdk(): {tools: string; androidJar: string} {
 
 /** Build one code-free APK from the rendered icons in <out>/<package>/; returns its path. */
 function build(app: FixtureApp, out: string, sdk: {tools: string; androidJar: string}): string {
-  const run = (tool: string, ...rest: string[]): Buffer => execFileSync(path.join(sdk.tools, tool), rest, {stdio: ['ignore', 'pipe', 'inherit']});
+  const toolBin = (tool: string) => {
+    if (process.platform !== 'win32') return path.join(sdk.tools, tool);
+    for (const ext of ['.exe', '.bat', '']) {
+      const candidate = path.join(sdk.tools, `${tool}${ext}`);
+      if (fs.existsSync(candidate)) return candidate;
+    }
+    return path.join(sdk.tools, tool);
+  };
+  const run = (tool: string, ...rest: string[]): Buffer => execFileSync(toolBin(tool), rest, {stdio: ['ignore', 'pipe', 'inherit']});
   const root = path.join(out, app.package);
   fs.mkdirSync(path.join(root, 'res', 'mipmap-anydpi-v26'), {recursive: true});
   fs.writeFileSync(path.join(root, 'res', 'mipmap-anydpi-v26', 'ic_launcher.xml'),
@@ -244,23 +368,14 @@ const USAGE = 'Usage: npx screenshot-studio fixtures fixture-apps.json [--instal
 
 export async function run(argv: string[]): Promise<number> {
   if (argv.includes('--help') || argv.includes('-h')) { console.log(USAGE); return 0; }
-  const options: Partial<FixtureAppsOptions> = {};
-  for (let i = 0; i < argv.length; i++) {
-    const arg = argv[i];
-    if (arg === '--install' || arg === '--uninstall') {
-      const value = argv[++i];
-      if (!value || value.startsWith('-')) { console.error(`${arg} needs an emulator serial, e.g. emulator-5578\n${USAGE}`); return 1; }
-      options[arg === '--install' ? 'install' : 'uninstall'] = value;
-    } else if (arg.startsWith('-') || options.spec) {
-      console.error(USAGE);
-      return 1;
-    } else {
-      options.spec = arg;
-    }
-  }
-  if (!options.spec) { console.error(USAGE); return 1; }
+  const {parseCli} = await import('./cli-args');
   try {
-    await buildFixtureApps({...options, spec: options.spec});
+    const {values, positionals} = parseCli(argv, {
+      install: {type: 'string'},
+      uninstall: {type: 'string'},
+    }, {allowPositionals: true, usage: USAGE});
+    if (positionals.length !== 1) { console.error(USAGE); return 1; }
+    await buildFixtureApps({spec: positionals[0], install: values.install, uninstall: values.uninstall});
     return 0;
   } catch (error) {
     console.error(error instanceof Error ? error.message : String(error));

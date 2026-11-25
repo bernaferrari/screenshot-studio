@@ -154,11 +154,6 @@ export function checkListing(listingDir?: string): CheckResult {
   for (const [key, entry] of Object.entries(defaultCopy)) for (const [field, value] of Object.entries(entry || {}))
     if (typeof value === 'string' && PLACEHOLDER.test(value)) warn(`${defaultLocale}/copy.json`, `is still the starter placeholder`, {path: `${key}.${field}`, code: 'placeholder',
       fix: field === 'title' ? 'Write a benefit headline for this screen: what it does for the person, in a few words.' : 'Write one short line that backs the headline up.'});
-  for (const locale of locales) {
-    const words = load<Listing | null>(`${locale}/listing.json`, 'listing', null);
-    for (const [field, value] of Object.entries(words || {}))
-      if (typeof value === 'string' && PLACEHOLDER.test(value)) warn(`${locale}/listing.json`, `is still the starter placeholder`, {path: field, code: 'placeholder', fix: 'Write the store text.'});
-  }
   for (const key of Object.keys(defaultCopy)) if (!used.has(key)) warn(`${defaultLocale}/copy.json`, `"${key}" isn't used by any card`, {path: key, fix: 'Remove it, or fix the card\'s feature name.'});
 
   for (const locale of locales) {
@@ -175,7 +170,10 @@ export function checkListing(listingDir?: string): CheckResult {
       }
     }
     const words = load<Listing | null>(`${locale}/listing.json`, 'listing', null);
-    for (const problem of words ? listingProblems(words, store) : []) error(`${locale}/listing.json`, problem.message, {path: problem.field});
+    for (const [field, value] of Object.entries(words || {}))
+      if (typeof value === 'string' && PLACEHOLDER.test(value)) warn(`${locale}/listing.json`, `is still the starter placeholder`, {path: field, code: 'placeholder', fix: 'Write the store text.'});
+    for (const problem of words ? listingProblems(words, store) : [])
+      error(`${locale}/listing.json`, problem.message, {path: problem.field, fix: `Shorten it in listing.json to fit ${store}'s limit.`});
   }
   return {ok: !issues.some(issue => issue.level === 'error'), issues, counted};
 }
@@ -191,8 +189,9 @@ export function formatIssues(result: CheckResult): string {
 
 /** `check [--json]` */
 export async function run(argv: string[]): Promise<number> {
-  const at = argv.indexOf('--listing');
-  const result = checkListing(at >= 0 ? argv[at + 1] : undefined);
-  console.log(argv.includes('--json') ? JSON.stringify(result, null, 2) : formatIssues(result));
+  const {parseCli} = await import('./cli-args');
+  const {values} = parseCli(argv, {json: {type: 'boolean'}, listing: {type: 'string'}}, {usage: 'Usage: npx screenshot-studio check [--json] [--listing <path>]'});
+  const result = checkListing(values.listing);
+  console.log(values.json ? JSON.stringify(result, null, 2) : formatIssues(result));
   return result.ok ? 0 : 1;
 }

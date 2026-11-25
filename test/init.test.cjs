@@ -54,3 +54,24 @@ test('init imports a single WebP screenshot from a folder', async t => {
   assert.match(gallery.phone[0].raw,/\.webp$/);
   assert.equal(checkListing(listing).ok,true);
 });
+
+test('init without screenshots prints capture next steps, sets .gitignore for defaultLocale, and locales preserves $schema', t => {
+  const app = fs.mkdtempSync(path.join(os.tmpdir(), 'studio-init-fresh-'));
+  t.after(() => fs.rmSync(app, {recursive: true, force: true}));
+  const initRun = spawnSync(process.execPath, [STUDIO, 'init', app, '--name', 'FreshApp', '--locales=pt-BR,en-US'], {encoding: 'utf8'});
+  assert.equal(initRun.status, 0, initRun.stdout + initRun.stderr);
+  assert.match(initRun.stdout, /Add a capture build/);
+  const listing = path.join(app, 'store-listing');
+  const gitignore = fs.readFileSync(path.join(listing, '.gitignore'), 'utf8');
+  assert.match(gitignore, /export-report\.json/);
+  assert.match(gitignore, /!\/pt-BR\/\*/);
+  assert.doesNotMatch(gitignore, /\{\{defaultLocale\}\}/);
+
+  const addLocale = spawnSync(process.execPath, [STUDIO, '--listing=' + app, 'locales', '--init=fr-FR'], {encoding: 'utf8'});
+  assert.equal(addLocale.status, 0, addLocale.stdout + addLocale.stderr);
+  const studioJson = JSON.parse(fs.readFileSync(path.join(listing, 'studio.json'), 'utf8'));
+  assert.equal(studioJson.$schema, 'https://unpkg.com/screenshot-studio/studio/schemas/studio.schema.json');
+  assert.ok(studioJson.locales.includes('fr-FR'));
+  const frCopy = JSON.parse(fs.readFileSync(path.join(listing, 'fr-FR/copy.json'), 'utf8'));
+  assert.equal(frCopy.$schema, 'https://unpkg.com/screenshot-studio/studio/schemas/copy.schema.json');
+});

@@ -314,6 +314,11 @@ export interface Listing {
   appName?: string;
   shortDescription?: string;
   fullDescription?: string;
+  subtitle?: string;
+  promotionalText?: string;
+  keywords?: string;
+  description?: string;
+  whatsNew?: string;
   /** The developer name the store shows under the title (the editor's store preview only). */
   developer?: string;
   [field: string]: unknown;

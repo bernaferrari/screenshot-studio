@@ -27,14 +27,18 @@ const USAGE = `Usage:
 
 export async function run(argv: string[]): Promise<number> {
   if (argv.includes('--help') || argv.includes('-h')) { console.log(USAGE); return 0; }
+  const {parseCli} = await import('../cli-args');
   try {
-    if (argv[0] === '--import') {
-      if (argv.length !== 2) { console.error(USAGE); return 1; }
-      process.stdout.write(importVector(path.resolve(argv[1])));
+    const {values, positionals} = parseCli(argv, {
+      import: {type: 'string'},
+    }, {allowPositionals: true, usage: USAGE});
+    if (values.import !== undefined) {
+      if (positionals.length) { console.error(USAGE); return 1; }
+      process.stdout.write(importVector(path.resolve(values.import)));
       return 0;
     }
-    if (argv.length > 1 || argv.some(arg => arg.startsWith('-'))) { console.error(USAGE); return 1; }
-    await buildIcons({spec: argv[0]});
+    if (positionals.length > 1) { console.error(USAGE); return 1; }
+    await buildIcons({spec: positionals[0]});
     return 0;
   } catch (error) {
     console.error(error instanceof Error ? error.message : String(error));

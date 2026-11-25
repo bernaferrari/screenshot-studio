@@ -3,10 +3,11 @@
 node_modules/
 __pycache__/
 .fixture-apps/
+export-report.json
 /[a-z][a-z]-*/*
 /[a-z][a-z][a-z]-*/*
 /[a-z][a-z]/*
 /[a-z][a-z][a-z]/*
 !/*/copy.json
 !/*/listing.json
-!/en-US/*
+!/{{defaultLocale}}/*

@@ -102,18 +102,27 @@ export async function tapScreen(target: string, device = emulator()): Promise<st
 
 /** `screen [--serial s | --simulator name] [--out file.png] [--json] [--tap label | --tap x,y | --back]` */
 export async function run(argv: string[]): Promise<number> {
-  const option = (name: string) => { const i = argv.indexOf(`--${name}`); return i >= 0 ? argv[i + 1] : undefined; };
+  const {parseCli} = await import('./cli-args');
+  const {values} = parseCli(argv, {
+    serial: {type: 'string'},
+    simulator: {type: 'string'},
+    app: {type: 'string'},
+    out: {type: 'string'},
+    tap: {type: 'string'},
+    back: {type: 'boolean'},
+    json: {type: 'boolean'},
+  }, {usage: 'Usage: npx screenshot-studio screen [--serial emulator-5578 | --simulator "iPhone 17 Pro Max"] [--app com.example.app] [--out screen.png] [--json] [--tap "Settings" | --tap 540,1200 | --back]'});
   try {
-    const device = emulator(option('serial'), option('simulator'), option('app'));
-    const tap = argv.includes('--back') ? 'back' : option('tap');
+    const device = emulator(values.serial, values.simulator, values.app);
+    const tap = values.back ? 'back' : values.tap;
     if (tap) {
       console.log(`tapped ${await tapScreen(tap, device)}`);
       await sleep(1200);
     }
     const screen = await readScreen(device);
-    const out = path.resolve(option('out') || 'screen.png');
+    const out = path.resolve(values.out || 'screen.png');
     fs.writeFileSync(out, screen.png);
-    if (argv.includes('--json')) console.log(JSON.stringify({device: screen.serial, width: screen.width, height: screen.height, image: out, ...(screen.dialog && {dialog: screen.dialog}), elements: screen.elements}, null, 2));
+    if (values.json) console.log(JSON.stringify({device: screen.serial, width: screen.width, height: screen.height, image: out, ...(screen.dialog && {dialog: screen.dialog}), elements: screen.elements}, null, 2));
     else console.log(`${formatScreen(screen)}\nscreenshot: ${path.relative(process.cwd(), out) || out}`);
     return 0;
   } catch (error) { console.error((error as Error).message); return 1; }

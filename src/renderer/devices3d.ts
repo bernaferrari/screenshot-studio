@@ -42,7 +42,7 @@ function bodyColor(front: HTMLElement): THREE.Color {
   return color;
 }
 
-/** Draws `front` (a .device) as a 3D device on a canvas over the card `main`; resolves to that canvas once drawn. */
+/** Draws `front` (a .device) as a 3D device on a 2D canvas over `main`, disposing its WebGL context immediately. */
 export async function renderDevice(main: HTMLElement, front: HTMLElement): Promise<HTMLCanvasElement> {
   const style = getComputedStyle(front);
   const cardW = main.clientWidth, cardH = main.clientHeight;
@@ -52,84 +52,125 @@ export async function renderDevice(main: HTMLElement, front: HTMLElement): Promi
   const short = Math.min(W, H), thickness = front.classList.contains('device-frame-tablet') ? DEPTH.tablet : DEPTH.phone;
   const {perspective, rotation} = pose(front);
 
-  const canvas = document.createElement('canvas');
-  canvas.className = 'device-3d';
-  Object.assign(canvas.style, {position: 'absolute', left: '0', top: '0', width: `${cardW}px`, height: `${cardH}px`,
-    zIndex: style.zIndex === 'auto' ? '2' : style.zIndex, pointerEvents: 'none'});
-  main.append(canvas);
-  const renderer = new THREE.WebGLRenderer({canvas, alpha: true, antialias: true, preserveDrawingBuffer: true});
-  renderer.setPixelRatio(window.devicePixelRatio * 1.5);
-  renderer.setSize(cardW, cardH, false);
-  renderer.outputColorSpace = THREE.SRGBColorSpace;
-  renderer.toneMapping = THREE.NeutralToneMapping;
-  renderer.toneMappingExposure = 1.12;
+  const glCanvas = document.createElement('canvas');
+  const renderer = new THREE.WebGLRenderer({canvas: glCanvas, alpha: true, antialias: true, preserveDrawingBuffer: true});
+  const pmrem = new THREE.PMREMGenerator(renderer);
+  const room = new RoomEnvironment();
+  let envRT: THREE.WebGLRenderTarget | null = null;
+  let body: THREE.ExtrudeGeometry | null = null;
+  let face: THREE.MeshPhysicalMaterial | null = null;
+  let edge: THREE.MeshPhysicalMaterial | null = null;
+  let screenGeo: THREE.ShapeGeometry | null = null;
+  let screenMat: THREE.MeshBasicMaterial | null = null;
+  let glassGeo: THREE.ShapeGeometry | null = null;
+  let glassMat: THREE.MeshBasicMaterial | null = null;
+  let texture: THREE.Texture | null = null;
+  let sheenTexture: THREE.CanvasTexture | null = null;
 
-  const scene = new THREE.Scene();
-  // Soft studio light from the room, a key light from the upper left in front, so the face is bright and the edge
-  // turning away a soft gray, with a fill from the right.
-  scene.environment = new THREE.PMREMGenerator(renderer).fromScene(new RoomEnvironment(), .04).texture;
-  scene.environmentIntensity = .95;
-  const key = new THREE.DirectionalLight(0xffffff, 1.6);
-  key.position.set(-1.4, 1.1, 1.3);
-  scene.add(key);
-  const fill = new THREE.DirectionalLight(0xffffff, .7);
-  fill.position.set(1.5, .3, .6);
-  scene.add(fill);
+  try {
+    renderer.setPixelRatio(window.devicePixelRatio * 1.5);
+    renderer.setSize(cardW, cardH, false);
+    renderer.outputColorSpace = THREE.SRGBColorSpace;
+    renderer.toneMapping = THREE.NeutralToneMapping;
+    renderer.toneMappingExposure = 1.12;
 
-  // CSS perspective sits at the frame's centre, so the camera looks straight at it from `perspective` px away, and a
-  // view offset moves that centre to where the frame is on the card. One unit is one CSS pixel.
-  const camera = new THREE.PerspectiveCamera(2 * Math.atan(cardH / 2 / perspective) * 180 / Math.PI, cardW / cardH, 10, perspective * 4);
-  camera.position.set(0, 0, perspective);
-  camera.setViewOffset(cardW, cardH, cardW / 2 - cx, cardH / 2 - cy, cardW, cardH);
+    const scene = new THREE.Scene();
+    // Soft studio light from the room, a key light from the upper left in front, so the face is bright and the edge
+    // turning away a soft gray, with a fill from the right.
+    envRT = pmrem.fromScene(room, .04);
+    scene.environment = envRT.texture;
+    scene.environmentIntensity = .95;
+    const key = new THREE.DirectionalLight(0xffffff, 1.6);
+    key.position.set(-1.4, 1.1, 1.3);
+    scene.add(key);
+    const fill = new THREE.DirectionalLight(0xffffff, .7);
+    fill.position.set(1.5, .3, .6);
+    scene.add(fill);
 
-  const device = new THREE.Group();
-  // CSS's y axis points down, three's up: conjugate the rotation by a y flip.
-  const m = rotation;
-  device.matrixAutoUpdate = false;
-  device.matrix.set(m.m11, -m.m21, m.m31, 0, -m.m12, m.m22, -m.m32, 0, m.m13, -m.m23, m.m33, 0, 0, 0, 0, 1);
-  scene.add(device);
+    // CSS perspective sits at the frame's centre, so the camera looks straight at it from `perspective` px away, and a
+    // view offset moves that centre to where the frame is on the card. One unit is one CSS pixel.
+    const camera = new THREE.PerspectiveCamera(2 * Math.atan(cardH / 2 / perspective) * 180 / Math.PI, cardW / cardH, 10, perspective * 4);
+    camera.position.set(0, 0, perspective);
+    camera.setViewOffset(cardW, cardH, cardW / 2 - cx, cardH / 2 - cy, cardW, cardH);
 
-  // The body: the frame's outline extruded backwards, its edge rounded by a bevel. Its front face is the CSS frame's
-  // plane (z = 0), so the outline lands exactly where the frame's does.
-  const depth = short * thickness, round = short * .016;
-  const body = new THREE.ExtrudeGeometry(roundedRect(W - 2 * round, H - 2 * round, Math.max(1, radius - round)), {
-    depth: Math.max(1, depth - 2 * round), bevelEnabled: true, bevelThickness: round, bevelSize: round, bevelSegments: 16, curveSegments: 48,
-  });
-  body.translate(0, 0, -depth + round);
-  const color = bodyColor(front);
-  const face = new THREE.MeshPhysicalMaterial({color, roughness: .25, metalness: 0, clearcoat: 1, clearcoatRoughness: .15});
-  const edge = new THREE.MeshPhysicalMaterial({color, roughness: .5, metalness: 0, clearcoat: .3, clearcoatRoughness: .4});
-  device.add(new THREE.Mesh(body, [face, edge]));
+    const device = new THREE.Group();
+    // CSS's y axis points down, three's up: conjugate the rotation by a y flip.
+    const m = rotation;
+    device.matrixAutoUpdate = false;
+    device.matrix.set(m.m11, -m.m21, m.m31, 0, -m.m12, m.m22, -m.m32, 0, m.m13, -m.m23, m.m33, 0, 0, 0, 0, 1);
+    scene.add(device);
 
-  // The screen: the capture on a rounded rectangle just in front of the face, unlit so it keeps its colors.
-  const img = front.querySelector<HTMLImageElement>('.screen img')!;
-  const texture = await new THREE.TextureLoader().loadAsync(img.currentSrc || img.src);
-  texture.colorSpace = THREE.SRGBColorSpace;
-  texture.anisotropy = renderer.capabilities.getMaxAnisotropy();
-  const sw = W - 2 * bezel, sh = H - 2 * bezel;
-  const plane = (z: number) => {
-    const shape = new THREE.ShapeGeometry(roundedRect(sw, sh, Math.max(1, radius - bezel)), 48);
-    const uv = shape.attributes.uv, pos = shape.attributes.position;
-    for (let i = 0; i < uv.count; i++) uv.setXY(i, pos.getX(i) / sw + .5, pos.getY(i) / sh + .5);
-    shape.translate(0, 0, z);
-    return shape;
-  };
-  device.add(new THREE.Mesh(plane(.6), new THREE.MeshBasicMaterial({map: texture, toneMapped: false})));
+    // The body: the frame's outline extruded backwards, its edge rounded by a bevel. Its front face is the CSS frame's
+    // plane (z = 0), so the outline lands exactly where the frame's does.
+    const depth = short * thickness, round = short * .016;
+    body = new THREE.ExtrudeGeometry(roundedRect(W - 2 * round, H - 2 * round, Math.max(1, radius - round)), {
+      depth: Math.max(1, depth - 2 * round), bevelEnabled: true, bevelThickness: round, bevelSize: round, bevelSegments: 16, curveSegments: 48,
+    });
+    body.translate(0, 0, -depth + round);
+    const color = bodyColor(front);
+    face = new THREE.MeshPhysicalMaterial({color, roughness: .25, metalness: 0, clearcoat: 1, clearcoatRoughness: .15});
+    edge = new THREE.MeshPhysicalMaterial({color, roughness: .5, metalness: 0, clearcoat: .3, clearcoatRoughness: .4});
+    device.add(new THREE.Mesh(body, [face, edge]));
 
-  // The glass: a soft reflection falling across the face from the upper left, as on a product shot.
-  const sheen = document.createElement('canvas');
-  sheen.width = 64; sheen.height = 256;
-  const g = sheen.getContext('2d')!, grad = g.createLinearGradient(0, 0, 64, 256);
-  grad.addColorStop(0, 'rgba(255,255,255,.1)'); grad.addColorStop(.38, 'rgba(255,255,255,.025)');
-  grad.addColorStop(.39, 'rgba(255,255,255,0)'); grad.addColorStop(1, 'rgba(255,255,255,0)');
-  g.fillStyle = grad; g.fillRect(0, 0, 64, 256);
-  const sheenTexture = new THREE.CanvasTexture(sheen);
-  sheenTexture.colorSpace = THREE.SRGBColorSpace;
-  device.add(new THREE.Mesh(plane(1.2), new THREE.MeshBasicMaterial({map: sheenTexture, transparent: true, depthWrite: false, toneMapped: false})));
+    // The screen: the capture on a rounded rectangle just in front of the face, unlit so it keeps its colors.
+    const img = front.querySelector<HTMLImageElement>('.screen img')!;
+    texture = await new THREE.TextureLoader().loadAsync(img.currentSrc || img.src);
+    texture.colorSpace = THREE.SRGBColorSpace;
+    texture.anisotropy = renderer.capabilities.getMaxAnisotropy();
+    const sw = W - 2 * bezel, sh = H - 2 * bezel;
+    const plane = (z: number) => {
+      const shape = new THREE.ShapeGeometry(roundedRect(sw, sh, Math.max(1, radius - bezel)), 48);
+      const uv = shape.attributes.uv, pos = shape.attributes.position;
+      for (let i = 0; i < uv.count; i++) uv.setXY(i, pos.getX(i) / sw + .5, pos.getY(i) / sh + .5);
+      shape.translate(0, 0, z);
+      return shape;
+    };
+    screenGeo = plane(.6);
+    screenMat = new THREE.MeshBasicMaterial({map: texture, toneMapped: false});
+    device.add(new THREE.Mesh(screenGeo, screenMat));
 
-  renderer.render(scene, camera);
-  front.style.visibility = 'hidden';
-  return canvas;
+    // The glass: a soft reflection falling across the face from the upper left, as on a product shot.
+    const sheen = document.createElement('canvas');
+    sheen.width = 64; sheen.height = 256;
+    const g = sheen.getContext('2d')!, grad = g.createLinearGradient(0, 0, 64, 256);
+    grad.addColorStop(0, 'rgba(255,255,255,.1)'); grad.addColorStop(.38, 'rgba(255,255,255,.025)');
+    grad.addColorStop(.39, 'rgba(255,255,255,0)'); grad.addColorStop(1, 'rgba(255,255,255,0)');
+    g.fillStyle = grad; g.fillRect(0, 0, 64, 256);
+    sheenTexture = new THREE.CanvasTexture(sheen);
+    sheenTexture.colorSpace = THREE.SRGBColorSpace;
+    glassGeo = plane(1.2);
+    glassMat = new THREE.MeshBasicMaterial({map: sheenTexture, transparent: true, depthWrite: false, toneMapped: false});
+    device.add(new THREE.Mesh(glassGeo, glassMat));
+
+    renderer.render(scene, camera);
+
+    // Copy to a plain 2D canvas and free the WebGL context so strips of cards never hit the browser's context cap.
+    const output = document.createElement('canvas');
+    output.className = 'device-3d';
+    output.width = glCanvas.width;
+    output.height = glCanvas.height;
+    Object.assign(output.style, {position: 'absolute', left: '0', top: '0', width: `${cardW}px`, height: `${cardH}px`,
+      zIndex: style.zIndex === 'auto' ? '2' : style.zIndex, pointerEvents: 'none'});
+    output.getContext('2d')!.drawImage(glCanvas, 0, 0);
+    main.append(output);
+    front.style.visibility = 'hidden';
+    return output;
+  } finally {
+    body?.dispose();
+    face?.dispose();
+    edge?.dispose();
+    screenGeo?.dispose();
+    screenMat?.dispose();
+    glassGeo?.dispose();
+    glassMat?.dispose();
+    texture?.dispose();
+    sheenTexture?.dispose();
+    envRT?.dispose();
+    pmrem.dispose();
+    room.dispose();
+    renderer.dispose();
+    renderer.forceContextLoss();
+  }
 }
 
 /** Every phone and tablet frame on the card as a 3D device, except on `flat` cards. */

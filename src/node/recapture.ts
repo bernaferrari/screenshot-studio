@@ -85,7 +85,8 @@ export function tourFile(listing: string): string {
 export const DEFAULT_SERIAL = 'emulator-5578';
 
 const sdkRoot = () => process.env.ANDROID_HOME || process.env.ANDROID_SDK_ROOT ||
-  [path.join(os.homedir(), 'Library/Android/sdk'), path.join(os.homedir(), 'Android/Sdk')].find(dir => fs.existsSync(dir)) || '';
+  [path.join(os.homedir(), 'Library/Android/sdk'), path.join(os.homedir(), 'Android/Sdk'),
+    ...(process.env.LOCALAPPDATA ? [path.join(process.env.LOCALAPPDATA, 'Android/Sdk')] : [])].find(dir => fs.existsSync(dir)) || '';
 const adb = (serial: string, ...args: string[]) => spawnSync('adb', ['-s', serial, ...args], {encoding: 'utf8'});
 
 /** Whether the emulator is attached and has finished booting. */
@@ -110,7 +111,7 @@ export async function bootEmulator(serial: string, avd: string | undefined, log:
   if (booted(serial)) return;
   const port = Number(serial.replace('emulator-', ''));
   if (!Number.isInteger(port)) throw new Error(`Can't boot ${serial}: the serial must look like emulator-5578`);
-  const emulator = path.join(sdkRoot(), 'emulator', 'emulator');
+  const emulator = path.join(sdkRoot(), 'emulator', process.platform === 'win32' ? 'emulator.exe' : 'emulator');
   if (!fs.existsSync(emulator)) throw new Error('No Android emulator found. Set ANDROID_HOME to your Android SDK.');
   const images = spawnSync(emulator, ['-list-avds'], {encoding: 'utf8'}).stdout.split('\n').map(line => line.trim()).filter(Boolean);
   const name = avd || images[0];
@@ -156,7 +157,7 @@ export async function recapture(options: RecaptureOptions = {}): Promise<Recaptu
     const run = (command: string, {check = true} = {}) => {
       log(`\n$ ${command}`);
       if (options.dryRun) return true;
-      const done = spawnSync('sh', ['-c', command], {cwd: repo, env, stdio: 'inherit'});
+      const done = spawnSync(command, {cwd: repo, env, stdio: 'inherit', shell: true});
       if (done.status !== 0 && check) throw new Error(`Failed (${done.status ?? done.signal}): ${command}`);
       return done.status === 0;
     };
@@ -222,13 +223,22 @@ export async function recapture(options: RecaptureOptions = {}): Promise<Recaptu
 
 /** `recapture [locale…] [--profile phone] [--simulator name] [--boot] [--no-build] [--no-capture] [--no-export] [--dry-run]` */
 export async function run(argv: string[]): Promise<number> {
-  const flag = (name: string) => argv.includes(`--${name}`);
-  const option = (name: string) => { const i = argv.indexOf(`--${name}`); return i >= 0 ? argv[i + 1] : undefined; };
-  const values = new Set(['profile', 'serial', 'simulator', 'listing'].map(option).filter(Boolean));
+  const {parseCli} = await import('./cli-args');
+  const {values, positionals} = parseCli(argv, {
+    profile: {type: 'string'},
+    serial: {type: 'string'},
+    simulator: {type: 'string'},
+    listing: {type: 'string'},
+    boot: {type: 'boolean'},
+    'no-build': {type: 'boolean'},
+    'no-capture': {type: 'boolean'},
+    'no-export': {type: 'boolean'},
+    'dry-run': {type: 'boolean'},
+  }, {allowPositionals: true, usage: 'Usage: npx screenshot-studio recapture [locale…] [--profile phone] [--serial emulator-5578] [--simulator name] [--boot] [--no-build] [--no-capture] [--no-export] [--dry-run]'});
   const result = await recapture({
-    locales: argv.filter(word => !word.startsWith('--') && !values.has(word)), profile: option('profile'), serial: option('serial'), simulator: option('simulator'),
-    listing: option('listing'), boot: flag('boot'), build: !flag('no-build'), capture: !flag('no-capture'), export: !flag('no-export'),
-    dryRun: flag('dry-run'),
+    locales: positionals, profile: values.profile, serial: values.serial, simulator: values.simulator,
+    listing: values.listing, boot: !!values.boot, build: !values['no-build'], capture: !values['no-capture'], export: !values['no-export'],
+    dryRun: !!values['dry-run'],
   });
   if (result.error) console.error(result.error);
   return result.ok ? 0 : 1;
