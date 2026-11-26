@@ -314,11 +314,17 @@ test("the editor hears about listing changes over Server-Sent Events, without st
   assert.equal(response.headers.get("content-type"), "text/event-stream");
   const reader = response.body.getReader(), decoder = new TextDecoder();
   let text = "";
+  // Fail with what arrived rather than hang, if a change never comes.
   const until = async (pattern) => {
+    const deadline = Date.now() + 10_000;
     while (!pattern.test(text)) {
-      const { value, done } = await reader.read();
-      if (done) throw new Error("stream ended");
-      text += decoder.decode(value);
+      let timer;
+      const late = new Promise((_, reject) => { timer = setTimeout(() => reject(new Error(`no ${pattern} within 10s; got:\n${text}`)), Math.max(0, deadline - Date.now())); });
+      try {
+        const { value, done } = await Promise.race([reader.read(), late]);
+        if (done) throw new Error("stream ended");
+        text += decoder.decode(value);
+      } finally { clearTimeout(timer); }
     }
   };
   await until(/event: ready/);
@@ -332,6 +338,26 @@ test("the editor hears about listing changes over Server-Sent Events, without st
   await until(/event: change/);
   while (!(changed().has("theme.css") && changed().has("de-DE/raw/phone/home.png"))) await until(new RegExp(`(event: change[\\s\\S]*){${[...text.matchAll(/event: change/g)].length + 1}}`));
   assert.deepEqual([...changed()].sort(), ["de-DE/raw/phone/home.png", "theme.css"]);
+});
+
+test("a coalesced event that names only a folder (or nothing) still reports each changed file, once", async (t) => {
+  const { changedFiles } = require("../studio/studio.cjs");
+  const listing = fs.mkdtempSync(path.join(os.tmpdir(), "studio-events-"));
+  t.after(() => fs.rmSync(listing, { recursive: true, force: true }));
+  const write = (file, text) => { fs.mkdirSync(path.dirname(path.join(listing, file)), { recursive: true }); fs.writeFileSync(path.join(listing, file), text); };
+  write("gallery.json", "{}");
+  const since = Date.now() + 5000;
+  for (const file of ["gallery.json"]) fs.utimesSync(path.join(listing, file), new Date(since - 60000), new Date(since - 60000));
+  write("theme.css", "body{}"); write("de-DE/raw/phone/home.png", "png"); write("de-DE/phone/01-home.jpg", "jpg"); write("studio/render.js", "x");
+  for (const file of ["theme.css", "de-DE/raw/phone/home.png", "de-DE/phone/01-home.jpg", "studio/render.js"]) fs.utimesSync(path.join(listing, file), new Date(since), new Date(since));
+  // A named file is itself; exports and the studio copy are never news.
+  assert.deepEqual(changedFiles(listing, "theme.css", since), ["theme.css"]);
+  assert.deepEqual(changedFiles(listing, "de-DE/phone/01-home.jpg", since), []);
+  // A folder, or no name: the relevant files in it modified since the watcher started, old ones left out.
+  assert.deepEqual(changedFiles(listing, "de-DE", since).sort(), ["de-DE/raw/phone/home.png"]);
+  assert.deepEqual(changedFiles(listing, null, since).sort(), ["de-DE/raw/phone/home.png", "theme.css"]);
+  // A removed file is a change.
+  assert.deepEqual(changedFiles(listing, "copy.json", since), ["copy.json"]);
 });
 
 test("the review route joins the file check with the last export's notes and warnings", async (t) => {

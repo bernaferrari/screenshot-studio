@@ -30,38 +30,82 @@ export function relevantChange(file: string): boolean {
   return true;
 }
 
+/**
+ * The files an event stands for. Usually the event names a file. But when the file system is busy, macOS coalesces
+ * changes and names only the folder they happened in, or nothing at all; then every relevant file in that folder (the
+ * whole listing, for no name) modified at or after `since` (ms) is a change.
+ */
+export function changedFiles(listing: string, name: string | null, since: number): string[] {
+  const file = name ? String(name).split(path.sep).join('/') : '';
+  let stat: fs.Stats | null = null;
+  try { stat = fs.statSync(path.join(listing, file)); } catch { /* Removed: that is a change. */ }
+  if (file && !stat?.isDirectory()) return relevantChange(file) ? [file] : [];
+  const found: string[] = [];
+  const walk = (dir: string) => {
+    let entries: fs.Dirent[] = [];
+    try { entries = fs.readdirSync(path.join(listing, dir), {withFileTypes: true}); } catch { return; }
+    for (const entry of entries) {
+      const relative = dir ? `${dir}/${entry.name}` : entry.name;
+      if (entry.isDirectory()) { if (relevantChange(`${relative}/x`)) walk(relative); continue; }
+      if (!relevantChange(relative)) continue;
+      try { if (fs.statSync(path.join(listing, relative)).mtimeMs >= since) found.push(relative); } catch { /* Gone already. */ }
+    }
+  };
+  walk(file);
+  return found;
+}
+
 type Listener = (change: ListingChange) => void;
 interface Watch {
   listeners: Set<Listener>;
+  /** Resolves once the watcher is seen delivering events (or can't be: no watcher, a read-only folder). */
+  ready: Promise<void>;
   close(): void;
 }
+/**
+ * The file a watcher writes to see itself working. macOS starts a recursive watcher asynchronously, so changes made
+ * just after fs.watch returns can be lost; a watcher is ready once its own probe comes back. Dot files aren't news.
+ */
+const PROBE = '.studio-watch';
 const watches = new Map<string, Watch>();
 
 /**
  * Call `listener` with the files that changed under `listing`, `delay` ms after the last change of a burst.
  * Returns a function that stops listening; the watcher closes with its last listener.
  */
-export function watchListing(listing: string, listener: Listener, delay = 120): () => void {
+export function watchListing(listing: string, listener: Listener, delay = 120): (() => void) & {ready: Promise<void>} {
   listing = path.resolve(listing);
   let watch = watches.get(listing);
   if (!watch) {
     const listeners = new Set<Listener>(), pending = new Set<string>();
     let timer: NodeJS.Timeout | null = null;
+    // Files modified after the watcher started are news (a second's slack covers coarse mtimes). A folder event
+    // rescans for them, and reports each only if it changed since it was last reported.
+    const since = Date.now() - 1000, reported = new Map<string, number>();
+    const mtime = (file: string) => { try { return fs.statSync(path.join(listing, file)).mtimeMs; } catch { return -1; } };
+    const isFolder = (file: string) => { try { return fs.statSync(path.join(listing, file)).isDirectory(); } catch { return false; } };
     const flush = () => {
       timer = null;
       const files = [...pending].sort();
       pending.clear();
       if (files.length) for (const notify of listeners) notify({files});
     };
+    let confirm = () => {};
+    const ready = new Promise<void>(resolve => { confirm = resolve; });
     let watcher: fs.FSWatcher | null = null;
     try {
       watcher = fs.watch(listing, {recursive: true}, (_event, name) => {
-        if (!name) return;
-        const file = String(name).split(path.sep).join('/');
-        if (!relevantChange(file)) return;
-        // A new folder is news only through the files that arrive in it.
-        try { if (fs.statSync(path.join(listing, file)).isDirectory()) return; } catch { /* Removed: that is a change. */ }
-        pending.add(file);
+        if (name && String(name) === PROBE) { confirm(); return; }
+        const named = name ? String(name).split(path.sep).join('/') : '';
+        const rescan = !named || isFolder(named);
+        const files = changedFiles(listing, named || null, since).filter(file => {
+          const time = mtime(file);
+          if (rescan && reported.get(file) === time) return false;
+          reported.set(file, time);
+          return true;
+        });
+        if (!files.length) return;
+        for (const file of files) pending.add(file);
         if (timer) clearTimeout(timer);
         timer = setTimeout(flush, delay);
       });
@@ -69,24 +113,35 @@ export function watchListing(listing: string, listener: Listener, delay = 120): 
       watcher.on('error', () => { watcher?.close(); watcher = null; });
       watcher.unref();
     } catch { watcher = null; }
-    const current: Watch = {listeners, close() { if (timer) clearTimeout(timer); watcher?.close(); watches.delete(listing); }};
+    // Write the probe until the watcher reports it (about two seconds at most), then remove it.
+    const probe = path.join(listing, PROBE);
+    let probeTimer: NodeJS.Timeout | null = null, tries = 0;
+    const poke = () => {
+      if (!watcher || tries++ >= 40) { confirm(); return; }
+      try { fs.writeFileSync(probe, String(Date.now())); } catch { confirm(); return; }
+      probeTimer = setTimeout(poke, 50);
+      probeTimer.unref();
+    };
+    void ready.then(() => { if (probeTimer) clearTimeout(probeTimer); fs.rmSync(probe, {force: true}); });
+    poke();
+    const current: Watch = {listeners, ready, close() { if (timer) clearTimeout(timer); confirm(); watcher?.close(); watches.delete(listing); }};
     watches.set(listing, current);
     watch = current;
   }
   const own = watch;
   own.listeners.add(listener);
-  return () => {
+  return Object.assign(() => {
     own.listeners.delete(listener);
     if (!own.listeners.size) own.close();
-  };
+  }, {ready: own.ready});
 }
 
 /** Answer with a Server-Sent Events stream of `change` events for one listing, until the client disconnects. */
 export function streamListingChanges(request: IncomingMessage, response: ServerResponse, listing: string): void {
   response.writeHead(200, {'Content-Type': 'text/event-stream', 'Cache-Control': 'no-store', Connection: 'keep-alive', 'X-Accel-Buffering': 'no'});
-  // Tell the browser how soon to reconnect, and the editor that it is live.
-  response.write(`retry: 1500\nevent: ready\ndata: {}\n\n`);
   const stop = watchListing(listing, change => { response.write(`event: change\ndata: ${JSON.stringify(change)}\n\n`); });
+  // Tell the browser how soon to reconnect, and the editor that it is live: once the watcher really is.
+  void stop.ready.then(() => { if (!ended) response.write(`retry: 1500\nevent: ready\ndata: {}\n\n`); });
   const heartbeat = setInterval(() => response.write(': keep-alive\n\n'), 25_000);
   heartbeat.unref();
   let ended = false;
