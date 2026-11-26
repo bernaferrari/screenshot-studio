@@ -11,14 +11,14 @@ test('a theme.css that imports tailwindcss compiles utilities for the classes it
   try {
     fs.writeFileSync(path.join(listing, 'gallery.json'), JSON.stringify({phone: [{feature: 'a', layout: 'big', layers: [{text: 'Hi', class: 'rotate-6 bg-primary/20 text-primary-foreground bg-accent text-[120px]'}]}]}));
     fs.writeFileSync(path.join(listing, 'theme.js'), "export default {compose({main}) { main.append(Object.assign(document.createElement('i'), {className: 'px-8 font-black'})); }};");
-    fs.writeFileSync(path.join(listing, 'theme.css'), '@import "studio/layouts.css";\n@import "tailwindcss";\n:root{--accent:#f50}\nh1 em{@apply text-primary}\n');
+    fs.writeFileSync(path.join(listing, 'theme.css'), '@import "studio/layouts.css";\n@import "tailwindcss";\n:root{--primary:#f50}\nh1 em{@apply text-primary}\n');
     const css = await compileTheme(path.join(listing, 'theme.css'));
     for (const rule of ['.rotate-6', '.bg-primary\\/20', '.text-primary-foreground', '.bg-accent', '.text-\\[120px\\]', '.px-8', '.font-black']) assert.ok(css.includes(rule), `missing ${rule}`);
-    // shadcn's tokens, inlined from the theme's variables: re-branding --accent re-colors every utility. primary is
-    // the brand color (a shadcn --primary wins when the theme sets one); accent is shadcn's quiet tint of it.
-    assert.match(css, /h1 em \{\s*color: var\(--primary, var\(--accent\)\);/);
-    assert.match(css, /\.text-primary-foreground \{\s*color: var\(--primary-foreground, var\(--paper\)\);/);
-    assert.match(css, /\.bg-accent \{[^}]*color-mix\(in oklab, var\(--accent\) 16%, var\(--paper\)\)/);
+    // shadcn/ui's tokens, inlined: the theme's --primary re-colors every utility; the renderer fills in tokens a
+    // theme leaves out.
+    assert.match(css, /h1 em \{\s*color: var\(--primary\);/);
+    assert.match(css, /\.text-primary-foreground \{\s*color: var\(--primary-foreground\);/);
+    assert.match(css, /\.bg-accent \{\s*background-color: var\(--accent\);/);
     // No reset: preflight's border reset would undo the renderer's frames.
     assert.ok(!css.includes('border: 0 solid'));
     // The studio's own layouts are inlined from the package.

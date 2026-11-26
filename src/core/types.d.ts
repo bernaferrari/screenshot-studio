@@ -281,7 +281,7 @@ export interface Layer {
   text?: string;
   /**
    * An image in store-listing/ (assets/blob.svg). An .svg is inlined, so the theme's CSS reaches inside it: its fill
-   * and stroke can read var(--accent).
+   * and stroke can read var(--primary).
    */
   src?: string;
   /** Classes the theme styles, like a card's layout words: "ghost", "sticker big". */
@@ -405,7 +405,7 @@ export interface RenderedDevice {
 /** store-listing/theme.js's default export. Every hook is optional. */
 export interface Theme {
   /**
-   * The background layer: SVG markup or nodes. Attributes may use CSS (fill="var(--accent)", stop-color="color-mix(…)");
+   * The background layer: SVG markup or nodes. Attributes may use CSS (fill="var(--primary)", stop-color="color-mix(…)");
    * the renderer moves them into style, where CSS applies.
    */
   art?(ctx: ThemeContext): string | Node | void;

@@ -1,4 +1,29 @@
 /* Screenshot Studio base layout. Apps restyle everything through ../theme.css. */
+/* Colors are shadcn/ui's tokens. A theme sets --background, --foreground and --primary (or pastes a whole palette
+   from ui.shadcn.com/themes); every token it leaves out is mixed from those three here. In a cascade layer, so any
+   value a theme sets wins. */
+@layer studio{
+  :root{
+    --background:oklch(1 0 0);
+    --foreground:oklch(0.145 0 0);
+    --primary:var(--foreground);
+    --primary-foreground:var(--background);
+    --secondary:color-mix(in oklab,var(--foreground) 8%,var(--background));
+    --secondary-foreground:var(--foreground);
+    --muted:color-mix(in oklab,var(--foreground) 6%,var(--background));
+    --muted-foreground:color-mix(in oklab,var(--foreground) 62%,var(--background));
+    --accent:color-mix(in oklab,var(--primary) 16%,var(--background));
+    --accent-foreground:var(--foreground);
+    --card:color-mix(in oklab,var(--foreground) 4%,var(--background));
+    --card-foreground:var(--foreground);
+    --popover:var(--card);
+    --popover-foreground:var(--foreground);
+    --border:color-mix(in oklab,var(--foreground) 14%,var(--background));
+    --input:var(--border);
+    --ring:var(--primary);
+    --destructive:oklch(0.577 0.245 27.325);
+  }
+}
 *{box-sizing:border-box}
 html,body{margin:0;width:var(--canvas-width);height:var(--canvas-height);overflow:hidden}
 body{-webkit-font-smoothing:antialiased}
@@ -45,7 +70,7 @@ h1 ins{text-decoration:none}
 .identity img{grid-row:span 2;display:block;width:168px;height:168px;border-radius:24%}
 .identity span{font-size:136px;font-weight:700;line-height:1}
 .identity small{font-size:44px;margin-top:12px}
-.identity em{font-style:normal;color:var(--accent,inherit)}
+.identity em{font-style:normal;color:var(--primary)}
 /* Hero (or fan): three phones, the middle one raised and in front; lower under a name banner (.named). */
 .readme :is(.hero,.fan) .left{left:250px;top:330px;width:540px}
 .readme :is(.hero,.fan) :is(.center,.middle){left:890px;top:150px;width:620px;z-index:3}

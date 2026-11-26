@@ -1,4 +1,4 @@
-// {{name}}: one soft field under the whole strip, laid out in panorama coordinates so it runs across every seam.
+// {{name}}: one soft field under the whole strip (shadcn's quiet --accent and --muted tints), laid out in panorama coordinates so it runs across every seam.
 import {panoramaGradient} from './studio/shapes.js';
 
 /** @type {import('screenshot-studio').Theme} */
@@ -8,6 +8,6 @@ export default {
 
   art(ctx) {
     const {W, H} = ctx;
-    return `<defs>${panoramaGradient(ctx, 'field', ['#eef0ff', '#f6f6fb', '#eef7f3'])}</defs><rect width="${W}" height="${H}" fill="url(#field)"/>`;
+    return `<defs>${panoramaGradient(ctx, 'field', ['var(--accent)', 'var(--background)', 'var(--muted)'])}</defs><rect width="${W}" height="${H}" fill="url(#field)"/>`;
   },
 };

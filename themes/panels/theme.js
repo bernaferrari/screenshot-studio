@@ -1,8 +1,8 @@
 // {{name}}: panels. Faint graph paper under the whole strip (in panorama coordinates, so the paper between the panels
-// joins at every seam), and on each card a rounded panel in its own turn of the accent's hue, with a white wave
+// joins at every seam), and on each card a rounded panel in its own turn of the primary's hue, with a white wave
 // across it and the devices cut at its edge.
 
-// Hue turns, in degrees from the accent, card by card: far apart neighbours, then the turns in between.
+// Hue turns, in degrees from the primary, card by card: far apart neighbours, then the turns in between.
 const TURNS = [0, 180, 90, -60, 50, 220, 130, -110];
 
 /** @type {import('screenshot-studio').Theme} */
@@ -14,8 +14,8 @@ export default {
     const off = (((-index * W) % major) + major) % major;
     const grid = (id, size, width, color) => `<pattern id="${id}" width="${size}" height="${size}" patternUnits="userSpaceOnUse" x="${off % size}">` +
       `<path d="M${size} 0V${size}H0" fill="none" style="stroke:var(${color})" stroke-width="${width}"/></pattern>`;
-    return `<defs>${grid('minor', cell, 1.5, '--grid')}${grid('major', major, 2, '--grid-major')}</defs>` +
-      `<rect width="${W}" height="${H}" style="fill:var(--paper)"/><rect width="${W}" height="${H}" fill="url(#minor)"/><rect width="${W}" height="${H}" fill="url(#major)"/>`;
+    return `<defs>${grid('minor', cell, 1.5, '--border')}${grid('major', major, 2, '--border-strong')}</defs>` +
+      `<rect width="${W}" height="${H}" style="fill:var(--background)"/><rect width="${W}" height="${H}" fill="url(#minor)"/><rect width="${W}" height="${H}" fill="url(#major)"/>`;
   },
 
   compose({main, slide, index, W, H}) {

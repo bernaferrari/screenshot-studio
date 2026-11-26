@@ -11,7 +11,7 @@ const CSS_VALUE = /\b(var|color-mix|calc|light-dark|oklch|oklab|lch|lab|hwb)\(/;
 
 /**
  * SVG attributes can't read CSS variables or functions, but style can: move every presentation attribute that uses
- * one (stop-color="var(--accent)", fill="color-mix(…)") into the element's style, so themes write them either way.
+ * one (stop-color="var(--primary)", fill="color-mix(…)") into the element's style, so themes write them either way.
  */
 export function cssAttributes(root: Element) {
   for (const element of [root, ...root.querySelectorAll('*')]) {

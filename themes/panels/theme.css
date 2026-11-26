@@ -1,23 +1,24 @@
-/* {{name}}: A rounded, softly lit color panel per card, each a turn of the accent's hue, on faint graph paper. */
-/* Re-brand with the first three variables: the page between the panels, the type, and the accent the first panel
-   takes. Later panels turn the accent's hue (theme.js sets --turn per card); each panel's ink is the type color
-   mixed with a deep shade of the panel's own hue, and its highlight a brighter, warmer shade. */
+/* {{name}}: A rounded, softly lit color panel per card, each a turn of the primary's hue, on faint graph paper. */
+/* Colors are shadcn/ui tokens: re-brand with --background (the page between the panels), --foreground (the type) and
+   --primary (the first panel), or paste a palette from ui.shadcn.com/themes. Later panels turn the primary's hue
+   (theme.js sets --turn per card); each panel's ink is the type color mixed with a deep shade of the panel's own
+   hue, and its highlight a brighter, warmer shade. The graph paper is --border. */
 @import "studio/layouts.css";
 :root{
-  --paper:#fbf5ea;
-  --ink:#22307f;
-  --accent:#f4d94a;
-  --grid:color-mix(in oklab,var(--ink) 7%,var(--paper));
-  --grid-major:color-mix(in oklab,var(--ink) 11%,var(--paper));
+  --background:oklch(0.982 0.008 85);
+  --foreground:oklch(0.3 0.1 268);
+  --primary:oklch(0.83 0.13 228);
+  --border:color-mix(in oklab,var(--foreground) 7%,var(--background));
+  --border-strong:color-mix(in oklab,var(--foreground) 11%,var(--background));
 }
 /* Mixed per card (a custom property resolves where it is declared, so these live on the card, not :root). */
 .campaign{
   --turn:0;
-  --panel:oklch(from var(--accent) l c calc(h + var(--turn)));
+  --panel:oklch(from var(--primary) l c calc(h + var(--turn)));
   --panel-light:oklch(from var(--panel) .975 calc(c * .22) h);
   --panel-mid:oklch(from var(--panel) .91 calc(c * .55) h);
   --panel-deep:oklch(from var(--panel) .8 calc(c * .85) h);
-  --panel-ink:color-mix(in oklab,var(--ink) 35%,oklch(from var(--panel) .3 .1 h));
+  --panel-ink:color-mix(in oklab,var(--foreground) 35%,oklch(from var(--panel) .3 .1 h));
   --panel-accent:color-mix(in oklab,var(--panel-ink) 35%,oklch(from var(--panel) .55 .2 calc(h - 25)));
 }
 @font-face{font-family:Panels;src:url(assets/BricolageGrotesque-latin.woff2) format('woff2');font-weight:200 800;font-stretch:75% 100%;font-display:block;
@@ -25,7 +26,7 @@
 @font-face{font-family:Panels;src:url(assets/BricolageGrotesque-latin-ext.woff2) format('woff2');font-weight:200 800;font-stretch:75% 100%;font-display:block;
   unicode-range:U+0100-02BA,U+02BD-02C5,U+02C7-02CC,U+02CE-02D7,U+02DD-02FF,U+0304,U+0308,U+0329,U+1D00-1DBF,U+1E00-1E9F,U+1EF2-1EFF,U+2020,U+20A0-20AB,U+20AD-20C4,U+2113,U+2C60-2C7F,U+A720-A7FF}
 
-body,.campaign{background:var(--paper);color:var(--panel-ink);font-family:Panels,var(--script-font),sans-serif}
+body,.campaign{background:var(--background);color:var(--panel-ink);font-family:Panels,var(--script-font),sans-serif}
 
 /* The panel: inset on every side so the paper shows between cards, lit from the top left, with a white wave
    across it. theme.js moves the devices inside, so they are cut at the panel's rounded edge. */

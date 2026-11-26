@@ -164,7 +164,7 @@ Coordinates are capture pixels; `dx`/`dy` move it. A callout may come from anoth
 
 | Hook | When | Use |
 |---|---|---|
-| `art(ctx)` | First | Return SVG (markup or nodes) for the background; attributes may use CSS, like `fill="var(--accent)"` |
+| `art(ctx)` | First | Return SVG (markup or nodes) for the background; attributes may use CSS, like `fill="var(--primary)"` |
 | `compose(ctx)` | Before captures load | Add elements: a brand mark, panels, notes |
 | `layout(ctx)` | Once captures have their size | Adjust or redraw frames |
 | `decorate(ctx)` | Last | Final touches, with `ctx.devices` measured; throw to fail the export |

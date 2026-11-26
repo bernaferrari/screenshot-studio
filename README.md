@@ -45,7 +45,7 @@ The editor follows your files. When you (or an agent) save `theme.css`, the card
 
 ## Six looks to start from
 
-The same card in each of the six themes. Every theme recolors from three variables (`--paper`, `--ink`, `--accent`); try one on the demo with `npx screenshot-studio demo --theme paper`. Add words or art to a single card (a sticker, a big number, a shape) with its `layers`, translated like the rest, styled by the theme or by Tailwind classes.
+The same card in each of the six themes. Every theme recolors from three [shadcn/ui](https://ui.shadcn.com/themes) color tokens (`--background`, `--foreground`, `--primary`), so a shadcn palette drops straight in; try one on the demo with `npx screenshot-studio demo --theme paper`. Add words or art to a single card (a sticker, a big number, a shape) with its `layers`, translated like the rest, styled by the theme or by Tailwind classes.
 
 <p align="center">
   <img src="docs/images/themes.jpg" width="100%" alt="One card in each of the six themes: aurora, porcelain, signal, paper, panels and mono">

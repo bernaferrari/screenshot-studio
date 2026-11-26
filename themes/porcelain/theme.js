@@ -1,6 +1,6 @@
 // {{name}}: porcelain. One wash from warm to cool and back laid across the whole strip, soft glows, wide white
 // curves, and a frosted tile on every other seam, half on each card. Everything is drawn in panorama coordinates,
-// so the strip joins at every seam; colors come from theme.css (--paper, --warm, --cool).
+// so the strip joins at every seam; colors come from theme.css (--background, --warm, --cool).
 import {panoramaGradient, panoramaLights, panoramaX} from './studio/shapes.js';
 
 /** @type {import('screenshot-studio').Theme} */
@@ -10,7 +10,7 @@ export default {
   art(ctx) {
     const {W, H, slides} = ctx;
     const n = slides.length, u = Math.max(W, H), X = cards => panoramaX(ctx, cards);
-    const wash = panoramaGradient(ctx, 'wash', ['var(--warm)', 'var(--paper)', 'var(--cool)', 'var(--paper)', 'var(--warm)', 'var(--cool)']);
+    const wash = panoramaGradient(ctx, 'wash', ['var(--warm)', 'var(--background)', 'var(--cool)', 'var(--background)', 'var(--warm)', 'var(--cool)']);
     let body = `<rect width="${W}" height="${H}" fill="url(#wash)"/>`;
     // A glow per card, alternating warm high and cool low, spilling into the neighbours.
     const glows = Array.from({length: n + 1}, (_, k) => ({x: k + (k % 2 ? .75 : .25), y: k % 2 ? .85 : .2, r: .6, color: k % 2 ? 'var(--cool)' : 'var(--warm)', opacity: .7}));

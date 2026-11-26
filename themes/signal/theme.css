@@ -1,34 +1,36 @@
-/* {{name}}: A bold color field with a deeper block under the devices, huge type, and key words on a highlighter. */
-/* Re-brand with the first three variables: the field, the type, and the highlighter. The block under the devices
-   is the field, deeper; the highlighted words are knocked out in it. */
+/* {{name}}: An electric field lit from the top, a halftone screen swelling toward the foot, huge type, key words on a sharp highlighter. */
+/* Colors are shadcn/ui tokens: re-brand with --background (the field), --foreground (the type) and --primary (the
+   highlighter), or paste a palette from ui.shadcn.com/themes. The field deepens toward the foot (--background-deep);
+   the halftone dots are the field's own color, over its deeper foot; the highlighted words are knocked out in the deep field
+   (--primary-foreground). */
 @import "studio/layouts.css";
 :root{
-  --paper:#2f6cf2;
-  --ink:#ffffff;
-  --accent:#ffe58f;
-  --block:oklch(from var(--paper) calc(l - .1) calc(c * 1.05) h);
-  --knockout:oklch(from var(--paper) calc(l - .08) c h);
-  --muted:color-mix(in oklab,var(--ink) 80%,var(--paper));
-  --shadow:oklch(from var(--paper) .18 calc(c * .8) h / .6);
+  --background:oklch(0.52 0.21 266);
+  --foreground:oklch(0.99 0.005 266);
+  --primary:oklch(0.93 0.13 102);
+  --background-deep:oklch(from var(--background) calc(l - .2) calc(c * .85) calc(h + 6));
+  --primary-foreground:var(--background-deep);
+  --muted-foreground:color-mix(in oklab,var(--foreground) 80%,var(--background));
+  --shadow:oklch(from var(--background) .16 calc(c * .7) h / .7);
 }
 @font-face{font-family:Signal;src:url(assets/Archivo-latin.woff2) format('woff2');font-weight:100 900;font-stretch:62% 125%;font-display:block;
   unicode-range:U+0000-00FF,U+0131,U+0152-0153,U+02BB-02BC,U+02C6,U+02DA,U+02DC,U+0304,U+0308,U+0329,U+2000-206F,U+20AC,U+2122,U+2191,U+2193,U+2212,U+2215,U+FEFF,U+FFFD}
 @font-face{font-family:Signal;src:url(assets/Archivo-latin-ext.woff2) format('woff2');font-weight:100 900;font-stretch:62% 125%;font-display:block;
   unicode-range:U+0100-02BA,U+02BD-02C5,U+02C7-02CC,U+02CE-02D7,U+02DD-02FF,U+0304,U+0308,U+0329,U+1D00-1DBF,U+1E00-1E9F,U+1EF2-1EFF,U+2020,U+20A0-20AB,U+20AD-20C4,U+2113,U+2C60-2C7F,U+A720-A7FF}
 
-body,.campaign{background:var(--paper);color:var(--ink);font-family:Signal,var(--script-font),sans-serif}
+body,.campaign{background:var(--background);color:var(--foreground);font-family:Signal,var(--script-font),sans-serif}
 
 header{z-index:5}
 h1{font-size:116px;line-height:1.04;letter-spacing:-.035em;word-spacing:.06em;font-weight:820;font-stretch:104%}
-/* The highlighter: a full-height stroke with uneven ends (theme.js), the words knocked out in the field's color. */
-h1 em,h1 ins,.device-label em{font-style:normal;text-decoration:none;color:var(--knockout);padding:0 .12em .04em;margin:0 .01em;
+/* The highlighter: a full-height stroke with sharp, uneven ends (theme.js), the words knocked out in the deep field. */
+h1 em,h1 ins,.device-label em,.identity em{font-style:normal;text-decoration:none;color:var(--primary-foreground);padding:0 .12em .04em;margin:0 .01em;
   background:var(--marker) no-repeat 0 0/100% 100%;-webkit-box-decoration-break:clone;box-decoration-break:clone}
 h1 del{text-decoration-thickness:.1em;opacity:.6}
-header p{margin:28px 0 0;font-size:42px;line-height:1.24;font-weight:460;letter-spacing:-.01em;color:var(--muted);max-width:860px;text-wrap:balance}
+header p{margin:28px 0 0;font-size:42px;line-height:1.24;font-weight:460;letter-spacing:-.01em;color:var(--muted-foreground);max-width:860px;text-wrap:balance}
 
-/* Frames: clean white, a deep colored shadow. */
-.device{background:#fff;box-shadow:0 0 0 1px #00000010,0 60px 110px -40px var(--shadow),0 18px 40px -20px var(--shadow)}
-.device-label{color:var(--ink);font-weight:700}
+/* Frames: clean white, a deep colored shadow, and a faint glow of the field's light at the rim. */
+.device{background:#fff;box-shadow:0 0 0 1px #00000010,0 0 0 10px color-mix(in oklab,var(--foreground) 8%,transparent),0 70px 120px -40px var(--shadow),0 18px 40px -20px var(--shadow)}
+.device-label{color:var(--foreground);font-weight:700}
 
 /* Placement: studio/layouts.css lays out big, hang and duo from these variables, per gallery.
    Phone (1080 x 1920): big, the app across the column, running off the bottom; hang, the phone hanging from the top

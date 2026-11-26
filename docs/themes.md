@@ -5,30 +5,35 @@ From then on it is the app's own: edit it freely. `npx screenshot-studio themes`
 
 | Theme | Look |
 |---|---|
-| `starter` | A plain light field. The smallest theme, for building your own. |
-| `aurora` | A dark field lit by soft lights in the accent, warm porcelain frames, bold rounded type (Google Sans Flex). |
-| `porcelain` | A peach-to-sky wash with glows and frosted tiles, navy type, one highlight color, white frames (Plus Jakarta Sans). |
-| `paper` | A warm ruled page with a running head, grotesque type, a highlighter (Schibsted Grotesk). |
-| `panels` | A rounded, softly lit panel per card, each a turn of the accent's hue, on graph paper (Bricolage Grotesque). |
-| `signal` | A bold field over a deeper block, huge type, key words on a highlighter (Archivo). |
-| `mono` | Near-black and white with one accent, graphite frames, nothing else; works light too (Geist). |
+| `starter` | A soft neutral field, blue highlight. The smallest theme, for building your own. |
+| `aurora` | A night sky lit by soft green, teal and violet lights, silver frames, bold rounded type (Google Sans Flex). |
+| `porcelain` | A peach-to-lavender wash with glows and frosted tiles, deep type, a violet highlight, white frames (Plus Jakarta Sans). |
+| `paper` | A warm ruled page with a running head, grotesque type, a pink highlighter (Schibsted Grotesk). |
+| `panels` | A rounded, softly lit panel per card, each a turn of the primary's hue, on graph paper (Bricolage Grotesque). |
+| `signal` | An electric field with a halftone screen swelling toward the foot, huge type, key words on a sharp highlighter (Archivo). |
+| `mono` | Zinc near-black and white with one orange primary, graphite frames, nothing else; works light too (Geist). |
 
 Each theme but `starter` has a `preview.jpg` of its phone strip.
 
 ## Re-branding
 
-Every theme starts with three CSS variables, and mixes everything else from them:
+Colors are [shadcn/ui](https://ui.shadcn.com/docs/theming)'s tokens. Every theme sets three, and mixes the rest from
+them:
 
 ```css
 :root{
-  --paper:#190a11;   /* the background */
-  --ink:#fff6f3;     /* the type */
-  --accent:#ff8a7a;  /* the highlight, and whatever the theme builds from it */
+  --background:oklch(0.17 0.045 268);  /* the field */
+  --foreground:oklch(0.97 0.01 250);   /* the type */
+  --primary:oklch(0.85 0.17 162);      /* the highlight, and whatever the theme builds from it */
 }
 ```
 
-Change those three and the lights, washes, panels, rules and frames follow. The derived colors (`--muted`,
-`--light-1`, `--warm`, `--block`…) are listed right under them; set any of them to take it over.
+Change those three and the lights, washes, panels, rules and frames follow. A palette from
+[ui.shadcn.com/themes](https://ui.shadcn.com/themes) can be pasted in as it is. Every token a theme leaves out has a
+default mixed from the three: `--muted-foreground` (supporting lines), `--border` (hairlines, rules, graph paper),
+`--card` (frames), `--accent` and `--muted` (quiet tints of the primary and the type), `--primary-foreground` (text on
+the primary). A theme's own derived colors (`--light-1`, `--warm`, `--background-deep`…) are listed right under the
+three; set any of them to take it over.
 
 ## Layouts
 
@@ -71,12 +76,9 @@ renders, so there is nothing to install or build. Then:
 
 - **Layers take utility classes**, so one card gets a sticker or background words without new CSS:
   `{"text": "*{kicker}*", "class": "-rotate-6 rounded-full bg-primary px-8 py-3 text-5xl font-bold text-primary-foreground", "place": "front", "style": {"left": "620px", "top": "560px"}}`
-- **Colors are shadcn/ui's tokens**, worked out from the theme's three variables: `background` and `foreground`
-  (`--paper`, `--ink`), `primary` and `primary-foreground` (the brand `--accent` and text on it), `muted-foreground`,
-  `secondary`, `card`, `border`, `ring`, and, as in shadcn, `accent` and `muted` as quiet tints. Re-branding the three
-  variables re-colors every utility; `paper` and `ink` work too. To use a shadcn palette instead, paste its variables
-  into `:root` (`--background`, `--primary`, `--primary-foreground`…) and each token takes them, except `--accent` and
-  `--muted`, which keep the studio's meaning (the brand color, muted text): leave those two out.
+- **Colors are the theme's shadcn/ui tokens**: `bg-background`, `text-foreground`, `bg-primary
+  text-primary-foreground`, `text-muted-foreground`, `border-border`, `bg-card`, and, as in shadcn, `bg-accent` and
+  `bg-muted` for quiet tints. Re-branding the three tokens re-colors every utility.
 - **`@apply` works in the theme's own rules**: `h1 em{@apply text-primary}`.
 
 Tailwind's reset (preflight) is left out, so it can't undo the renderer's base styles. Utilities apply to the
@@ -97,7 +99,7 @@ The renderer tells `theme.css` where each card is and what it says, so a theme's
 
 Draw backgrounds in `theme.js`'s `art()` with the helpers in `studio/shapes.js` (`panoramaLights`, `panoramaGradient`,
 the shapes): they lay art out across the strip so seams continue. `art()` may write CSS in attributes
-(`fill="var(--accent)"`, `stop-color="color-mix(…)"`); the renderer moves them into `style`, where CSS applies. A
+(`fill="var(--primary)"`, `stop-color="color-mix(…)"`); the renderer moves them into `style`, where CSS applies. A
 CSS-only theme that draws across seams says so with `--continuous: 1`, so the exporter checks them.
 
 For words or art on one card only, use the card's `layers` ([Setting up an app](setup.md#cards)) and style their

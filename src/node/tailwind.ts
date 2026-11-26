@@ -1,9 +1,8 @@
 // Tailwind CSS in an app's theme.css. A theme that imports "tailwindcss" (or uses @apply, @theme or @utility) is
 // compiled when it is served: utilities for every class its cards use (layers, layout words, device roles in
 // gallery.json, and the strings in theme.js), and @apply in its own rules. Tailwind's reset (preflight) is left out,
-// so it can't undo the renderer's base styles, and the theme's colors become shadcn/ui's color tokens (bg-background,
-// text-foreground, bg-primary text-primary-foreground, text-muted-foreground, border-border), worked out from its
-// three variables, or taken from shadcn variables the theme sets itself (a palette pasted into :root).
+// so it can't undo the renderer's base styles, and the colors are shadcn/ui's tokens, which every theme sets
+// (bg-background, text-foreground, bg-primary text-primary-foreground, text-muted-foreground, border-border).
 import fs from 'node:fs';
 import path from 'node:path';
 import {STUDIO_DIR} from './project';
@@ -11,43 +10,16 @@ import {STUDIO_DIR} from './project';
 /** Whether theme.css asks for Tailwind. */
 export const usesTailwind = (css: string): boolean => /@import\s+(url\()?["']tailwindcss|@apply\s|@theme\b|@utility\s/.test(css);
 
-/**
- * What `@import "tailwindcss"` means in a theme: its tokens and utilities, no reset, and shadcn/ui's color tokens. Each
- * token reads the shadcn variable when the theme sets one (--primary, --muted-foreground…) and otherwise mixes it from
- * the studio's three (--paper, --ink, --accent). As in shadcn, `accent` and `muted` are quiet tints; the brand color is
- * `primary`. paper and ink are there too, by the studio's names. --accent and --muted already mean the brand color and
- * muted text in a theme, so the accent and muted tokens are always mixed, never read from them.
- */
-const mix = (a: string, share: number, b: string) => `color-mix(in oklab, var(${a}) ${share}%, var(${b}))`;
-const TOKENS: Record<string, string> = {
-  background: 'var(--paper)',
-  foreground: 'var(--ink)',
-  card: mix('--ink', 4, '--paper'),
-  'card-foreground': 'var(--ink)',
-  popover: mix('--ink', 4, '--paper'),
-  'popover-foreground': 'var(--ink)',
-  primary: 'var(--accent)',
-  'primary-foreground': 'var(--paper)',
-  secondary: mix('--ink', 8, '--paper'),
-  'secondary-foreground': 'var(--ink)',
-  muted: mix('--ink', 6, '--paper'),
-  'muted-foreground': `var(--muted, ${mix('--ink', 65, '--paper')})`,
-  accent: mix('--accent', 16, '--paper'),
-  'accent-foreground': 'var(--ink)',
-  destructive: 'oklch(0.58 0.22 27)',
-  border: mix('--ink', 14, '--paper'),
-  input: mix('--ink', 14, '--paper'),
-  ring: 'var(--accent)',
-};
-/** shadcn names the studio's own variables already use, with another meaning. */
-const OWN = new Set(['accent', 'muted']);
+/** shadcn/ui's color tokens: theme.css sets them, and the renderer's studio.css fills in any it leaves out. */
+const TOKENS = ['background', 'foreground', 'card', 'card-foreground', 'popover', 'popover-foreground', 'primary', 'primary-foreground',
+  'secondary', 'secondary-foreground', 'muted', 'muted-foreground', 'accent', 'accent-foreground', 'destructive', 'border', 'input', 'ring'];
+
+/** What `@import "tailwindcss"` means in a theme: its tokens and utilities, no reset, and shadcn/ui's colors. */
 const TAILWIND = `@layer theme, base, components, utilities;
 @import "tailwindcss/theme.css" layer(theme);
 @import "tailwindcss/utilities.css" layer(utilities);
 @theme inline {
-${Object.entries(TOKENS).map(([name, value]) => `  --color-${name}: ${OWN.has(name) ? value : `var(--${name}, ${value})`};`).join('\n')}
-  --color-paper: var(--paper);
-  --color-ink: var(--ink);
+${TOKENS.map(name => `  --color-${name}: var(--${name});`).join('\n')}
 }
 `;
 

@@ -49,7 +49,7 @@ results you can parse, and open the images yourself.
 | Headline and supporting line of a card | `<locale>/copy.json`, keyed by the card's `feature`: `*highlight*`, `\n` for a new line |
 | Which cards, their order, captures, layout words, callouts | `gallery.json` |
 | Words or art on one card (a sticker, a big number, a shape) | the card's `layers` in `gallery.json`: Tailwind classes when `theme.css` imports `tailwindcss`, otherwise classes styled in `theme.css` |
-| Fonts, colors (`--paper`, `--ink`, `--accent`), where devices sit | `theme.css` |
+| Fonts, colors (shadcn/ui tokens: `--background`, `--foreground`, `--primary`), where devices sit | `theme.css` |
 | Background art, extra elements, real 3D devices (`depth: true`) | `theme.js` |
 | Image sizes, capture sizes | `profiles.json` |
 | Store text (title, short description) | `<locale>/listing.json` |

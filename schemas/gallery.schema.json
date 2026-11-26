@@ -285,7 +285,7 @@
         },
         "src": {
           "type": "string",
-          "description": "An image in store-listing/ (assets/blob.svg). An .svg is inlined, so the theme's CSS reaches inside it: its fill and stroke can read var(--accent)."
+          "description": "An image in store-listing/ (assets/blob.svg). An .svg is inlined, so the theme's CSS reaches inside it: its fill and stroke can read var(--primary)."
         },
         "class": {
           "type": "string",

@@ -7,7 +7,7 @@ Try things, then export again:
 |---|---|
 | Another look | `npx screenshot-studio demo --theme paper` (or `aurora`, `mono`, `panels`, `porcelain`, `signal`) |
 | Other words | `en-US/copy.json`, `de-DE/copy.json`, `zh-CN/copy.json`: *stars* highlight, `\n` breaks a line |
-| The colors | the first three variables in `theme.css` |
+| The colors | the three shadcn/ui tokens at the top of `theme.css` (`--background`, `--foreground`, `--primary`) |
 | The layouts | `gallery.json`: `big`, `hang`, `duo` (two devices) |
 
 ```sh

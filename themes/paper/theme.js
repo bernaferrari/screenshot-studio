@@ -12,8 +12,8 @@ export default {
     // College-ruled: one rule every line, starting below a top margin.
     const gap = Math.round(Math.min(W, H) / 15);
     let rules = '';
-    for (let y = gap * 2; y < H; y += gap) rules += `<path d="M0 ${y}H${W}" style="stroke:var(--rule)" stroke-width="2"/>`;
-    const paper = panoramaGradient(ctx, 'page', ['var(--paper)', 'color-mix(in oklab,var(--paper) 97%,var(--ink))', 'var(--paper)', 'color-mix(in oklab,var(--paper) 96%,var(--ink))']);
+    for (let y = gap * 2; y < H; y += gap) rules += `<path d="M0 ${y}H${W}" stroke="var(--border)" stroke-width="2"/>`;
+    const paper = panoramaGradient(ctx, 'page', ['var(--background)', 'color-mix(in oklab,var(--background) 97%,var(--foreground))', 'var(--background)', 'color-mix(in oklab,var(--background) 96%,var(--foreground))']);
     return `<defs>${paper}</defs><rect width="${W}" height="${H}" fill="url(#page)"/>${rules}`;
   },
 

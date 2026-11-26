@@ -1,6 +1,6 @@
-// {{name}}: aurora. A dark field lit by soft lights in the accent's colors, laid out in panorama coordinates so
-// every seam continues. Colors come from theme.css (--paper, --accent and the --light-* mixed from it), so
-// re-branding is three CSS variables.
+// {{name}}: aurora. A night sky lit by soft lights in the primary color and its neighbours, laid out in panorama
+// coordinates so every seam continues. Colors come from theme.css (--background, --primary and the --light-* mixed
+// from it), so re-branding is three shadcn/ui tokens.
 import {panoramaGradient, panoramaLights} from './studio/shapes.js';
 
 // x in card widths (repeated on every card), y as a fraction of the height, r as a fraction of the longer side.
@@ -18,8 +18,8 @@ export default {
 
   art(ctx) {
     const {W, H} = ctx;
-    // The field: the paper, a touch lighter and darker in turns along the strip.
-    const field = panoramaGradient(ctx, 'field', ['var(--paper)', 'color-mix(in oklab,var(--paper) 92%,var(--accent))', 'var(--paper)', 'color-mix(in oklab,var(--paper) 90%,var(--accent))']);
+    // The sky: the background, a touch lit by the primary in turns along the strip.
+    const field = panoramaGradient(ctx, 'field', ['var(--background)', 'color-mix(in oklab,var(--background) 92%,var(--primary))', 'var(--background)', 'color-mix(in oklab,var(--background) 90%,var(--primary))']);
     return `<defs>${field}</defs><rect width="${W}" height="${H}" fill="url(#field)"/>` +
       panoramaLights(ctx, LIGHTS, {id: 'aurora', alone: ctx.kind === 'readme'});
   },
