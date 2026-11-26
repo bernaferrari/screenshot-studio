@@ -107,3 +107,14 @@ test('CLI arg parser and Lucide icon parser handle edge cases without eval', () 
   assert.equal(parseLucideSource(nodeSource), '<line x1="1" y1="2" x2="3" y2="4"/>');
   assert.equal(parseLucideSource('<svg viewBox="0 0 24 24"><path d="M0 0h24"/></svg>', true), '<path d="M0 0h24"/>');
 });
+
+test('layers: a missing image or a word the card does not have is an error at its path; translated words pass', () => {
+  const listing = fixture(dir => {
+    edit(path.join(dir, 'gallery.json'), g => { g.phone[0].layers = [{text: '{number} {kicker}'}, {src: 'assets/none.svg'}, {text: '{nope}'}, {class: 'empty'}]; return g; });
+    edit(path.join(dir, 'en-US', 'copy.json'), c => ({...c, home: {...c.home, kicker: 'New'}}));
+  });
+  const layers = checkListing(listing).issues.filter(i => /layers/.test(i.path || ''));
+  assert.deepEqual(layers.map(i => i.path), ['phone[0].layers[1].src', 'phone[0].layers[2].text', 'phone[0].layers[3]']);
+  assert.match(layers[1].message, /\{nope\}/);
+  assert.match(layers[1].fix, /copy\.json/);
+});

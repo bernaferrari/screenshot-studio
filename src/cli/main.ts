@@ -134,6 +134,7 @@ export {recapture, bootEmulator, tourFile} from '../node/recapture';
 export {runTour} from '../node/capture/tour';
 export {appleLanguage} from '../node/capture/simulator';
 export {checkListing, formatIssues, imageSize} from '../node/check';
+export {compileTheme, candidates as themeClasses} from '../node/tailwind';
 export {loadListing, findListing, requireListing, readJson, writeJson} from '../node/project';
 export {serve} from '../node/server';
 export {createWorkspaceStore} from '../node/workspace/store';
@@ -145,4 +146,4 @@ export {parseLucideSource} from '../node/fixture-apps';
 export {previewShapes} from '../node/icon/targets';
 
 if (require.main === module) main(process.argv.slice(2)).then(code => { process.exitCode = code; }, (error: Error) => { console.error(error.message); process.exitCode = 1; });
-export {parseHeadline, parseHighlight, frameSize, boundsFor, boundsProblem, calloutPlacement, isWidow, hasDeviceRatio} from '../core/layout';
+export {parseHeadline, parseHighlight, frameSize, boundsFor, boundsProblem, calloutPlacement, isWidow, hasDeviceRatio, cardWords, fillWords} from '../core/layout';

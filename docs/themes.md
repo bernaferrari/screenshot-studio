@@ -64,6 +64,46 @@ optional.
 `hang` cards may leave the top edge and the feature graphic's phone may show only its top; the renderer knows both,
 so no `bounds` setting is needed.
 
+## Tailwind
+
+A theme can use Tailwind CSS: add `@import "tailwindcss";` to `theme.css`. The studio compiles it when the card
+renders, so there is nothing to install or build. Then:
+
+- **Layers take utility classes**, so one card gets a sticker or background words without new CSS:
+  `{"text": "*{kicker}*", "class": "-rotate-6 rounded-full bg-primary px-8 py-3 text-5xl font-bold text-primary-foreground", "place": "front", "style": {"left": "620px", "top": "560px"}}`
+- **Colors are shadcn/ui's tokens**, worked out from the theme's three variables: `background` and `foreground`
+  (`--paper`, `--ink`), `primary` and `primary-foreground` (the brand `--accent` and text on it), `muted-foreground`,
+  `secondary`, `card`, `border`, `ring`, and, as in shadcn, `accent` and `muted` as quiet tints. Re-branding the three
+  variables re-colors every utility; `paper` and `ink` work too. To use a shadcn palette instead, paste its variables
+  into `:root` (`--background`, `--primary`, `--primary-foreground`…) and each token takes them, except `--accent` and
+  `--muted`, which keep the studio's meaning (the brand color, muted text): leave those two out.
+- **`@apply` works in the theme's own rules**: `h1 em{@apply text-primary}`.
+
+Tailwind's reset (preflight) is left out, so it can't undo the renderer's base styles. Utilities apply to the
+elements a theme or card names (layers, layout words, device roles, and class names in `theme.js`); the headline,
+frames and labels are built by the renderer and are styled by `theme.css` rules as before.
+
+## What CSS can see
+
+The renderer tells `theme.css` where each card is and what it says, so a theme's rules can use them:
+
+| On | What | For |
+|---|---|---|
+| `:root` | `--card-index`, `--cards` | The card's place in its gallery (0-based) and how many there are |
+| `:root` | `--card-x`, `--strip-width` | The card's left edge in the strip, and the strip's width, in px |
+| `:root` | `--canvas-width`, `--canvas-height` | The card's size |
+| `main` | `data-number`, `data-cards` | `"02"`, `"06"`, for `content: attr(data-number)` |
+| `main` | `data-title`, `data-body`, `data-tagline`, `data-feature`, `data-app` | The card's words in this language (the title without markup) |
+
+Draw backgrounds in `theme.js`'s `art()` with the helpers in `studio/shapes.js` (`panoramaLights`, `panoramaGradient`,
+the shapes): they lay art out across the strip so seams continue. `art()` may write CSS in attributes
+(`fill="var(--accent)"`, `stop-color="color-mix(…)"`); the renderer moves them into `style`, where CSS applies. A
+CSS-only theme that draws across seams says so with `--continuous: 1`, so the exporter checks them.
+
+For words or art on one card only, use the card's `layers` ([Setting up an app](setup.md#cards)) and style their
+classes here. `z-index: 1` sits over the background and under the devices (2) and headline (3). Keep anything
+decorative away from the headline, and inside the card: a motif cut at a card's edge breaks the seam.
+
 ## 3D devices
 
 A theme can draw its phones and tablets as real 3D devices (three.js, loaded only for those cards):

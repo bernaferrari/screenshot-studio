@@ -62,3 +62,12 @@ test('captures must keep a real device ratio', () => {
   assert.equal(layout.hasDeviceRatio(1080, 1920, [1080 / 2340]), false);
   assert.equal(layout.hasDeviceRatio(1080, 1920, [1080 / 2340], 1080 / 1920), true);
 });
+
+test('a card\'s words fill layer text by name; unknown names come back to report', () => {
+  const words = layout.cardWords({feature: 'log', title: 'Every *connection*', kicker: 'New', layout: 'big', devices: []}, 1, 6, 'Keepout');
+  assert.equal(words.title, 'Every connection');
+  assert.deepEqual([words.number, words.cards, words.app, words.kicker, words.feature], ['02', '06', 'Keepout', 'New', 'log']);
+  assert.equal(layout.cardWords({feature: 'x'}, 4, 120).number, '005');
+  assert.deepEqual(layout.fillWords('*{kicker}* {number}/{cards}', words), {text: '*New* 02/06', unknown: []});
+  assert.deepEqual(layout.fillWords('{nope} and {}', words), {text: ' and {}', unknown: ['nope']});
+});

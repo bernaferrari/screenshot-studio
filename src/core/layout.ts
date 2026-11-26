@@ -1,7 +1,7 @@
 // The renderer's rules, without a page: how headline markup reads, how big a frame's bezel is, where a callout
 // sits, how far a device may leave the card, and when a last line is too short. The renderer applies them to the
 // DOM; tests call them directly.
-import type {BoundsRule, Box, FrameKind, FrameRatio, FramesConfig, StudioConfig} from './types';
+import type {BoundsRule, Box, Card, FrameKind, FrameRatio, FramesConfig, StudioConfig} from './types';
 
 /** A run of headline text: plain, *highlighted* (em), ~struck out~ (del) or [inserted] (ins). */
 export interface Run {text: string; tag?: 'em' | 'del' | 'ins'}
@@ -101,4 +101,29 @@ export const isWidow = (lineWidths: number[]) => lineWidths.length > 1 && lineWi
 export function hasDeviceRatio(width: number, height: number, ratios: number[], expected?: number | null): boolean {
   const ratio = width / height;
   return expected ? Math.abs(ratio - expected) <= .001 : ratios.some(r => Math.abs(ratio - r) < .001);
+}
+
+/**
+ * A card's words by name, for layer text (`{title}`, `{number}`…) and the card's data attributes: every string field
+ * of the card with its words merged in (title, body, tagline and any other field copy.json gives it), plus its
+ * position and the app's name. Headlines lose their markup here; layer text keeps its own.
+ */
+export function cardWords(card: Card, index: number, count: number, app = ''): Record<string, string> {
+  const words: Record<string, string> = {};
+  for (const [key, value] of Object.entries(card)) if (typeof value === 'string') words[key] = value;
+  if (words.title) words.title = plainHeadline(words.title);
+  const digits = Math.max(2, String(count).length);
+  return {...words, app, number: String(index + 1).padStart(digits, '0'), cards: String(count).padStart(digits, '0')};
+}
+
+const WORD = /\{([A-Za-z][\w-]*)\}/g;
+/** Text with each `{name}` replaced by the card's word; names it doesn't have come back in `unknown`. */
+export function fillWords(text: string, words: Record<string, string>): {text: string; unknown: string[]} {
+  const unknown: string[] = [];
+  const filled = text.replace(WORD, (_, name: string) => {
+    if (name in words) return words[name];
+    unknown.push(name);
+    return '';
+  });
+  return {text: filled, unknown};
 }

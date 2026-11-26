@@ -67,3 +67,22 @@ test('export rejects escaping paths, source paths and collisions before writing'
   write('studio.json',{app:'Test',locales:['en-US'],readmeStrips:[{kind:'phone',cards:[0],file:'../strip.jpg'}]});
   assert.equal((await exportListing({listing,log:()=>{}})).ok,false);
 });
+
+test('text that blends into what is behind it is a warning; the same card with readable text is not', async t => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'studio-contrast-'));
+  t.after(() => fs.rmSync(root, {recursive: true, force: true}));
+  const listing = path.join(root, 'store-listing');
+  fs.cpSync(path.join(__dirname, 'fixtures', 'golden'), listing, {recursive: true});
+  const theme = path.join(__dirname, '..', 'themes', 'starter');
+  for (const file of ['theme.css', 'theme.js']) fs.copyFileSync(path.join(theme, file), path.join(listing, file));
+  const run = () => exportListing({listing, locales: ['en-US'], kind: 'phone', card: 0, jobs: 1, log: () => {}});
+  const readable = await run();
+  assert.equal(readable.ok, true, readable.error);
+  assert.deepEqual(readable.warnings.filter(w => /hard to read/.test(w)), []);
+  // The highlight in nearly the background's own color.
+  fs.appendFileSync(path.join(listing, 'theme.css'), '\nh1 em{color:#e9ecf8}\n');
+  const faint = await run();
+  const warnings = faint.warnings.filter(w => /hard to read/.test(w));
+  assert.equal(warnings.length, 1, faint.warnings.join('\n'));
+  assert.match(warnings[0], /contrast 1\.\d:1, needs at least 2\.5:1/);
+});

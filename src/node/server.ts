@@ -12,6 +12,7 @@ import {createHash, randomUUID} from 'node:crypto';
 import {inside, createWorkspaceStore} from './workspace/store';
 import {findListing, readJson, STUDIO_DIR} from './project';
 import {withoutMeta} from '../core/gallery';
+import {compileTheme} from './tailwind';
 import {validate, type Schema} from '../core/validate';
 import type {WorkspaceStore} from './workspace/store';
 import {workspaceRoutes} from './workspace/routes';
@@ -90,7 +91,8 @@ export function serve(root: string, port = 0, {editable = false, workspace = nul
         if (!['GET', 'HEAD'].includes(request.method || '')) { response.writeHead(405).end(); return; }
         if (fs.existsSync(file) && fs.statSync(file).isDirectory()) file = path.join(file, 'index.html');
         if (fs.existsSync(file) && !inside(fs.realpathSync(allowedRoot), fs.realpathSync(file))) { response.writeHead(403).end(); return; }
-        const data = await fs.promises.readFile(file);
+        // A theme.css that asks for Tailwind is compiled for the classes its cards use.
+        const data = path.basename(file) === 'theme.css' && path.dirname(file) === path.resolve(listingRoot) ? Buffer.from(await compileTheme(file)) : await fs.promises.readFile(file);
         response.writeHead(200, {'Content-Type': types[path.extname(file).toLowerCase()] || 'application/octet-stream', 'Cache-Control': 'no-store'});
         response.end(request.method === 'HEAD' ? undefined : data);
       } catch (error) {

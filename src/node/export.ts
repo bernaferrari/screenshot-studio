@@ -118,6 +118,80 @@ function seamBreak([leftInner, leftOuter]: [Column, Column], [rightOuter, rightI
   return bad / rows > .02 || sum / rows > 6 ? Math.round(bad / rows * 100) : null;
 }
 
+/**
+ * Below this contrast against what's behind it, text blends into the art. (WCAG asks 3:1 of large text; muted
+ * supporting lines sit just under that on purpose, so the check is for words the background swallows.)
+ */
+const MIN_CONTRAST = 2.5;
+
+/**
+ * Text the background swallows. Every piece of text on the card (each headline run, the body, labels, the name
+ * banner, layers in front) is measured against the pixels actually behind it: the card is shot once more with the
+ * text made transparent, keeping each element's own background, and the darkest-to-text tenth of those pixels must
+ * still reach MIN_CONTRAST. Decorative layers behind the devices aren't text to read and are skipped.
+ */
+async function hardToRead(page: Page): Promise<{text: string; contrast: number}[]> {
+  const targets = await page.evaluate(() => {
+    const ink = document.createElement('canvas').getContext('2d', {willReadFrequently: true})!;
+    const rgba = (color: string) => { ink.clearRect(0, 0, 1, 1); ink.fillStyle = color; ink.fillRect(0, 0, 1, 1); return [...ink.getImageData(0, 0, 1, 1).data]; };
+    const found: {text: string; color: number[]; boxes: {x: number; y: number; w: number; h: number}[]}[] = [];
+    const main = document.querySelector('main');
+    if (!main) return found;
+    for (const element of main.querySelectorAll<HTMLElement>('*')) {
+      if (element.closest('.art, .device, .layer-behind, svg')) continue;
+      const nodes = [...element.childNodes].filter(n => n.nodeType === Node.TEXT_NODE && n.textContent!.trim());
+      if (!nodes.length) continue;
+      const style = getComputedStyle(element);
+      if (style.visibility === 'hidden') continue;
+      let opacity = 1;
+      for (let e: HTMLElement | null = element; e; e = e.parentElement) opacity *= Number(getComputedStyle(e).opacity);
+      const color = rgba(style.color);
+      color[3] = color[3] / 255 * opacity;
+      if (color[3] < .05) continue;
+      const boxes = nodes.flatMap(node => { const range = document.createRange(); range.selectNodeContents(node); return [...range.getClientRects()]; })
+        .filter(r => r.width > 2 && r.height > 2).map(r => ({x: r.x, y: r.y, w: r.width, h: r.height}));
+      if (boxes.length) found.push({text: nodes.map(n => n.textContent!.trim()).join(' '), color, boxes});
+    }
+    return found;
+  });
+  if (!targets.length) return [];
+  const style = await page.addStyleTag({content: 'main, main * {color: transparent !important; -webkit-text-stroke-color: transparent !important; text-shadow: none !important; text-decoration-color: transparent !important}'});
+  const shot = (await page.screenshot({type: 'png', scale: 'css'})).toString('base64');
+  await style.evaluate(node => (node as Element).remove());
+  return page.evaluate(async ({data, targets, min}) => {
+    const image = new Image();
+    image.src = `data:image/png;base64,${data}`;
+    await image.decode();
+    const canvas = Object.assign(document.createElement('canvas'), {width: image.naturalWidth, height: image.naturalHeight});
+    const context = canvas.getContext('2d', {willReadFrequently: true})!;
+    context.drawImage(image, 0, 0);
+    const linear = (v: number) => { v /= 255; return v <= .04045 ? v / 12.92 : ((v + .055) / 1.055) ** 2.4; };
+    const luminance = (r: number, g: number, b: number) => .2126 * linear(r) + .7152 * linear(g) + .0722 * linear(b);
+    const poor: {text: string; contrast: number}[] = [];
+    for (const {text, color: [r, g, b, a], boxes} of targets) {
+      const ratios: number[] = [];
+      for (const box of boxes) {
+        const x = Math.max(0, Math.floor(box.x)), y = Math.max(0, Math.floor(box.y));
+        const w = Math.min(canvas.width - x, Math.ceil(box.w)), h = Math.min(canvas.height - y, Math.ceil(box.h));
+        if (w < 1 || h < 1) continue;
+        const px = context.getImageData(x, y, w, h).data;
+        // Sample a grid of at most ~4,000 points per box.
+        const step = Math.max(1, Math.floor(Math.sqrt(w * h / 4000)));
+        for (let j = 0; j < h; j += step) for (let i = 0; i < w; i += step) {
+          const k = (j * w + i) * 4, R = px[k], G = px[k + 1], B = px[k + 2];
+          const back = luminance(R, G, B), fore = luminance(a * r + (1 - a) * R, a * g + (1 - a) * G, a * b + (1 - a) * B);
+          ratios.push((Math.max(back, fore) + .05) / (Math.min(back, fore) + .05));
+        }
+      }
+      if (!ratios.length) continue;
+      ratios.sort((p, q) => p - q);
+      const worst = ratios[Math.floor(ratios.length * .1)];
+      if (worst < min) poor.push({text, contrast: Math.round(worst * 10) / 10});
+    }
+    return poor;
+  }, {data: shot, targets, min: MIN_CONTRAST});
+}
+
 /** Re-encode a PNG through a canvas, which always writes RGBA: stores want transparent-capable art as 32-bit PNG. */
 async function rgba(page: Page, png: Buffer): Promise<Buffer> {
   return Buffer.from(await page.evaluate(async data => {
@@ -380,6 +454,8 @@ async function renderCard(run: Run, page: Page, {locale, kind, index, slide, fil
   const shot = await page.screenshot({type: png ? 'png' : 'jpeg', scale: 'css', omitBackground: png && !!slide.transparent, ...(png ? {} : {quality: config.jpegQuality || 94})});
   const bytes = png && slide.transparent ? await rgba(page, shot) : shot;
   const fastlane = withFastlane ? await page.screenshot({type: 'png', scale: 'css'}) : null;
+  // Before edgeColumns, which hides the foreground.
+  if (!slide.transparent) report.hardToRead = await hardToRead(page);
   const edges = report.continuous && !profiles[kind].defaultLocaleOnly ? await edgeColumns(page, width, height) : null;
   return {report, bytes, fastlane, edges};
 }
@@ -436,6 +512,8 @@ async function writeCards(run: Run, {locale, dir}: LocalePlan, gallery: GalleryP
       if (report.fixedCallouts.length) { tally.fixedCallouts++; notes.push('callout kept its default-locale position'); }
     }
     if (report.fit < 1) { tally.shrunk++; notes.push(`copy shrunk to ${Math.round(report.fit * 100)}%`); }
+    for (const {text, contrast} of report.hardToRead || [])
+      warn(`${label}: "${text}" is hard to read against what's behind it (contrast ${contrast.toFixed(1)}:1, needs at least ${MIN_CONTRAST}:1); change its color, or move or tone down the art behind it`);
     if (report.widows?.length) warn(`${label}: "${report.widows.join('", "')}" is left on a short last line; reword or shorten the copy`);
     tally.cards++;
     const card: ExportedCard = {locale, kind, index: i, feature: slide.feature, file: path.join(locale, file).split(path.sep).join('/'), width, height, bytes: bytes.length, notes};

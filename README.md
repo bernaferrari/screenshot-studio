@@ -45,7 +45,7 @@ The editor follows your files. When you (or an agent) save `theme.css`, the card
 
 ## Six looks to start from
 
-The same card in each of the six themes. Every theme recolors from three variables (`--paper`, `--ink`, `--accent`); try one on the demo with `npx screenshot-studio demo --theme paper`.
+The same card in each of the six themes. Every theme recolors from three variables (`--paper`, `--ink`, `--accent`); try one on the demo with `npx screenshot-studio demo --theme paper`. Add words or art to a single card (a sticker, a big number, a shape) with its `layers`, translated like the rest, styled by the theme or by Tailwind classes.
 
 <p align="center">
   <img src="docs/images/themes.jpg" width="100%" alt="One card in each of the six themes: aurora, porcelain, signal, paper, panels and mono">
@@ -72,6 +72,7 @@ A callout lifts part of the real screen out and magnifies it. Pick it as a UI el
 `check` validates every file in a second and says how to fix each problem. `export` renders each card and fails or warns on what you'd otherwise catch by eye:
 
 - copy that doesn't fit, or leaves a lone word on its last line;
+- text that blends into the art behind it, measured against the pixels actually under each word;
 - a device cut off where it shouldn't be;
 - a background that breaks between cards in the store carousel;
 - captures that aren't a real device shape;
@@ -122,7 +123,7 @@ Every command takes `--help` for its options.
 | [Themes](docs/themes.md) | The six starter looks and how to make your own |
 | [Capturing](docs/capture.md) | Tours on the Android emulator and iOS simulator, one-command recapture |
 | [Languages and export](docs/languages-and-export.md) | Words per language, the export's checks, fastlane |
-| [Agents](docs/agents.md) | The skill and MCP server for Claude and other agents |
+| [Agents](docs/agents.md) | The skill and MCP server for Claude and other agents; [llms.txt](llms.txt) is the map for any agent |
 | [The editor](docs/editor.md) | Gallery, card inspector, store preview, languages, review |
 | [App icons](docs/icons.md) | One drawing, every icon an app ships |
 | [Development](docs/development.md) | Working on the studio itself |

@@ -128,12 +128,25 @@ One entry per gallery (phone, 7-inch, 10-inch, README, a feature graphic…):
 | `callouts` | Regions of the capture lifted out and magnified (below) |
 | `file` | Output name; `.png` writes a PNG, with `"transparent": true` for 32-bit |
 | `vars` | CSS custom properties for this card |
+| `layers` | Text or art on this card, behind or in front of the devices (below) |
 
 A card with no capture is art only (a drawn feature graphic, say). `"frame": "none"` shows a capture as the whole image. Any other key reaches the theme as `ctx.slide`.
 
 **Tablets can inherit.** `{"inherits": "phone", "cards": [...]}` merges each card over the phone card at the same position, so a tablet gallery swaps captures and layout but keeps the phone's words.
 
 **Headline markup.** In copy, `*highlight*` becomes `<em>`, `~old~` `<del>`, `[new]` `<ins>`, and `\n` breaks the line. The theme decides how each looks.
+
+**Layers** put text or art on one card, without code. The theme styles them by class; `style` places them:
+
+```json
+"layers": [
+  {"text": "{number}", "class": "ghost"},
+  {"text": "*{kicker}*", "class": "sticker", "place": "front", "style": {"left": "700px", "top": "560px", "rotate": "-6deg"}},
+  {"src": "assets/blob.svg", "class": "blob", "style": {"right": "-160px", "top": "420px"}}
+]
+```
+
+`text` takes the headline's markup and the card's words by name, in each language: `{title}`, `{body}`, `{tagline}`, any other field `copy.json` gives the card (`"kicker": "New"`, translated like the rest), `{feature}`, `{number}` and `{cards}` (`"02"`, `"06"`) and `{app}`. `src` is an image in `store-listing/`; an `.svg` is inlined, so its `fill="var(--accent)"` follows the theme. A layer sits behind the devices and headline, over the background, unless `"place": "front"`. `check` reports a missing image or a word the card doesn't have. With Tailwind in the theme, `class` takes utilities too ([Themes](themes.md#tailwind)).
 
 **Callouts** lift a region of the real screen out of the capture, magnified, centred where it lives:
 
@@ -151,7 +164,7 @@ Coordinates are capture pixels; `dx`/`dy` move it. A callout may come from anoth
 
 | Hook | When | Use |
 |---|---|---|
-| `art(ctx)` | First | Return SVG for the background |
+| `art(ctx)` | First | Return SVG (markup or nodes) for the background; attributes may use CSS, like `fill="var(--accent)"` |
 | `compose(ctx)` | Before captures load | Add elements: a brand mark, panels, notes |
 | `layout(ctx)` | Once captures have their size | Adjust or redraw frames |
 | `decorate(ctx)` | Last | Final touches, with `ctx.devices` measured; throw to fail the export |
@@ -160,7 +173,7 @@ Coordinates are capture pixels; `dx`/`dy` move it. A callout may come from anoth
 
 `studio/shapes.js` has helpers for themes: panorama coordinates and gradients (art that continues exactly across cards), `panoramaLights` (soft lights across the whole strip), color mixing, and Material 3 Expressive shapes.
 
-**Continuous backgrounds.** A theme whose background runs across cards sets `continuous: true` (or a list of galleries) in `theme.js`. The exporter then compares the pixels where neighbouring cards meet and warns when the background doesn't continue. Draw such art in panorama coordinates, never per card.
+**Continuous backgrounds.** A theme whose background runs across cards sets `continuous: true` (or a list of galleries) in `theme.js`, or `--continuous: 1` in `theme.css`. The exporter then compares the pixels where neighbouring cards meet and warns when the background doesn't continue. Draw such art in panorama coordinates, never per card: in CSS, size it to `--strip-width` and shift it by `--card-x` ([Themes](themes.md#what-css-can-see)).
 
 ## What the studio does for every theme
 

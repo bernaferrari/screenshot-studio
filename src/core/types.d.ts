@@ -229,6 +229,8 @@ export interface Card {
   /** Several captures. */
   devices?: DeviceSpec[];
   callouts?: Callout[];
+  /** Text or art on this card, behind the devices or in front of them: background words, a sticker, a shape. */
+  layers?: Layer[];
   /**
    * Output name; .png writes PNG.
    * @pattern \.(jpe?g|png)$
@@ -266,6 +268,30 @@ export interface DeviceSpec {
 }
 
 /** A region of a real capture lifted out and magnified, in capture pixels. */
+/**
+ * One piece of text or art on a card. The theme styles it by its classes; `style` places it on this card alone.
+ * Without `place`, it sits behind the devices and the headline, over the background.
+ */
+export interface Layer {
+  /**
+   * Text, in the headline's markup (*highlight*, \n for a new line). `{name}` is the card's word of that name, in each
+   * language: {title}, {body}, {tagline}, any other field copy.json gives the card (a {kicker}, say), {feature},
+   * {number} and {cards} ("02", "06") and {app}.
+   */
+  text?: string;
+  /**
+   * An image in store-listing/ (assets/blob.svg). An .svg is inlined, so the theme's CSS reaches inside it: its fill
+   * and stroke can read var(--accent).
+   */
+  src?: string;
+  /** Classes the theme styles, like a card's layout words: "ghost", "sticker big". */
+  class?: string;
+  /** CSS for this layer on this card: {"left": "40px", "top": "120px", "rotate": "-8deg", "--size": "640px"}. */
+  style?: Record<string, string>;
+  /** behind (the default) sits over the background and under everything else; front sits over the devices. */
+  place?: 'behind' | 'front';
+}
+
 export interface Callout {
   x: number;
   y: number;
@@ -378,8 +404,11 @@ export interface RenderedDevice {
 
 /** store-listing/theme.js's default export. Every hook is optional. */
 export interface Theme {
-  /** SVG for the background layer. */
-  art?(ctx: ThemeContext): string | void;
+  /**
+   * The background layer: SVG markup or nodes. Attributes may use CSS (fill="var(--accent)", stop-color="color-mix(…)");
+   * the renderer moves them into style, where CSS applies.
+   */
+  art?(ctx: ThemeContext): string | Node | void;
   /** Add elements before captures load: a brand mark, panels, notes. */
   compose?(ctx: ThemeContext): void | Promise<void>;
   /** Adjust or redraw frames once captures have their size. */
@@ -551,6 +580,8 @@ export interface CardReport {
   continuous?: boolean;
   /** Last words left alone on their own line. */
   widows?: string[];
+  /** Text whose contrast against the pixels behind it is too low, worst tenth of the background. */
+  hardToRead?: {text: string; contrast: number}[];
   /** Where everything landed, in card pixels: for adjusting a layout by numbers rather than by eye. */
   layout?: CardLayout;
 }

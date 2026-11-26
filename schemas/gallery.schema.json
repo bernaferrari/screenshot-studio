@@ -76,6 +76,13 @@
             "$ref": "#/$defs/Callout"
           }
         },
+        "layers": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/Layer"
+          },
+          "description": "Text or art on this card, behind the devices or in front of them: background words, a sticker, a shape."
+        },
         "file": {
           "type": "string",
           "description": "Output name; .png writes PNG.",
@@ -267,8 +274,41 @@
         "w",
         "h"
       ],
+      "additionalProperties": false
+    },
+    "Layer": {
+      "type": "object",
+      "properties": {
+        "text": {
+          "type": "string",
+          "description": "Text, in the headline's markup (*highlight*, \\n for a new line). `{name}` is the card's word of that name, in each language: {title}, {body}, {tagline}, any other field copy.json gives the card (a {kicker}, say), {feature}, {number} and {cards} (\"02\", \"06\") and {app}."
+        },
+        "src": {
+          "type": "string",
+          "description": "An image in store-listing/ (assets/blob.svg). An .svg is inlined, so the theme's CSS reaches inside it: its fill and stroke can read var(--accent)."
+        },
+        "class": {
+          "type": "string",
+          "description": "Classes the theme styles, like a card's layout words: \"ghost\", \"sticker big\"."
+        },
+        "style": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "string"
+          },
+          "description": "CSS for this layer on this card: {\"left\": \"40px\", \"top\": \"120px\", \"rotate\": \"-8deg\", \"--size\": \"640px\"}."
+        },
+        "place": {
+          "type": "string",
+          "enum": [
+            "behind",
+            "front"
+          ],
+          "description": "behind (the default) sits over the background and under everything else; front sits over the devices."
+        }
+      },
       "additionalProperties": false,
-      "description": "A region of a real capture lifted out and magnified, in capture pixels."
+      "description": "One piece of text or art on a card. The theme styles it by its classes; `style` places it on this card alone. Without `place`, it sits behind the devices and the headline, over the background."
     },
     "Identity": {
       "type": "object",
@@ -349,6 +389,13 @@
           "items": {
             "$ref": "#/$defs/Callout"
           }
+        },
+        "layers": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/Layer"
+          },
+          "description": "Text or art on this card, behind the devices or in front of them: background words, a sticker, a shape."
         },
         "file": {
           "type": "string",

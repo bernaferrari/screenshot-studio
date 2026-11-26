@@ -42,7 +42,7 @@ To try a change the way users run it, call the built command directly: `node /pa
 - **Apps keep no copy.** The package serves `studio/` at each app's `store-listing/studio/` address, and runs each app's `capture.tour.mjs` itself. Keep those addresses stable: themes import `./studio/shapes.js`.
 - **Check against a real app** before calling a change done: copy one (never edit it in place), run `check` and `export` in it, and look at the images.
 
-Commit the built `studio/` with the source change: it's what the package ships.
+`studio/` is not committed: `npm run build` makes it, and `npm pack`/`npm publish` run the build first (`prepack`).
 
 ## The editor
 

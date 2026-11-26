@@ -27,7 +27,7 @@ body,.campaign{background:var(--paper);color:var(--ink);font-family:Paper,var(--
 header{z-index:5}
 h1{font-size:106px;line-height:1.02;letter-spacing:-.035em;font-weight:800}
 /* The highlighter: a band over the lower part of the words. */
-h1 em,h1 ins{font-style:normal;text-decoration:none;
+h1 em,h1 ins,.identity em{font-style:normal;text-decoration:none;color:inherit;
   background:linear-gradient(176deg,transparent 50%,var(--accent) 51%,var(--accent) 90%,transparent 91%);
   padding:0 .08em;margin:0 -.08em;box-decoration-break:clone;-webkit-box-decoration-break:clone}
 h1 del{text-decoration-thickness:.08em;text-decoration-color:var(--strike)}

@@ -25,6 +25,19 @@ h1 ins{text-decoration:none}
 
 .callout{position:absolute;z-index:4;background-repeat:no-repeat}
 
+/* Layers (a card's "layers" in gallery.json): placed by their own style and the theme's classes. Behind sits over the
+   background and under the devices (z-index 2) and headline (3); front sits over everything but the name banner.
+   In a cascade layer of their own, declared first, so a theme's rules and Tailwind utilities (class: "relative m-8")
+   override them. */
+@layer studio{
+  .layer{position:absolute;pointer-events:none;margin:0}
+  .layer-behind{z-index:1}
+  .layer-front{z-index:4}
+  .layer .line{display:block}
+  .layer em{font-style:normal}
+  .layer ins{text-decoration:none}
+}
+
 /* README art (the "readme" gallery, 2400 x 1260): default positions for the shared layouts. Themes restyle them and
    move anything by repeating a selector. */
 /* Name banner: the app icon beside its name, with an optional tagline under the name, centred at the top. */

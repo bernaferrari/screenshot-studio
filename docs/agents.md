@@ -2,6 +2,8 @@
 
 Claude Code, or any coding agent, can make and refine an app's store art with the studio: it edits the same files you would, and the studio renders and checks them. Agents can see images, so they can judge a card the way you do.
 
+Agents that don't load skills can start from [`llms.txt`](../llms.txt), which ships in the package (https://unpkg.com/screenshot-studio/llms.txt): how to work, and a link to every guide.
+
 ## The skill
 
 `npx screenshot-studio init` installs a skill at `.claude/skills/store-screenshots/SKILL.md` in the app (from `skills/store-screenshots/SKILL.md` here). Claude Code picks it up when you ask for store screenshots, a Play or App Store listing, README images, or a translation of them. It covers setup, which file to edit for what, the loop below, what a good card looks like, and what to check before finishing.

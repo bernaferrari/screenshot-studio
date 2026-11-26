@@ -1,0 +1,42 @@
+# Screenshot Studio
+
+> Turns real screenshots of an app into Google Play and App Store screenshots, feature graphics, README images and app icons, in every language, and checks each card the way a store reviewer would. An app keeps plain files in `store-listing/` (words, layout, look, captures); the studio, run with `npx screenshot-studio`, renders them in a browser and writes the images.
+
+Paths below are relative to this file: `node_modules/screenshot-studio/` where the package is installed, or https://unpkg.com/screenshot-studio/ (apps that only run `npx` have no local copy).
+
+How to work: **edit → check → render → look → refine.** Run `check` after every edit; never call a card done without looking at its image. Every command takes `--help`, and errors say what to do next.
+
+- If `store-listing/studio.json` is missing, run `npx screenshot-studio init` (with `--screenshots ./folder`, or `--package com.example.app` to capture an Android app, or `--platform ios`). `init` prints the next steps.
+- Prefer the MCP server (`claude mcp add screenshot-studio -- npx screenshot-studio mcp`, run in the app). Call `describe_listing` first, `check` after each edit, `render_card` to see a card, `export` to write everything.
+- Without MCP: `npx screenshot-studio check`, then `npx screenshot-studio export` (one language: `--locale de-DE`; fastlane folders: `--fastlane`; machine-readable: `--json`).
+- Words go in `store-listing/<locale>/copy.json`, keyed by each card's `feature`. Layout goes in `store-listing/gallery.json`, shared by every language; a card's `layers` add words or art to it (with Tailwind classes, when `theme.css` has `@import "tailwindcss";`). The look is `store-listing/theme.css` and `theme.js`, which belong to the app: edit them freely.
+- Never edit `store-listing/studio/`: the package serves it.
+
+## Start here
+
+- [Agent skill](skills/store-screenshots/SKILL.md): the whole job for an agent: setup, which file to edit for what, what a good card looks like, what to check before finishing. `init` installs it at `.claude/skills/store-screenshots/`.
+- [Agents](docs/agents.md): the skill, the MCP server's tools, and the edit/check/render loop
+- [Playbook](docs/playbook.md): taking an app from nothing to a strong listing and README, in order
+
+## The files an app keeps
+
+- [Setting up an app](docs/setup.md): every file in `store-listing/`, `studio.json`, `profiles.json`, cards, the rules every gallery follows, troubleshooting
+- [Types](studio/types.d.ts): the exact shape of every file (`StudioConfig`, `Galleries`, `Profiles`, `Copy`, `Listing`), and the `Theme` and `Tour` that `theme.js` and `capture.tour.mjs` export
+- [JSON Schemas](studio/schemas/): the same rules as JSON Schema; each file's `$schema` points here for editor autocomplete
+
+## Looks and languages
+
+- [Themes](docs/themes.md): re-branding with three variables, layout words, what CSS can see of each card, 3D devices, fonts
+- [Shipped themes](themes/): `theme.css` and `theme.js` for each look, to read before writing your own
+- [Languages and export](docs/languages-and-export.md): words per language, export, README strips, fastlane and F-Droid
+
+## Capturing and icons
+
+- [Capturing](docs/capture.md): tours that drive the real app on an Android emulator or iOS simulator, in every language, and `recapture`
+- [App icons](docs/icons.md): every icon an app ships, from one drawing
+
+## Optional
+
+- [The editor](docs/editor.md): the local web app (`npx screenshot-studio studio --open`) for people
+- [README](README.md): the overview, with every command
+- [Development](docs/development.md): working on the studio itself, not on an app

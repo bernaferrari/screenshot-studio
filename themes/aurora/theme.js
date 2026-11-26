@@ -12,9 +12,6 @@ const LIGHTS = [
   {x: .05, y: .1, r: .4, color: 'var(--light-4)', opacity: .5},
 ];
 
-// SVG attributes can't read CSS variables, but style properties can: move each stop's color into its style.
-const styled = svg => svg.replace(/stop-color="([^"]+)"/g, 'style="stop-color:$1"');
-
 /** @type {import('screenshot-studio').Theme} */
 export default {
   continuous: true,
@@ -23,7 +20,7 @@ export default {
     const {W, H} = ctx;
     // The field: the paper, a touch lighter and darker in turns along the strip.
     const field = panoramaGradient(ctx, 'field', ['var(--paper)', 'color-mix(in oklab,var(--paper) 92%,var(--accent))', 'var(--paper)', 'color-mix(in oklab,var(--paper) 90%,var(--accent))']);
-    return styled(`<defs>${field}</defs><rect width="${W}" height="${H}" fill="url(#field)"/>`) +
-      styled(panoramaLights(ctx, LIGHTS, {id: 'aurora', alone: ctx.kind === 'readme'}));
+    return `<defs>${field}</defs><rect width="${W}" height="${H}" fill="url(#field)"/>` +
+      panoramaLights(ctx, LIGHTS, {id: 'aurora', alone: ctx.kind === 'readme'});
   },
 };

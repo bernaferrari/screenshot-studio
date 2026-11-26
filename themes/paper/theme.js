@@ -3,8 +3,6 @@
 // the app's name and its page number.
 import {panoramaGradient} from './studio/shapes.js';
 
-const styled = svg => svg.replace(/stop-color="([^"]+)"/g, 'style="stop-color:$1"');
-
 /** @type {import('screenshot-studio').Theme} */
 export default {
   continuous: true,
@@ -16,7 +14,7 @@ export default {
     let rules = '';
     for (let y = gap * 2; y < H; y += gap) rules += `<path d="M0 ${y}H${W}" style="stroke:var(--rule)" stroke-width="2"/>`;
     const paper = panoramaGradient(ctx, 'page', ['var(--paper)', 'color-mix(in oklab,var(--paper) 97%,var(--ink))', 'var(--paper)', 'color-mix(in oklab,var(--paper) 96%,var(--ink))']);
-    return `<defs>${styled(paper)}</defs><rect width="${W}" height="${H}" fill="url(#page)"/>${rules}`;
+    return `<defs>${paper}</defs><rect width="${W}" height="${H}" fill="url(#page)"/>${rules}`;
   },
 
   compose({main, slide, slides, index, config}) {

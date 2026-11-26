@@ -36,7 +36,7 @@ body,.campaign{background:var(--paper);color:var(--panel-ink);font-family:Panels
 
 header{z-index:5}
 h1{font-size:120px;line-height:.98;letter-spacing:-.04em;font-weight:760;font-variation-settings:'opsz' 96}
-h1 em,h1 ins{font-style:normal;text-decoration:none;color:var(--panel-accent)}
+h1 em,h1 ins,.identity em{font-style:normal;text-decoration:none;color:var(--panel-accent)}
 h1 del{opacity:.45}
 header p{margin:28px 0 0;font-size:40px;line-height:1.26;font-weight:450;letter-spacing:-.01em;opacity:.84;max-width:860px;text-wrap:balance}
 

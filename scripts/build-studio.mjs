@@ -11,9 +11,10 @@ import {build} from 'rolldown';
 
 const root = path.resolve(import.meta.dirname, '..');
 const out = path.join(root, 'studio');
-const KEEP = new Set(['package.json', 'index.html', 'assets']);
+const KEEP = new Set(['index.html', 'assets']);
 
-// Start clean, except the editor build.
+// Start clean, except the editor build. studio/ isn't committed: a fresh checkout has none.
+fs.mkdirSync(out, {recursive: true});
 for (const entry of fs.readdirSync(out)) if (!KEEP.has(entry)) fs.rmSync(path.join(out, entry), {recursive: true, force: true});
 
 const banner = '// Built from https://github.com/bernaferrari/screenshot-studio (src/). Edit the source, not this file.';
@@ -22,7 +23,7 @@ const THREE_NOTICE = `/*! three.js r${JSON.parse(fs.readFileSync(path.join(root,
 await build({
   input: path.join(root, 'src/cli/main.ts'),
   platform: 'node',
-  external: [/^node:/, 'playwright', 'agent-device'],
+  external: [/^node:/, 'playwright', 'agent-device', 'tailwindcss'],
   output: {file: path.join(out, 'studio.cjs'), format: 'cjs', codeSplitting: false, banner: `#!/usr/bin/env node\n${banner}`},
 });
 for (const [entry, file] of [['src/renderer/render.ts', 'render.js'], ['src/renderer/shapes.ts', 'shapes.js'], ['src/renderer/devices3d.ts', 'devices3d.js']]) {
@@ -36,6 +37,8 @@ for (const [entry, file] of [['src/renderer/render.ts', 'render.js'], ['src/rend
   });
 }
 fs.chmodSync(path.join(out, 'studio.cjs'), 0o755);
+// Marks the served files (render.js, shapes.js, themes' imports) as ES modules.
+fs.writeFileSync(path.join(out, 'package.json'), JSON.stringify({private: true, type: 'module'}, null, 2) + '\n');
 // The version the MCP server reports, from package.json.
 fs.writeFileSync(path.join(out, 'VERSION'), JSON.parse(fs.readFileSync(path.join(root, 'package.json'), 'utf8')).version + '\n');
 

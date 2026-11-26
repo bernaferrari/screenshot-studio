@@ -3,12 +3,13 @@
 // ../theme.js, and per locale ../<locale>/copy.json (words) and ../<locale>/raw/ (captures).
 // Each step lives in its own module; the theme's hooks run between them: art and compose before captures load,
 // layout once frames have their size, decorate once everything is placed, refit while copy shrinks.
-import {plainHeadline} from '../core/layout';
+import {cardWords, plainHeadline} from '../core/layout';
 import type {ThemeContext} from '../core/types';
 import {drawCallouts} from './callouts';
 import {captureLoader, checkBounds, createDevices, labelDevices, measure, relative, settleDevices, sizeFrames} from './devices';
 import {findWidows, fitCopy} from './fit';
 import {identity} from './identity';
+import {addLayers, cssAttributes, wordAttributes} from './layers';
 import {loadCard} from './load';
 import {headline} from './text';
 
@@ -28,6 +29,12 @@ root.dir = (config.rtl || []).includes(locale) ? 'rtl' : 'ltr';
 root.classList.add(kind, `frame-${profile.frame || 'phone'}`, W > H ? 'landscape' : 'portrait');
 root.style.setProperty('--canvas-width', `${W}px`);
 root.style.setProperty('--canvas-height', `${H}px`);
+// Where the card sits in its gallery's strip, so a CSS background can run across every card: size it to
+// --strip-width and shift it by --card-x (`background:… 0 0/var(--strip-width) 100%; background-position-x:calc(-1 * var(--card-x))`).
+root.style.setProperty('--card-index', String(index));
+root.style.setProperty('--cards', String(slides.length));
+root.style.setProperty('--card-x', `${index * W}px`);
+root.style.setProperty('--strip-width', `${slides.length * W}px`);
 for (const [name, value] of Object.entries(slide.vars || {})) root.style.setProperty(name, value);
 
 // The card: background art, headline, devices, then a name banner in place of the headline.
@@ -35,6 +42,10 @@ const main = document.createElement('main');
 main.className = `campaign ${slide.feature} ${slide.layout || ''}`.trim();
 main.innerHTML = '<svg class="art" aria-hidden="true"></svg>';
 document.body.append(main);
+// Its words for CSS (content: attr(data-number)) and for layer text ({title}, {number}).
+const words = cardWords(slide, index, slides.length, config.app);
+wordAttributes(main, words);
+await addLayers(main, slide.layers || [], words);
 const title = slide.identity ? null : headline(slide);
 if (title) main.append(title);
 main.setAttribute('aria-label', slide.alt || `${slide.feature}: ${plainHeadline(slide.title || '')}`);
@@ -45,7 +56,12 @@ if (slide.identity) main.append(await identity(slide, config));
 const art = main.querySelector<SVGSVGElement>('.art')!;
 art.setAttribute('viewBox', `0 0 ${W} ${H}`);
 const context: ThemeContext = {W, H, kind, locale, defaultLocale, index, slide, slides, profile, profiles, config, main, art, capture: devices[0]?.img};
-if (theme.art) art.innerHTML = theme.art(context) || '';
+if (theme.art) {
+  const drawn = theme.art(context);
+  if (drawn instanceof Node) art.append(drawn);
+  else art.innerHTML = drawn || '';
+  cssAttributes(art);
+}
 if (theme.compose) await theme.compose(context);
 
 const locales = await settleDevices(devices, profiles);
@@ -66,7 +82,10 @@ checkBounds(measured, slide, profile, config, layoutWords);
 
 // A theme with a background that runs across card seams says so (`continuous: true`, or a list of gallery kinds);
 // the exporter then checks that neighbouring cards' touching edges match.
-report.continuous = Array.isArray(theme.continuous) ? theme.continuous.includes(kind) : !!theme.continuous;
+// A theme made of CSS alone says it with `--continuous: 1` (on :root, or on a gallery's class).
+const cssContinuous = getComputedStyle(root).getPropertyValue('--continuous').trim();
+report.continuous = theme.continuous === undefined ? !!cssContinuous && cssContinuous !== '0'
+  : Array.isArray(theme.continuous) ? theme.continuous.includes(kind) : !!theme.continuous;
 // The header to fit is whichever the card ends with, the theme's own included.
 const header = main.querySelector('header');
 if (header) {

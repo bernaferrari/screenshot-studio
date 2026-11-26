@@ -48,6 +48,7 @@ results you can parse, and open the images yourself.
 |---|---|
 | Headline and supporting line of a card | `<locale>/copy.json`, keyed by the card's `feature`: `*highlight*`, `\n` for a new line |
 | Which cards, their order, captures, layout words, callouts | `gallery.json` |
+| Words or art on one card (a sticker, a big number, a shape) | the card's `layers` in `gallery.json`: Tailwind classes when `theme.css` imports `tailwindcss`, otherwise classes styled in `theme.css` |
 | Fonts, colors (`--paper`, `--ink`, `--accent`), where devices sit | `theme.css` |
 | Background art, extra elements, real 3D devices (`depth: true`) | `theme.js` |
 | Image sizes, capture sizes | `profiles.json` |
@@ -76,6 +77,7 @@ Every issue carries a fix; do what it says. The common ones:
 | `Screen leaves the side / top of the card` | Move or shrink the device (section 3) |
 | `takes at most 8 per device type` | Keep the best 8 (Play; 10 on the App Store) and cut the rest from `gallery.json` |
 | `background breaks at the seam` | Draw the background across the strip (`panoramaGradient` from `./studio/shapes.js`) |
+| `is hard to read against what's behind it` | Art runs behind the words: move or soften it there, or change the text color. Never ship it |
 | `en-US capture: phone/…` (a card's note) | That language has no screen of its own there yet: fine until recaptured |
 
 ## 5. Languages

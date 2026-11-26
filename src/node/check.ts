@@ -9,6 +9,7 @@ import {outputProblems} from './outputs';
 import path from 'node:path';
 import {validate, type Schema} from '../core/validate';
 import {cardsFor, devicesFor, requiredCopyFields} from '../core/gallery';
+import {cardWords, fillWords} from '../core/layout';
 import {readJson, requireListing, STUDIO_DIR} from './project';
 import type {Copy, Galleries, Listing, Profiles, StudioConfig} from '../core/types';
 import {isStoreGallery, listingProblems, SCREENSHOT_LIMIT, storeFor} from '../core/stores';
@@ -143,6 +144,18 @@ export function checkListing(listingDir?: string): CheckResult {
         if (callout.raw && !fs.existsSync(path.join(listing, defaultLocale, 'raw', callout.raw))) error('gallery.json', `callout capture ${callout.raw} doesn't exist`, {path: `${at}.callouts[${c}].raw`});
       }
       const words = card.sharedCopy === false ? defaultCopy[`${kind}/${card.feature}`] : {...defaultCopy[card.feature], ...defaultCopy[`${kind}/${card.feature}`]};
+      for (const [l, layer] of (card.layers || []).entries()) {
+        const where = `${at}.layers[${l}]`;
+        if (!layer.text && !layer.src) error('gallery.json', `layer ${l} has neither text nor src`, {path: where, fix: 'Give it "text" (words, {title}, {number}…) or "src" (an image in store-listing/, like assets/blob.svg).'});
+        if (layer.src && !fs.existsSync(path.join(listing, layer.src)))
+          error('gallery.json', `layer image ${layer.src} doesn't exist`, {path: `${where}.src`, fix: 'Add the file to store-listing/ (assets/ is a good home), or fix the path; it is relative to store-listing/.'});
+        if (layer.text) {
+          const {unknown} = fillWords(layer.text, cardWords({...card, ...words}, i, cards.length, config.app));
+          for (const name of unknown)
+            error('gallery.json', `layer text uses {${name}}, which card "${card.feature}" (${kind}) doesn't have`, {path: `${where}.text`,
+              fix: `Add "${name}" to {"${card.feature}": {…}} in ${defaultLocale}/copy.json, or use one of {title}, {body}, {tagline}, {feature}, {number}, {cards}, {app}.`});
+        }
+      }
       // A card meant to have no headline says so with "title": "" (README art under its own section heading, say).
       if (devices.length && !card.identity && !(words && 'title' in words) && profiles[kind].frame !== 'none')
         warn(`${defaultLocale}/copy.json`, `card "${card.feature}" (${kind}) has no headline`, {fix: `Add {"${card.feature}": {"title": "…", "body": "…"}}.`});
