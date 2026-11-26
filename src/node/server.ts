@@ -1,7 +1,8 @@
 /**
  * The local Screenshot Studio server. It serves an app's files, and the studio itself (renderer, editor, theme helpers)
  * at the app's store-listing/studio/ address, so an app keeps no copy of the studio: a theme's
- * `import … from './studio/shapes.js'` and the renderer's `../theme.js` both resolve. With a workspace it also serves
+ * `import … from 'screenshot-studio/shapes'` (mapped in preview.html; './studio/shapes.js' still works) and the
+ * renderer's `../theme.js` (the app's theme.ts, stripped of its types) both resolve. With a workspace it also serves
  * the project overview and /p/<id>/ mounts for every connected project.
  *   npx screenshot-studio studio [port] [--add /path/to/app]… [--registry projects.json] [--open]
  */
@@ -10,7 +11,8 @@ import fs from 'node:fs';
 import path from 'node:path';
 import {createHash, randomUUID} from 'node:crypto';
 import {inside, createWorkspaceStore} from './workspace/store';
-import {findListing, readJson, STUDIO_DIR} from './project';
+import {findListing, readJson, STUDIO_DIR, themeScript} from './project';
+import {stripTypes} from './typescript';
 import {withoutMeta} from '../core/gallery';
 import {compileTheme} from './tailwind';
 import {validate, type Schema} from '../core/validate';
@@ -90,6 +92,13 @@ export function serve(root: string, port = 0, {editable = false, workspace = nul
         }
         if (!['GET', 'HEAD'].includes(request.method || '')) { response.writeHead(405).end(); return; }
         if (fs.existsSync(file) && fs.statSync(file).isDirectory()) file = path.join(file, 'index.html');
+        // The renderer loads ../theme.js; a listing with theme.ts (which wins over a theme.js) gets it stripped of its types.
+        const typed = path.basename(file) === 'theme.js' && path.dirname(file) === path.resolve(listingRoot) ? themeScript(listingRoot) : null;
+        if (typed?.endsWith('.ts')) {
+          const script = Buffer.from(stripTypes(await fs.promises.readFile(typed, 'utf8'), 'theme.ts'));
+          response.writeHead(200, {'Content-Type': 'text/javascript; charset=utf-8', 'Cache-Control': 'no-store'});
+          response.end(request.method === 'HEAD' ? undefined : script); return;
+        }
         if (fs.existsSync(file) && !inside(fs.realpathSync(allowedRoot), fs.realpathSync(file))) { response.writeHead(403).end(); return; }
         // A theme.css that asks for Tailwind is compiled for the classes its cards use.
         const data = path.basename(file) === 'theme.css' && path.dirname(file) === path.resolve(listingRoot) ? Buffer.from(await compileTheme(file)) : await fs.promises.readFile(file);

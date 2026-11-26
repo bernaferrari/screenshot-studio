@@ -1,7 +1,8 @@
 // {{name}}: aurora. A night sky lit by soft lights in the primary color and its neighbours, laid out in panorama
 // coordinates so every seam continues. Colors come from theme.css (--background, --primary and the --light-* mixed
 // from it), so re-branding is three shadcn/ui tokens.
-import {panoramaGradient, panoramaLights} from './studio/shapes.js';
+import type {Theme} from 'screenshot-studio';
+import {panoramaGradient, panoramaLights} from 'screenshot-studio/shapes';
 
 // x in card widths (repeated on every card), y as a fraction of the height, r as a fraction of the longer side.
 const LIGHTS = [
@@ -12,7 +13,6 @@ const LIGHTS = [
   {x: .05, y: .1, r: .4, color: 'var(--light-4)', opacity: .5},
 ];
 
-/** @type {import('screenshot-studio').Theme} */
 export default {
   continuous: true,
 
@@ -23,4 +23,4 @@ export default {
     return `<defs>${field}</defs><rect width="${W}" height="${H}" fill="url(#field)"/>` +
       panoramaLights(ctx, LIGHTS, {id: 'aurora', alone: ctx.kind === 'readme'});
   },
-};
+} satisfies Theme;

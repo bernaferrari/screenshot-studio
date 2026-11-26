@@ -18,7 +18,7 @@
  *     "after": ["node scripts/refresh-readme.mjs"]                   shell commands once everything is exported
  *   }
  *
- * Both platforms run store-listing/capture.tour.mjs in the studio itself (capture/tour.ts, on agent-device), per run
+ * Both platforms run store-listing/capture.tour.ts in the studio itself (capture/tour.ts, on agent-device), per run
  * and locale. The default locale goes first, since it records the tap map other locales replay. --boot starts the
  * capture emulator headless when it isn't running and waits for it.
  *
@@ -73,13 +73,12 @@ export function commandEnvironment(listing: string): NodeJS.ProcessEnv {
   };
 }
 
-/** The listing's tour, store-listing/capture.tour.mjs; a Python tour from older versions is named, with what to do. */
+/** The listing's tour, store-listing/capture.tour.ts (or .mjs); a Python tour from older versions is named, with what to do. */
 export function tourFile(listing: string): string {
-  const file = path.join(listing, 'capture.tour.mjs');
-  if (fs.existsSync(file)) return file;
+  for (const name of ['capture.tour.ts', 'capture.tour.mts', 'capture.tour.mjs']) if (fs.existsSync(path.join(listing, name))) return path.join(listing, name);
   const old = ['capture-emulator.py', 'capture-simulator.py'].find(name => fs.existsSync(path.join(listing, name)));
-  if (old) throw new Error(`store-listing/${old} is a Python tour, which this version no longer runs. Write its scenes as store-listing/capture.tour.mjs (docs/capture.md shows the shape), then delete ${old}.`);
-  throw new Error('No capture tour: write store-listing/capture.tour.mjs (docs/capture.md shows the shape).');
+  if (old) throw new Error(`store-listing/${old} is a Python tour, which this version no longer runs. Write its scenes as store-listing/capture.tour.ts (docs/capture.md shows the shape), then delete ${old}.`);
+  throw new Error('No capture tour: write store-listing/capture.tour.ts (docs/capture.md shows the shape).');
 }
 
 export const DEFAULT_SERIAL = 'emulator-5578';

@@ -23,7 +23,7 @@ The project list lives in `~/.screenshot-studio/projects.json`, shared by every 
 
 Each project's header has its numbers at a glance: cards and galleries, languages with a complete asset set, captures and exports present (and when the last export ran), and how much is left to fix. A language's **complete asset set** means its copy is filled in and its captures and exports are all present, and layout maps too where a callout needs one. It doesn't mean they're fresh or pass a strict export. Below the header are the project's three sections: **Gallery**, **Languages** and **Review**.
 
-**Live.** The editor follows the project's files. When `theme.css`, `theme.js`, `gallery.json`, a `copy.json` or a capture changes on disk (you saved in your editor, an agent rewrote the theme, a recapture finished), the affected previews render again in place: the new render loads behind the old one and replaces it when it's ready, so scroll position and zoom stay put. The **Live** badge in the header says whether the editor is following.
+**Live.** The editor follows the project's files. When `theme.css`, `theme.ts`, `gallery.json`, a `copy.json` or a capture changes on disk (you saved in your editor, an agent rewrote the theme, a recapture finished), the affected previews render again in place: the new render loads behind the old one and replaces it when it's ready, so scroll position and zoom stay put. The **Live** badge in the header says whether the editor is following.
 
 <p align="center">
   <img src="images/editor-cards.jpg" width="100%" alt="SDK Monitor's phone cards in the editor">

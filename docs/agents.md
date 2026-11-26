@@ -32,12 +32,12 @@ Large images come back scaled down to fit an agent's limits, on any platform. Th
 
 ## The loop
 
-1. **Edit** `theme.css`, `theme.js`, `gallery.json` or `<locale>/copy.json`.
+1. **Edit** `theme.css`, `theme.ts`, `gallery.json` or `<locale>/copy.json`.
 2. **Check**: `check` (or `npx screenshot-studio check`). Fix every error before rendering.
 3. **Render**: `render_card` for the card you changed (or `npx screenshot-studio export --kind phone --card 0`).
 4. **Look**: `view_image` on the card, and after an `export`, on the contact sheet. Judge it against the playbook's design table ([Playbook](playbook.md)), then edit again.
 
-**Capturing the app** works the same way: look with `emulator_screen`, move with `emulator_tap`, write what you did as the scenes of `store-listing/capture.tour.mjs` (`'02-settings': d => d.tap('Settings')`), and run `npx screenshot-studio recapture`. If the capture emulator isn't running, the error lists the ways forward ([Capturing](capture.md)).
+**Capturing the app** works the same way: look with `emulator_screen`, move with `emulator_tap`, write what you did as the scenes of `store-listing/capture.tour.ts` (`'02-settings': d => d.tap('Settings')`), and run `npx screenshot-studio recapture`. If the capture emulator isn't running, the error lists the ways forward ([Capturing](capture.md)).
 
 Without MCP, the CLI does the same: `check --json` and `export --json` print results a tool can read, and the agent opens the images itself. Never call a card done without looking at it.
 

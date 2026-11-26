@@ -12,7 +12,7 @@ fs.copyFileSync(
   "ui/SHADCN-LICENSE.md",
   path.join(target, "shadcn-LICENSE.txt"),
 );
-// Notices for the packages the build bundled (vite.config.js records them) and their runtime dependencies, which
+// Notices for the packages the build bundled (vite.config.ts records them) and their runtime dependencies, which
 // may be bundled in part.
 const bundled = new Set(JSON.parse(fs.readFileSync(".ui-build/bundled-packages.json", "utf8")));
 for (const directory of bundled) {

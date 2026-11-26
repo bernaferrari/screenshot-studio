@@ -1,7 +1,7 @@
 // Screenshot Studio types: every file an app keeps in store-listing/, and the context a theme receives.
-// Apps get this file as store-listing/studio/types.d.ts; a theme.js can opt into checking with
-//   /** @type {import('./studio/types').Theme} */
-//   export default {...};
+// Themes and tours are TypeScript and check themselves against these types:
+//   import type {Theme} from 'screenshot-studio';
+//   export default {...} satisfies Theme;
 // The JSON Schemas in schemas/ are generated from these types (`npm run schemas`): their descriptions are these
 // comments, and tags like @pattern or @minimum are rules `check` enforces.
 
@@ -153,7 +153,7 @@ export interface CaptureInstall {
   app?: string;
   package: string;
 }
-/** One run of the tour (capture.tour.mjs). */
+/** One run of the tour (capture.tour.ts). */
 export interface CaptureRun {
   /** Values the tour reads as d.options; `${NAME}` in a string reads the environment. */
   options?: Record<string, unknown>;
@@ -402,7 +402,7 @@ export interface RenderedDevice {
   screen: Box;
 }
 
-/** store-listing/theme.js's default export. Every hook is optional. */
+/** store-listing/theme.ts's default export. Every hook is optional. */
 export interface Theme {
   /**
    * The background layer: SVG markup or nodes. Attributes may use CSS (fill="var(--primary)", stop-color="color-mix(…)");
@@ -427,7 +427,7 @@ export interface Theme {
 }
 
 /**
- * store-listing/capture.tour.mjs: how to reach each screen the cards need. The studio runs it for every language and
+ * store-listing/capture.tour.ts: how to reach each screen the cards need. The studio runs it for every language and
  * capture size (profiles.json entries with captureWidth, captureHeight and captureDensity), sets the emulator up (size,
  * density, 9:41 demo status bar, the app's language, light or dark), saves each scene as
  * <locale>/raw/<profile>/<scene>.png with its layout map, and puts everything back afterwards.

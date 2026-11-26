@@ -37,9 +37,9 @@ store-listing/
   profiles.json        one entry per gallery: canvas size, capture size, device frame
   gallery.json         the cards: which capture, which layout, in which order
   theme.css            the look: type, colors, where devices sit
-  theme.js             optional code: background art and extra elements
+  theme.ts             optional code: background art and extra elements
   assets/              the theme's fonts, if it ships any
-  capture.tour.mjs     the scene tour, on the Android emulator or iOS simulators (see Capturing)
+  capture.tour.ts      the scene tour, on the Android emulator or iOS simulators (see Capturing)
   <locale>/copy.json   the words for each card
   <locale>/listing.json  the store text
   <locale>/raw/        captures, each with a .nodes.json layout map
@@ -160,7 +160,7 @@ Coordinates are capture pixels; `dx`/`dy` move it. A callout may come from anoth
 
 `theme.css` holds the app's look: fonts, colors, and where devices sit per gallery (`.phone`, `.tablet7`, `.tablet10`, `.readme`, with the card's layout words as classes).
 
-`theme.js` exports optional hooks, called in this order with one context `ctx`:
+`theme.ts` exports optional hooks, called in this order with one context `ctx`:
 
 | Hook | When | Use |
 |---|---|---|
@@ -171,9 +171,9 @@ Coordinates are capture pixels; `dx`/`dy` move it. A callout may come from anoth
 
 `ctx` holds `W`, `H`, `kind` (gallery), `locale`, `index`, `slide` (the card), `slides`, `profile`, `config`, `main` (the card's element), and in `decorate`, `devices` with each one's `box` and `screen`. Mark anything that must stay on the canvas with `data-check-bounds`.
 
-`studio/shapes.js` has helpers for themes: panorama coordinates and gradients (art that continues exactly across cards), `panoramaLights` (soft lights across the whole strip), color mixing, and Material 3 Expressive shapes.
+`screenshot-studio/shapes` has helpers for themes: panorama coordinates and gradients (art that continues exactly across cards), `panoramaLights` (soft lights across the whole strip), color mixing, and Material 3 Expressive shapes.
 
-**Continuous backgrounds.** A theme whose background runs across cards sets `continuous: true` (or a list of galleries) in `theme.js`, or `--continuous: 1` in `theme.css`. The exporter then compares the pixels where neighbouring cards meet and warns when the background doesn't continue. Draw such art in panorama coordinates, never per card: in CSS, size it to `--strip-width` and shift it by `--card-x` ([Themes](themes.md#what-css-can-see)).
+**Continuous backgrounds.** A theme whose background runs across cards sets `continuous: true` (or a list of galleries) in `theme.ts`, or `--continuous: 1` in `theme.css`. The exporter then compares the pixels where neighbouring cards meet and warns when the background doesn't continue. Draw such art in panorama coordinates, never per card: in CSS, size it to `--strip-width` and shift it by `--card-x` ([Themes](themes.md#what-css-can-see)).
 
 ## What the studio does for every theme
 

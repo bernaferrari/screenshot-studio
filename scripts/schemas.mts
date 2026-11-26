@@ -1,7 +1,7 @@
 // Generates schemas/*.schema.json, the JSON Schemas `check` and editors use, from the types in src/core/types.d.ts.
 // The types are the source: descriptions come from their comments, rules from tags like @pattern and @minimum.
-//   node scripts/schemas.mjs           write schemas/
-//   node scripts/schemas.mjs --check   fail if schemas/ doesn't match the types
+//   node scripts/schemas.mts           write schemas/
+//   node scripts/schemas.mts --check   fail if schemas/ doesn't match the types
 import fs from 'node:fs';
 import path from 'node:path';
 import {createGenerator} from 'ts-json-schema-generator';

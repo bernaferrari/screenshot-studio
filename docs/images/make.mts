@@ -1,7 +1,7 @@
 // The README's art. From the real exported cards of the apps that use the studio: hero.jpg, before-after.jpg,
 // themes.jpg, depth.jpg, callouts.jpg and readme-art.jpg. With --editor, from the editor open on a fresh `demo` project: editor-store.jpg and
 // editor-languages.jpg (for docs/editor.md) and demo.gif, the cards re-rendering live as the theme changes on disk (ffmpeg makes the GIF).
-//   node docs/images/make.mjs [hero before-after …] [--editor]   (APPS=~/Documents/android: the apps whose cards it shows)
+//   node docs/images/make.mts [hero before-after …] [--editor]   (APPS=~/Documents/android: the apps whose cards it shows)
 // Run `npm run build` first. The editor runs on a temporary home and project list; yours are left alone.
 import fs from 'node:fs';
 import os from 'node:os';
@@ -111,7 +111,7 @@ function callouts() {
   const locales = [['en-US', 'English'], ['de-DE', 'Deutsch'], ['zh-CN', '中文']];
   for (const [locale] of locales) for (const ext of ['png', 'nodes.json'])
     fs.copyFileSync(path.join(listing('ChangeDetection'), locale, `raw/phone/light/02b-compare-restock.${ext}`), path.join(at, locale, `raw/phone/restock.${ext}`));
-  for (const file of ['theme.css', 'theme.js']) fs.writeFileSync(path.join(at, file), fs.readFileSync(path.join(root, 'themes/aurora', file), 'utf8').replaceAll('{{name}}', 'ChangeDetection'));
+  for (const file of ['theme.css', 'theme.ts']) fs.writeFileSync(path.join(at, file), fs.readFileSync(path.join(root, 'themes/aurora', file), 'utf8').replaceAll('{{name}}', 'ChangeDetection'));
   fs.cpSync(path.join(root, 'themes/aurora/assets'), path.join(at, 'assets'), {recursive: true});
   const profiles = JSON.parse(fs.readFileSync(path.join(at, 'profiles.json'), 'utf8'));
   Object.assign(profiles.phone, {captureWidth: 1080, captureHeight: 2340});
@@ -177,7 +177,7 @@ async function editor(browser) {
     // The GIF: the theme swapped on disk the way an agent edits it, each swap re-rendering the cards in place.
     const swap = theme => {
       fs.rmSync(path.join(listing, 'assets'), {recursive: true, force: true});
-      for (const file of ['theme.css', 'theme.js']) {
+      for (const file of ['theme.css', 'theme.ts']) {
         const from = path.join(root, 'themes', theme, file);
         if (fs.existsSync(from)) fs.writeFileSync(path.join(listing, file), fs.readFileSync(from, 'utf8').replaceAll('{{name}}', 'ChangeDetection'));
       }

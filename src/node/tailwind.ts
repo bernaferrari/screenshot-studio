@@ -1,11 +1,11 @@
 // Tailwind CSS in an app's theme.css. A theme that imports "tailwindcss" (or uses @apply, @theme or @utility) is
 // compiled when it is served: utilities for every class its cards use (layers, layout words, device roles in
-// gallery.json, and the strings in theme.js), and @apply in its own rules. Tailwind's reset (preflight) is left out,
+// gallery.json, and the strings in theme.ts), and @apply in its own rules. Tailwind's reset (preflight) is left out,
 // so it can't undo the renderer's base styles, and the colors are shadcn/ui's tokens, which every theme sets
 // (bg-background, text-foreground, bg-primary text-primary-foreground, text-muted-foreground, border-border).
 import fs from 'node:fs';
 import path from 'node:path';
-import {STUDIO_DIR} from './project';
+import {STUDIO_DIR, themeScript} from './project';
 
 /** Whether theme.css asks for Tailwind. */
 export const usesTailwind = (css: string): boolean => /@import\s+(url\()?["']tailwindcss|@apply\s|@theme\b|@utility\s/.test(css);
@@ -23,7 +23,7 @@ ${TOKENS.map(name => `  --color-${name}: var(--${name});`).join('\n')}
 }
 `;
 
-/** Every class name a card can carry: layer classes, layout words and device roles in gallery.json, and theme.js's strings. */
+/** Every class name a card can carry: layer classes, layout words and device roles in gallery.json, and the theme script's strings. */
 export function candidates(listing: string): string[] {
   const found = new Set<string>();
   const add = (text: string) => { for (const word of text.split(/\s+/)) if (word) found.add(word); };
@@ -34,8 +34,8 @@ export function candidates(listing: string): string[] {
   };
   const gallery = path.join(listing, 'gallery.json');
   if (fs.existsSync(gallery)) { try { walk(JSON.parse(fs.readFileSync(gallery, 'utf8'))); } catch { /* check reports a broken gallery.json */ } }
-  const script = path.join(listing, 'theme.js');
-  if (fs.existsSync(script)) for (const [, text] of fs.readFileSync(script, 'utf8').matchAll(/["'`]([^"'`\n]*)["'`]/g)) add(text);
+  const script = themeScript(listing);
+  if (script) for (const [, text] of fs.readFileSync(script, 'utf8').matchAll(/["'`]([^"'`\n]*)["'`]/g)) add(text);
   return [...found];
 }
 

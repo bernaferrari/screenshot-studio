@@ -44,7 +44,7 @@ export function createTools(defaultListing?: string): Tool[] {
         const copy = readCopy(listing, defaultLocale);
         return [text({
           listing, app: config.app, defaultLocale, locales,
-          files: {theme: ['theme.css', 'theme.js'].filter(f => fs.existsSync(path.join(listing, f))), gallery: 'gallery.json', copy: `${defaultLocale}/copy.json`},
+          files: {theme: ['theme.css', 'theme.ts', 'theme.js'].filter(f => fs.existsSync(path.join(listing, f))), gallery: 'gallery.json', copy: `${defaultLocale}/copy.json`},
           galleries: Object.fromEntries(Object.keys(galleries).map(kind => [kind, {
             size: `${profiles[kind].width}×${profiles[kind].height}`, frame: profiles[kind].frame, defaultLocaleOnly: !!profiles[kind].defaultLocaleOnly,
             cards: cardsFor(galleries, kind).map((card, index) => ({
@@ -112,7 +112,7 @@ export function createTools(defaultListing?: string): Tool[] {
     },
     {
       name: 'emulator_screen',
-      description: 'Look at the capture emulator: a screenshot and every labelled element with its bounds, read exactly as a capture tour reads it. Use it to write or fix the tour (store-listing/capture.tour.mjs): each label is what d.tap("…") takes. An Android emulator, or a booted iOS simulator with `simulator`; never a phone.',
+      description: 'Look at the capture emulator: a screenshot and every labelled element with its bounds, read exactly as a capture tour reads it. Use it to write or fix the tour (store-listing/capture.tour.ts): each label is what d.tap("…") takes. An Android emulator, or a booted iOS simulator with `simulator`; never a phone.',
       inputSchema: {type: 'object', properties: {serial: {type: 'string', description: 'The emulator (default: the capture emulator, emulator-5578).'},
         simulator: {type: 'string', description: 'iOS instead: a booted simulator, by name or UDID.'},
         app: {type: 'string', description: 'iOS: the app whose screen to read (default: the listing\'s iOS app).'}}},

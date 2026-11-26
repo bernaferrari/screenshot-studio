@@ -1,9 +1,9 @@
 // {{name}}: paper. A ruled page under the whole strip: the paper's tone is laid out in panorama coordinates and the
 // rules sit at the same heights on every card, so the set reads as one page. Each card carries a running head with
 // the app's name and its page number.
-import {panoramaGradient} from './studio/shapes.js';
+import type {Theme} from 'screenshot-studio';
+import {panoramaGradient} from 'screenshot-studio/shapes';
 
-/** @type {import('screenshot-studio').Theme} */
 export default {
   continuous: true,
 
@@ -30,4 +30,4 @@ export default {
     folio.append(name, page);
     main.append(folio);
   },
-};
+} satisfies Theme;

@@ -39,12 +39,12 @@ test('waits and scrolls record a value in the default language and replay it, nu
   assert.throws(() => replay.take('phone|light|scroll Most blocked'), /Nothing recorded for phone\|light\|scroll Most blocked#2/);
 });
 
-test('a listing still on a Python tour is told to write capture.tour.mjs', t => {
+test('a listing still on a Python tour is told to write capture.tour.ts', t => {
   const {tourFile} = require('../studio/studio.cjs');
   const fs = require('node:fs'), os = require('node:os'), path = require('node:path');
   const listing = fs.mkdtempSync(path.join(os.tmpdir(), 'studio-tour-'));
   t.after(() => fs.rmSync(listing, {recursive: true, force: true}));
-  assert.throws(() => tourFile(listing), /write store-listing\/capture\.tour\.mjs/);
+  assert.throws(() => tourFile(listing), /write store-listing\/capture\.tour\.ts/);
   fs.writeFileSync(path.join(listing, 'capture-emulator.py'), '');
   assert.throws(() => tourFile(listing), /capture-emulator\.py is a Python tour, which this version no longer runs/);
   fs.writeFileSync(path.join(listing, 'capture.tour.mjs'), 'export default {}');

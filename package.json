@@ -26,6 +26,17 @@
   },
   "main": "studio/studio.cjs",
   "types": "studio/types.d.ts",
+  "exports": {
+    ".": {
+      "types": "./studio/types.d.ts",
+      "default": "./studio/studio.cjs"
+    },
+    "./shapes": {
+      "types": "./studio/shapes.d.ts",
+      "default": "./studio/shapes.js"
+    },
+    "./package.json": "./package.json"
+  },
   "files": [
     "LICENSE",
     "README.md",
@@ -38,19 +49,19 @@
     "!themes/*/preview.jpg"
   ],
   "engines": {
-    "node": ">=22.12"
+    "node": ">=22.18"
   },
   "scripts": {
     "dev": "vite --host 127.0.0.1",
     "build": "npm run build:studio && npm run build:ui",
     "prepack": "npm run build",
-    "test": "node --test test/gallery.test.cjs test/layout.test.cjs test/workspace.test.cjs test/ios.test.cjs test/schemas.test.cjs test/icon.test.cjs test/check.test.cjs test/tailwind.test.cjs test/init.test.cjs test/capture.test.cjs test/editor.test.mjs test/export.test.cjs",
-    "test:ui": "node --test test/navigation.browser.cjs",
-    "build:studio": "npm run schemas && tsc -p tsconfig.json && node scripts/build-studio.mjs",
-    "build:ui": "vite build && node scripts/install-ui.mjs",
-    "schemas": "node scripts/schemas.mjs",
-    "typecheck": "tsc -p tsconfig.json && tsc -p tsconfig.ui.json",
-    "test:golden": "node --test test/golden.test.cjs test/demo.test.cjs"
+    "test": "node --test test/gallery.test.cts test/layout.test.cts test/workspace.test.cts test/ios.test.cts test/schemas.test.cts test/icon.test.cts test/check.test.cts test/tailwind.test.cts test/init.test.cts test/capture.test.cts test/editor.test.mts test/export.test.cts",
+    "test:ui": "node --test test/navigation.browser.cts",
+    "build:studio": "npm run schemas && tsc -p tsconfig.json && tsc -p tsconfig.shapes.json && node scripts/build-studio.mts",
+    "build:ui": "vite build && node scripts/install-ui.mts",
+    "schemas": "node scripts/schemas.mts",
+    "typecheck": "tsc -p tsconfig.json && tsc -p tsconfig.ui.json && tsc -p tsconfig.themes.json",
+    "test:golden": "node --test test/golden.test.cts test/demo.test.cts"
   },
   "dependencies": {
     "agent-device": "^0.21.35",

@@ -3,7 +3,7 @@ import react from "@vitejs/plugin-react";
 import tailwindcss from "@tailwindcss/vite";
 import path from "node:path";
 
-/** Records the packages the bundle really contains, so install-ui.mjs ships exactly their license notices. */
+/** Records the packages the bundle really contains, so install-ui.mts ships exactly their license notices. */
 function bundledPackages() {
   return {
     name: "bundled-packages",

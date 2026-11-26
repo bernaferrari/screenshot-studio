@@ -6,7 +6,7 @@ saves each screen with its layout map, and puts the device back.
 
 ## The tour
 
-`store-listing/capture.tour.mjs` (`init --package` writes one):
+`store-listing/capture.tour.ts` (`init --package` writes one):
 
 ```js
 /** @type {import('screenshot-studio').Tour} */
@@ -166,7 +166,7 @@ after resetting the emulator. Then it exports each language (one failing languag
 
 Use one capture emulator at a time: several at once can run the computer out of memory, and the system then kills one
 mid-capture. Tours need Node 22.12 or later. A listing with a Python tour from an older version (`capture-emulator.py`)
-gets an error saying so: write its scenes as `capture.tour.mjs`.
+gets an error saying so: write its scenes as `capture.tour.ts`.
 
 ## Fictional apps
 
@@ -206,7 +206,7 @@ Each iOS profile in `profiles.json` has `"platform": "ios"`, a capture size and 
 
 ### The tour
 
-The same `store-listing/capture.tour.mjs`, with the same toolkit: agent-device reads the simulator's accessibility tree
+The same `store-listing/capture.tour.ts`, with the same toolkit: agent-device reads the simulator's accessibility tree
 and taps through XCTest, so `d.tap('Settings')`, `waitFor`, `scrollTo` and the tap map work as on Android (positions
 are in screenshot pixels on both). `init --platform ios` writes one:
 

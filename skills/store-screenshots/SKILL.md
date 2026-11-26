@@ -50,7 +50,7 @@ results you can parse, and open the images yourself.
 | Which cards, their order, captures, layout words, callouts | `gallery.json` |
 | Words or art on one card (a sticker, a big number, a shape) | the card's `layers` in `gallery.json`: Tailwind classes when `theme.css` imports `tailwindcss`, otherwise classes styled in `theme.css` |
 | Fonts, colors (shadcn/ui tokens: `--background`, `--foreground`, `--primary`), where devices sit | `theme.css` |
-| Background art, extra elements, real 3D devices (`depth: true`) | `theme.js` |
+| Background art, extra elements, real 3D devices (`depth: true`) | `theme.ts` |
 | Image sizes, capture sizes | `profiles.json` |
 | Store text (title, short description) | `<locale>/listing.json` |
 
@@ -97,7 +97,7 @@ profile names. If one isn't running, the error says how to start it (`recapture 
 1. The app needs a capture build that opens on believable, fictional sample data (`docs/playbook.md`, section 1).
 2. Look at the app: `emulator_screen` shows the screen and every element's label; `emulator_tap` taps a label, a point
    or `back` (both take `simulator` for iOS). Find each screen the cards need.
-3. Write what you did as the scenes of `store-listing/capture.tour.mjs`, each named for the capture it saves and
+3. Write what you did as the scenes of `store-listing/capture.tour.ts`, each named for the capture it saves and
    saying how to reach it from the one before: `'02-settings': d => d.tap('Settings')`, with the labels you saw in
    the default language (other languages replay the same taps). `null` saves the screen as it is; returning `false`
    skips a scene on that device. Like an e2e test, every action waits for its element and for the screen to settle:

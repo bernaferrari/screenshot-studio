@@ -438,7 +438,7 @@
         }
       },
       "additionalProperties": false,
-      "description": "One run of the tour (capture.tour.mjs)."
+      "description": "One run of the tour (capture.tour.ts)."
     }
   }
 }

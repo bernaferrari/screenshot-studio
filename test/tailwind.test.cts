@@ -10,7 +10,7 @@ test('a theme.css that imports tailwindcss compiles utilities for the classes it
   const listing = fs.mkdtempSync(path.join(os.tmpdir(), 'studio-tailwind-'));
   try {
     fs.writeFileSync(path.join(listing, 'gallery.json'), JSON.stringify({phone: [{feature: 'a', layout: 'big', layers: [{text: 'Hi', class: 'rotate-6 bg-primary/20 text-primary-foreground bg-accent text-[120px]'}]}]}));
-    fs.writeFileSync(path.join(listing, 'theme.js'), "export default {compose({main}) { main.append(Object.assign(document.createElement('i'), {className: 'px-8 font-black'})); }};");
+    fs.writeFileSync(path.join(listing, 'theme.ts'), "import type {Theme} from 'screenshot-studio';\nexport default {compose({main}) { main.append(Object.assign(document.createElement('i'), {className: 'px-8 font-black'})); }} satisfies Theme;");
     fs.writeFileSync(path.join(listing, 'theme.css'), '@import "studio/layouts.css";\n@import "tailwindcss";\n:root{--primary:#f50}\nh1 em{@apply text-primary}\n');
     const css = await compileTheme(path.join(listing, 'theme.css'));
     for (const rule of ['.rotate-6', '.bg-primary\\/20', '.text-primary-foreground', '.bg-accent', '.text-\\[120px\\]', '.px-8', '.font-black']) assert.ok(css.includes(rule), `missing ${rule}`);

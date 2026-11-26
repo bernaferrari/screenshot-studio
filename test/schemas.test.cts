@@ -7,7 +7,7 @@ const {spawnSync} = require('node:child_process');
 const ROOT = path.join(__dirname, '..');
 
 test('schemas/ matches the types it is generated from', () => {
-  const run = spawnSync(process.execPath, [path.join(ROOT, 'scripts/schemas.mjs'), '--check'], {encoding: 'utf8'});
+  const run = spawnSync(process.execPath, [path.join(ROOT, 'scripts/schemas.mts'), '--check'], {encoding: 'utf8'});
   assert.equal(run.status, 0, run.stderr);
 });
 

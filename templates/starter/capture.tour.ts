@@ -1,8 +1,8 @@
 // {{name}}'s store screens, captured on the emulator. `npx screenshot-studio recapture --boot` builds the capture
 // app (studio.json → capture), boots the emulator, runs this for every language, device size and theme, and exports.
 // Alone: npx screenshot-studio tour [--profile phone]. See what to tap: npx screenshot-studio screen.
+import type {Tour} from 'screenshot-studio';
 
-/** @type {import('screenshot-studio').Tour} */
 export default {
   app: '{{package}}.storecapture',
   activity: '.MainActivity',
@@ -17,4 +17,4 @@ export default {
       '03-hero-dark': null,
     },
   },
-};
+} satisfies Tour;

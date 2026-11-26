@@ -1,0 +1,15 @@
+{
+  "//": "Emits studio/shapes.d.ts (via scripts/build-studio.mts): the types of the helpers themes import from screenshot-studio/shapes.",
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "noEmit": false,
+    "declaration": true,
+    "emitDeclarationOnly": true,
+    "outDir": ".shapes-types",
+    "rootDir": "src"
+  },
+  "include": [],
+  "files": [
+    "src/renderer/shapes.ts"
+  ]
+}

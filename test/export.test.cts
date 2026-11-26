@@ -74,7 +74,7 @@ test('text that blends into what is behind it is a warning; the same card with r
   const listing = path.join(root, 'store-listing');
   fs.cpSync(path.join(__dirname, 'fixtures', 'golden'), listing, {recursive: true});
   const theme = path.join(__dirname, '..', 'themes', 'starter');
-  for (const file of ['theme.css', 'theme.js']) fs.copyFileSync(path.join(theme, file), path.join(listing, file));
+  for (const file of ['theme.css', 'theme.ts']) fs.copyFileSync(path.join(theme, file), path.join(listing, file));
   const run = () => exportListing({listing, locales: ['en-US'], kind: 'phone', card: 0, jobs: 1, log: () => {}});
   const readable = await run();
   assert.equal(readable.ok, true, readable.error);

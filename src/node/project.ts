@@ -46,6 +46,12 @@ export function loadListing(listing: string): ListingFiles {
 
 export const readCopy = (listing: string, locale: string): Copy => readJson<Copy>(path.join(listing, locale, 'copy.json'), {});
 
+/** A listing's theme script: theme.ts, or theme.js (themes before TypeScript); null for a theme of CSS alone. */
+export function themeScript(listing: string): string | null {
+  for (const name of ['theme.ts', 'theme.js']) if (fs.existsSync(path.join(listing, name))) return path.join(listing, name);
+  return null;
+}
+
 /** The studio's own files (renderer, editor, schemas, capture): the folder this bundle runs from. */
 export const STUDIO_DIR = __dirname;
 

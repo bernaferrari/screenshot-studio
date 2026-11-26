@@ -2,8 +2,8 @@
 // app for the simulator (studio.json → capture), boots each profile's simulator (profiles.json "simulator"), runs this
 // in every language and theme, and exports. Alone: npx screenshot-studio tour [--profile iphone]. See what to tap:
 // npx screenshot-studio screen --simulator "iPhone 17 Pro Max".
+import type {Tour} from 'screenshot-studio';
 
-/** @type {import('screenshot-studio').Tour} */
 export default {
   app: '{{package}}',
   // Each theme starts the app afresh; its debug or capture build fills itself with fictional sample data. Launch
@@ -18,4 +18,4 @@ export default {
       '03-hero-dark': null,
     },
   },
-};
+} satisfies Tour;

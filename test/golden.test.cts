@@ -27,7 +27,7 @@ function project(theme) {
   const listing = path.join(app, 'store-listing');
   fs.cpSync(FIXTURE, listing, {recursive: true});
   const from = path.join(ROOT, 'themes', theme);
-  for (const file of ['theme.css', 'theme.js']) {
+  for (const file of ['theme.css', 'theme.ts', 'theme.js']) {
     if (fs.existsSync(path.join(from, file))) fs.writeFileSync(path.join(listing, file), fs.readFileSync(path.join(from, file), 'utf8').replaceAll('{{name}}', 'Demo'));
   }
   if (fs.existsSync(path.join(from, 'assets'))) fs.cpSync(path.join(from, 'assets'), path.join(listing, 'assets'), {recursive: true});

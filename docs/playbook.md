@@ -25,7 +25,7 @@ tweak lives in those files ([Setting up an app](setup.md)). Pick a starting look
   numbers, and at least one story with a visible change (a price drop, a signal dip and recovery). `.example`
   domains look fake; avoid them.
 - **Light mode by default.** Light screens read better on most canvases. Use dark only where it is the point.
-- **Script it.** Write only the scene tour: `store-listing/capture.tour.mjs`, a list of scenes
+- **Script it.** Write only the scene tour: `store-listing/capture.tour.ts`, a list of scenes
   ([Capturing](capture.md)). It sets display size and density for phone (1080×2340 @400–420), 7-inch
   (1200×1920 @320) and 10-inch (1920×1200 @240), System UI demo mode (9:41, full battery and Wi-Fi), gesture
   navigation and the app language, saves `<locale>/raw/<profile>/<name>.png` with a `.nodes.json` layout map, and

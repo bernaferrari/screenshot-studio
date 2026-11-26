@@ -2,3 +2,4 @@ node_modules/
 .ui-build/
 .DS_Store
 studio/
+.shapes-types/

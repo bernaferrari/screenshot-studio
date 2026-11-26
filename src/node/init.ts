@@ -273,10 +273,10 @@ export function init(options: InitOptions = {}): InitResult {
     template('profiles.json');
     template('gallery.json');
     template('en-US/copy.json', `${reference}/copy.json`);
-    if (pkg && !ios) template('capture.tour.mjs');
+    if (pkg && !ios) template('capture.tour.ts');
     result.cards = ios ? 5 : 4;
   }
-  if (ios) template('capture.tour.mjs');
+  if (ios) template('capture.tour.ts');
   template('en-US/listing.json', `${reference}/listing.json`);
   template('gitignore', '.gitignore');
   template('README.md');
@@ -292,12 +292,12 @@ export function init(options: InitOptions = {}): InitResult {
 }
 
 /**
- * Copy a theme into a listing: theme.css and theme.js (with the app's name filled in; iOS galleries get their positions
+ * Copy a theme into a listing: theme.css and theme.ts (with the app's name filled in; iOS galleries get their positions
  * after the theme's own look) and its assets byte for byte. `write` decides whether existing files are kept.
  */
 export function installTheme(listing: string, theme: string, options: {fill: (text: string) => string; write: (relative: string, content: string) => void; result?: {created: string[]; kept: string[]}; ios?: boolean; overwrite?: boolean}) {
   if (!fs.existsSync(path.join(THEMES, theme, 'theme.css'))) throw new Error(`No theme "${theme}". Available: ${themes().map(t => t.name).join(', ')}`);
-  for (const file of ['theme.css', 'theme.js']) {
+  for (const file of ['theme.css', 'theme.ts', 'theme.js']) {
     const from = path.join(THEMES, theme, file);
     const extra = options.ios && file === 'theme.css' ? fs.readFileSync(path.join(IOS_TEMPLATES, 'theme.css'), 'utf8') : '';
     if (fs.existsSync(from)) options.write(file, options.fill(fs.readFileSync(from, 'utf8') + extra));
@@ -335,8 +335,8 @@ export async function run(argv: string[]): Promise<number> {
     console.log(result.imported
       ? `Next:\n  1. Write the headlines in store-listing/${result.locales[0]}/copy.json (one per card, *highlight* a key word)${others.length ? `\n  2. Translate them into the empty fields of ${others.map(l => `${l}/copy.json`).join(', ')}` : ''}\n  ${others.length ? 3 : 2}. ${cd}npx screenshot-studio check, then export (or studio --open for the editor)`
       : values.platform === 'ios'
-        ? `Next:\n  1. Make the app's Debug build open on fictional sample data (docs/capture.md, iOS)\n  2. Write the tour in store-listing/capture.tour.mjs (npx screenshot-studio screen --simulator NAME shows what to tap); check capture.build in studio.json\n  3. ${cd}npx screenshot-studio recapture --boot`
-        : `Next:\n  1. Add a capture build that fills the app with sample data (docs/playbook.md, section 1)\n  2. Write the tour in store-listing/capture.tour.mjs (npx screenshot-studio screen shows what to tap)\n  3. ${cd}npx screenshot-studio recapture --boot`);
+        ? `Next:\n  1. Make the app's Debug build open on fictional sample data (docs/capture.md, iOS)\n  2. Write the tour in store-listing/capture.tour.ts (npx screenshot-studio screen --simulator NAME shows what to tap); check capture.build in studio.json\n  3. ${cd}npx screenshot-studio recapture --boot`
+        : `Next:\n  1. Add a capture build that fills the app with sample data (docs/playbook.md, section 1)\n  2. Write the tour in store-listing/capture.tour.ts (npx screenshot-studio screen shows what to tap)\n  3. ${cd}npx screenshot-studio recapture --boot`);
     return 0;
   } catch (error) { console.error((error as Error).message); return 1; }
 }

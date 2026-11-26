@@ -6,9 +6,9 @@ Made with [Screenshot Studio](https://github.com/bernaferrari/screenshot-studio)
 | --- | --- |
 | Cards, their order and captures | `gallery.json` |
 | Words, per language | `<locale>/copy.json`, `<locale>/listing.json` |
-| The look | `theme.css`, `theme.js` |
+| The look | `theme.css`, `theme.ts` |
 | Image and capture sizes | `profiles.json` |
-| The capture tour | `capture.tour.mjs` (build and runs: `studio.json` → `capture`) |
+| The capture tour | `capture.tour.ts` (build and runs: `studio.json` → `capture`) |
 
 ```sh
 npx screenshot-studio studio --open     # the editor

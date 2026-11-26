@@ -36,7 +36,7 @@ export async function run(argv: string[]): Promise<number> {
   // The theme is swapped whole: its files and fonts replace the last one's.
   fs.rmSync(path.join(listing, 'assets'), {recursive: true, force: true});
   installTheme(listing, theme, {fill: text => text.replaceAll('{{name}}', 'ChangeDetection'), overwrite: true,
-    write: (relative, content) => fs.writeFileSync(path.join(listing, relative), content.replace(/^export default \{/m, depth && relative === 'theme.js' ? 'export default {\n  depth: true,' : '$&'))});
+    write: (relative, content) => fs.writeFileSync(path.join(listing, relative), content.replace(/^export default \{/m, depth && /^theme\.[jt]s$/.test(relative) ? 'export default {\n  depth: true,' : '$&'))});
   // --3d tilts every card; without it the demo's cards stand straight again.
   const galleryFile = path.join(listing, 'gallery.json');
   const gallery = JSON.parse(fs.readFileSync(galleryFile, 'utf8'));

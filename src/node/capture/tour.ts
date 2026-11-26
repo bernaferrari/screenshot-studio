@@ -1,4 +1,4 @@
-// Running a tour (store-listing/capture.tour.mjs, a `Tour`): for one language, every capture profile and theme, with
+// Running a tour (store-listing/capture.tour.ts, a `Tour`): for one language, every capture profile and theme, with
 // the device set up before and put back after. agent-device reads and drives the app on an Android emulator or iOS
 // simulators alike; emulator.ts and simulator.ts set each device up.
 import fs from 'node:fs';

@@ -1,11 +1,11 @@
 // {{name}}: signal. One electric field under the whole strip, lit from the top and deepening toward the foot, and a
 // halftone screen over its lower part: dots on one grid across the whole strip, swelling from nothing under the copy
-// toward the foot, their size and strength shaded by a soft wave field over the strip, so every seam meets. The highlighter is drawn here from --primary: a full-height
-// stroke with sharp, slightly uneven ends, like a real pen.
+// toward the foot, their size and strength shaded by a soft wave field over the strip, so every seam meets. The
+// highlighter is drawn here from --primary: a full-height stroke with sharp, slightly uneven ends, like a real pen.
+import type {Theme} from 'screenshot-studio';
 
-const marker = color => `url("data:image/svg+xml,${encodeURIComponent(`<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100' preserveAspectRatio='none'><path d='M1.2 6 L98.6 2 L100 48 L98.8 97 L0.6 99 L0 52 Z' fill='${color}'/></svg>`)}")`;
+const marker = (color: string) => `url("data:image/svg+xml,${encodeURIComponent(`<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100' preserveAspectRatio='none'><path d='M1.2 6 L98.6 2 L100 48 L98.8 97 L0.6 99 L0 52 Z' fill='${color}'/></svg>`)}")`;
 
-/** @type {import('screenshot-studio').Theme} */
 export default {
   continuous: true,
 
@@ -17,7 +17,7 @@ export default {
     const from = H * (landscape ? .42 : .32);
     // A soft wave field over the whole strip, like a shader: two slow interfering waves and a diagonal swell, in
     // strip coordinates (X runs on from card to card), so the screen breathes in bands that continue across seams.
-    const field = (X, y) => {
+    const field = (X: number, y: number) => {
       const a = Math.sin(X / u * 2.1 + Math.sin(y / u * 1.7) * 1.3);
       const b = Math.sin((X * .6 - y) / u * 2.6 + 1.2);
       const c = Math.sin((X + y * .8) / u * .9);
@@ -42,6 +42,6 @@ export default {
 
   compose({main, slide}) {
     const primary = getComputedStyle(main).getPropertyValue('--primary').trim() || '#fde68a';
-    main.style.setProperty('--marker', marker(slide.marker || primary));
+    main.style.setProperty('--marker', marker(String(slide.marker || primary)));
   },
-};
+} satisfies Theme;

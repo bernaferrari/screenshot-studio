@@ -10,7 +10,7 @@ import type {Galleries, StudioConfig} from '../../core/types';
 import {cardsFor, outputFile} from '../../core/gallery';
 import {checkListing} from '../check';
 import type {CheckResult} from '../check';
-import {readJson} from '../project';
+import {readJson, themeScript} from '../project';
 
 /** export-report.json: the last `export`'s ExportResult (the parts read here), with when and how it ran. */
 export interface ExportReport {
@@ -116,8 +116,8 @@ export function reviewListing(listing: string): Review {
       const output = warning.match(/^([a-z]{2,3}(?:-[A-Za-z0-9]{2,8})*)\/(\S+?\.(?:jpe?g|png|webp)): /);
       const byOutput = output ? Object.keys(galleries).flatMap(kind => cards(kind).map((c, i) => ({kind, i, file: outputFile(kind, c, i)}))).find(o => o.file === output[2]) : undefined;
       const base = {id: `export-warning-${n}`, source: 'export' as const, level: 'warning' as const, message: warning};
-      if (seam) issues.push({...base, file: 'theme.js', locale: seam[1], card: card(seam[2], Number(seam[3]) - 1),
-        fix: 'Draw the background in panorama coordinates (studio/shapes.js) so it continues from one card into the next.'});
+      if (seam) issues.push({...base, file: path.basename(themeScript(listing) || 'theme.ts'), locale: seam[1], card: card(seam[2], Number(seam[3]) - 1),
+        fix: 'Draw the background in panorama coordinates (panoramaX, panoramaGradient from screenshot-studio/shapes) so it continues from one card into the next.'});
       else if (stale) issues.push({...base, file: stale[1], fix: 'Delete the file, or run `npx screenshot-studio export --prune`; no card writes it any more.'});
       else if (limit) issues.push({...base, file: limit[1], path: limit[2], fix: `Shorten it to fit ${limit[3]}'s limit.`});
       else if (output) issues.push({...base, message: warning.slice(output[0].length), file: `${output[1]}/${output[2]}`, locale: output[1], ...(byOutput ? {card: card(byOutput.kind, byOutput.i)} : {}),

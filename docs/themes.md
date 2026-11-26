@@ -1,6 +1,6 @@
 # Themes
 
-`npx screenshot-studio init --theme <name>` copies a theme into `store-listing/` (`theme.css`, `theme.js`, and its fonts into `assets/`).
+`npx screenshot-studio init --theme <name>` copies a theme into `store-listing/` (`theme.css`, `theme.ts`, and its fonts into `assets/`).
 From then on it is the app's own: edit it freely. `npx screenshot-studio themes` lists what ships.
 
 | Theme | Look |
@@ -63,11 +63,31 @@ gallery, so a new gallery size gets all three layouts without new CSS:
 
 Every variable has a default worked out from the canvas, portrait or landscape. The layouts sit in a cascade layer,
 so any rule in `theme.css` wins over them: place one card by hand with an ordinary selector. Set the variables on the
-gallery (`.phone`, `.tablet7`…), where the derived ones are worked out. A theme can be CSS alone; `theme.js` is
+gallery (`.phone`, `.tablet7`…), where the derived ones are worked out. A theme can be CSS alone; `theme.ts` is
 optional.
 
 `hang` cards may leave the top edge and the feature graphic's phone may show only its top; the renderer knows both,
 so no `bounds` setting is needed.
+
+## TypeScript
+
+`theme.ts` and `capture.tour.ts` are TypeScript. The studio strips the types when it serves the theme (and Node runs
+the tour as it is), so there is nothing to build:
+
+```ts
+import type {Theme} from 'screenshot-studio';
+import {panoramaLights} from 'screenshot-studio/shapes';
+
+export default {
+  continuous: true,
+  art: ctx => panoramaLights(ctx, [{x: .5, y: .3, r: .6, color: 'var(--primary)', opacity: .4}]),
+} satisfies Theme;
+```
+
+`satisfies Theme` checks every hook and its `ctx`. For your editor to check it too, add the package as a dev
+dependency (`npm i -D screenshot-studio`): it ships the types of `screenshot-studio` and `screenshot-studio/shapes`.
+Write plain TypeScript: types are stripped, not compiled, so enums and namespaces aren't supported. A `theme.js` from an
+older version still works; when both exist, `theme.ts` wins.
 
 ## Tailwind
 
@@ -82,7 +102,7 @@ renders, so there is nothing to install or build. Then:
 - **`@apply` works in the theme's own rules**: `h1 em{@apply text-primary}`.
 
 Tailwind's reset (preflight) is left out, so it can't undo the renderer's base styles. Utilities apply to the
-elements a theme or card names (layers, layout words, device roles, and class names in `theme.js`); the headline,
+elements a theme or card names (layers, layout words, device roles, and class names in `theme.ts`); the headline,
 frames and labels are built by the renderer and are styled by `theme.css` rules as before.
 
 ## What CSS can see
@@ -97,7 +117,7 @@ The renderer tells `theme.css` where each card is and what it says, so a theme's
 | `main` | `data-number`, `data-cards` | `"02"`, `"06"`, for `content: attr(data-number)` |
 | `main` | `data-title`, `data-body`, `data-tagline`, `data-feature`, `data-app` | The card's words in this language (the title without markup) |
 
-Draw backgrounds in `theme.js`'s `art()` with the helpers in `studio/shapes.js` (`panoramaLights`, `panoramaGradient`,
+Draw backgrounds in `theme.ts`'s `art()` with the helpers in `screenshot-studio/shapes` (`panoramaLights`, `panoramaGradient`,
 the shapes): they lay art out across the strip so seams continue. `art()` may write CSS in attributes
 (`fill="var(--primary)"`, `stop-color="color-mix(…)"`); the renderer moves them into `style`, where CSS applies. A
 CSS-only theme that draws across seams says so with `--continuous: 1`, so the exporter checks them.

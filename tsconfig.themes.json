@@ -1,0 +1,18 @@
+{
+  "//": "Type-checks the themes and templates the package ships, against the studio's own source.",
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "paths": {
+      "screenshot-studio": [
+        "./src/core/types.d.ts"
+      ],
+      "screenshot-studio/shapes": [
+        "./src/renderer/shapes.ts"
+      ]
+    }
+  },
+  "include": [
+    "themes/*/theme.ts",
+    "templates/**/*.ts"
+  ]
+}

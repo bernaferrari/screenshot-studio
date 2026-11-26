@@ -15,7 +15,7 @@ Working on the studio itself. Agents changing it: read `AGENTS.md` too.
 | `themes/`, `templates/` | What `init` copies into a new app |
 | `skills/store-screenshots/` | The skill `init` installs in an app ([Agents](agents.md)) |
 | `studio/` | **Built output**: what the package ships and serves to each app. Never edit it by hand. |
-| `docs/` | These guides; `docs/images/make.mjs` rebuilds the README images |
+| `docs/` | These guides; `docs/images/make.mts` rebuilds the README images |
 
 ## Build and test
 
@@ -39,21 +39,21 @@ To try a change the way users run it, call the built command directly: `node /pa
 - **Modules have no side effects.** Everything Node-side is bundled into one file; nothing may parse `process.argv`, exit, or start work at import time. A command is a `run(argv): Promise<number>` next to a library function that returns a typed result.
 - **Errors say what to do.** Throw `Error` with a message a user can act on ("No studio.json in …. Run `npx screenshot-studio init` first."). Library functions report problems in their result; only `run` prints.
 - **Read studio files with `readJson`** (`src/node/project.ts`) or the renderer's `json`: they drop the `$schema` key.
-- **Apps keep no copy.** The package serves `studio/` at each app's `store-listing/studio/` address, and runs each app's `capture.tour.mjs` itself. Keep those addresses stable: themes import `./studio/shapes.js`.
+- **Apps keep no copy.** The package serves `studio/` at each app's `store-listing/studio/` address, and runs each app's `capture.tour.ts` itself. Keep those addresses stable: themes import `./studio/shapes.js`.
 - **Check against a real app** before calling a change done: copy one (never edit it in place), run `check` and `export` in it, and look at the images.
 
 `studio/` is not committed: `npm run build` makes it, and `npm pack`/`npm publish` run the build first (`prepack`).
 
 ## The editor
 
-The editor shares its types with the studio: the files an app keeps come from `src/core/types.d.ts`, the server's answers from `src/node/workspace/` (imported as types only). `ui/src/lib/` holds everything that isn't a component: the project model and live reload (`project.ts`, `live.ts`), drafts, the review, routes and the API. Components live in `ui/src/components/`, a folder per view (`gallery/`, `viewer/`, `callout/`, `copy/`, `projects/`), with their own hooks beside them. The pure logic behind them (the viewer's and picker's state and geometry, copy rows, kept strips, the connect form) is in `ui/src/lib/` too, and `test/editor.test.mjs` loads those modules straight from TypeScript: keep their imports type-only.
+The editor shares its types with the studio: the files an app keeps come from `src/core/types.d.ts`, the server's answers from `src/node/workspace/` (imported as types only). `ui/src/lib/` holds everything that isn't a component: the project model and live reload (`project.ts`, `live.ts`), drafts, the review, routes and the API. Components live in `ui/src/components/`, a folder per view (`gallery/`, `viewer/`, `callout/`, `copy/`, `projects/`), with their own hooks beside them. The pure logic behind them (the viewer's and picker's state and geometry, copy rows, kept strips, the connect form) is in `ui/src/lib/` too, and `test/editor.test.mts` loads those modules straight from TypeScript: keep their imports type-only.
 
 It is built from the official shadcn/ui components (`ui/src/components/ui/`, set up in `components.json`), owned here and tailored where needed. The build bundles React and every dependency, so an app needs only Node to run the editor: no npm install, no CDN. It uses the neutral shadcn palette in light and dark; app artwork keeps its own theme. The renderer files stay separate from the bundle, so each app keeps its own artwork. The shadcn MIT notice is in `ui/SHADCN-LICENSE.md` and ships with the bundle.
 
 ## README images
 
 ```sh
-node docs/images/make.mjs --editor
+node docs/images/make.mts --editor
 ```
 
 Composes the README's images from the apps' own exports (`APPS=…`, the folder holding the apps; `~/Documents/android` by default). `--editor` also screenshots the editor and records `demo.gif` on a fresh `demo` project, with a temporary home and project list (ffmpeg makes the GIF).

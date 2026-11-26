@@ -1,22 +1,22 @@
 // {{name}}: porcelain. One wash from warm to cool and back laid across the whole strip, soft glows, wide white
 // curves, and a frosted tile on every other seam, half on each card. Everything is drawn in panorama coordinates,
 // so the strip joins at every seam; colors come from theme.css (--background, --warm, --cool).
-import {panoramaGradient, panoramaLights, panoramaX} from './studio/shapes.js';
+import type {Theme} from 'screenshot-studio';
+import {panoramaGradient, panoramaLights, panoramaX} from 'screenshot-studio/shapes';
 
-/** @type {import('screenshot-studio').Theme} */
 export default {
   continuous: true,
 
   art(ctx) {
     const {W, H, slides} = ctx;
-    const n = slides.length, u = Math.max(W, H), X = cards => panoramaX(ctx, cards);
+    const n = slides.length, u = Math.max(W, H), X = (cards: number) => panoramaX(ctx, cards);
     const wash = panoramaGradient(ctx, 'wash', ['var(--warm)', 'var(--background)', 'var(--cool)', 'var(--background)', 'var(--warm)', 'var(--cool)']);
     let body = `<rect width="${W}" height="${H}" fill="url(#wash)"/>`;
     // A glow per card, alternating warm high and cool low, spilling into the neighbours.
     const glows = Array.from({length: n + 1}, (_, k) => ({x: k + (k % 2 ? .75 : .25), y: k % 2 ? .85 : .2, r: .6, color: k % 2 ? 'var(--cool)' : 'var(--warm)', opacity: .7}));
     body += panoramaLights(ctx, glows, {id: 'glow', each: false});
     // Wide white curves rising from below the strip.
-    const curve = (cx, cy, r) => `<circle cx="${cx}" cy="${cy}" r="${r}" fill="#fff" fill-opacity=".26"/>` +
+    const curve = (cx: number, cy: number, r: number) => `<circle cx="${cx}" cy="${cy}" r="${r}" fill="#fff" fill-opacity=".26"/>` +
       `<circle cx="${cx}" cy="${cy}" r="${r * 1.07}" fill="none" stroke="#fff" stroke-opacity=".6" stroke-width="${u * .003}"/>`;
     body += curve(X(n * .3), H * 1.55, W * 1.9) + curve(X(n * .78), H * 1.7, W * 1.6);
     // Frosted tiles on every other seam.
@@ -27,4 +27,4 @@ export default {
     }
     return `<defs>${wash}</defs>${body}`;
   },
-};
+} satisfies Theme;

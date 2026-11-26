@@ -44,6 +44,9 @@ fs.writeFileSync(path.join(out, 'VERSION'), JSON.parse(fs.readFileSync(path.join
 
 for (const file of ['preview.html', 'studio.css', 'layouts.css']) fs.copyFileSync(path.join(root, 'src/renderer', file), path.join(out, file));
 fs.copyFileSync(path.join(root, 'src/core/types.d.ts'), path.join(out, 'types.d.ts'));
+// The helpers' types, for themes that import screenshot-studio/shapes (emitted by tsconfig.shapes.json).
+const shapesTypes = path.join(root, '.shapes-types/renderer/shapes.d.ts');
+fs.writeFileSync(path.join(out, 'shapes.d.ts'), fs.readFileSync(shapesTypes, 'utf8').replace(/(["'])\.\.\/core\/types(\.js)?\1/g, "'./types'"));
 fs.cpSync(path.join(root, 'schemas'), path.join(out, 'schemas'), {recursive: true});
 
 console.log(`studio/ built: ${fs.readdirSync(out).sort().join(', ')}`);
