@@ -164,7 +164,7 @@ export function checkListing(listingDir?: string): CheckResult {
       }
       // A card meant to have no headline says so with "title": "" (README art under its own section heading, say).
       if (devices.length && !card.identity && !(words && 'title' in words) && profiles[kind].frame !== 'none')
-        warn(`${defaultLocale}/copy.json`, `card "${card.feature}" (${kind}) has no headline`, {fix: `Add {"${card.feature}": {"title": "…", "body": "…"}}.`});
+        warn(`${defaultLocale}/copy.json`, `card "${card.feature}" (${kind}) has no headline`, {fix: `Add {"${card.feature}": {"title": "…", "body": "…"}}, or "title": "" when the card has none on purpose.`});
     });
   }
   for (const problem of outputProblems({listing, repo: path.dirname(listing), config, profiles, galleries: resolvedGalleries, defaultLocale, locales})) error(problem.file, problem.message, {path: problem.path});
