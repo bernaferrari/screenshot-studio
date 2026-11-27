@@ -176,8 +176,10 @@ export class Emulator {
       let out: string;
       try { out = this.adb('install', '-r', '-t', apk); } catch (error) { out = (error as Error).message; }
       if (out.includes('Success')) return;
-      if (/INSUFFICIENT_STORAGE/.test(out) && attempt === 0) this.try('pm', 'uninstall', pkg) || this.adbTry('uninstall', pkg);
-      else if (/INSUFFICIENT_STORAGE/.test(out) && attempt === 1) this.try('pm', 'trim-caches', '64G');
+      const full = /INSUFFICIENT_STORAGE|not enough space/i.test(out);
+      if (full && attempt === 0) this.try('pm', 'uninstall', pkg) || this.adbTry('uninstall', pkg);
+      else if (full && attempt === 1) this.try('pm', 'trim-caches', '64G');
+      else if (full) throw new Error(`${this.serial} is out of storage, so ${path.basename(apk)} can't be installed. Uninstall apps you don't capture from it (adb -s ${this.serial} uninstall <package>), or wipe its data (Android Studio → Device Manager → Wipe Data).`);
       else if (/UPDATE_INCOMPATIBLE/.test(out) && attempt === 0) this.adbTry('uninstall', pkg);
       else throw new Error(`Installing ${apk} failed: ${out.trim()}`);
     }
