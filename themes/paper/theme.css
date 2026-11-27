@@ -22,7 +22,7 @@
 
 body,.campaign{background:var(--background);color:var(--foreground);font-family:Paper,var(--script-font),sans-serif}
 
-/* The running head: the app's name on the left, the page number on the right (theme.js). */
+/* The running head: the app's name on the left, the page number on the right (theme.ts). */
 .folio{position:absolute;z-index:6;left:110px;right:110px;top:66px;display:flex;justify-content:space-between;
   font-size:28px;line-height:1;font-weight:600;letter-spacing:.14em;text-transform:uppercase;color:var(--muted-foreground)}
 

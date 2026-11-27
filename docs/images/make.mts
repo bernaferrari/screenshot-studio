@@ -189,7 +189,7 @@ async function editor(browser) {
     await open(page);
     await page.getByRole('button', {name: 'Toggle Sidebar'}).first().click();
     // Cards 640px tall: three fill the row.
-    await page.locator('[role=slider]').first().focus();
+    await page.getByRole('slider', {name: 'Preview size'}).focus();
     for (let i = 0; i < 10; i++) await page.keyboard.press('ArrowRight');
     await page.mouse.move(1270, 1230);
     await page.waitForTimeout(3000);
@@ -210,11 +210,11 @@ async function editor(browser) {
   }
 }
 
-// Names (hero, before-after…) make only those images; none makes them all.
+// Names (hero, before-after…) make only those images; none makes them all, or with --editor only the editor's.
 const wanted = process.argv.slice(2).filter(arg => !arg.startsWith('--'));
 const images = {'hero': hero, 'before-after': beforeAfter, 'themes': themes, 'depth': depth, 'callouts': callouts, 'readme-art': readmeArt};
 const browser = await chromium.launch();
 try {
-  for (const [name, make] of Object.entries(images)) if (!wanted.length || wanted.includes(name)) await shoot(browser, ...make(), `${name}.jpg`);
+  for (const [name, make] of Object.entries(images)) if (wanted.length ? wanted.includes(name) : !process.argv.includes('--editor')) await shoot(browser, ...make(), `${name}.jpg`);
   if (process.argv.includes('--editor')) await editor(browser);
 } finally { await browser.close(); }

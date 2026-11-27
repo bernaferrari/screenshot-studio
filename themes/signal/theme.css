@@ -22,7 +22,7 @@ body,.campaign{background:var(--background);color:var(--foreground);font-family:
 
 header{z-index:5}
 h1{font-size:116px;line-height:1.04;letter-spacing:-.035em;word-spacing:.06em;font-weight:820;font-stretch:104%}
-/* The highlighter: a full-height stroke with sharp, uneven ends (theme.js), the words knocked out in the deep field. */
+/* The highlighter: a full-height stroke with sharp, uneven ends (theme.ts), the words knocked out in the deep field. */
 h1 em,h1 ins,.device-label em,.identity em{font-style:normal;text-decoration:none;color:var(--primary-foreground);padding:0 .12em .04em;margin:0 .01em;
   background:var(--marker) no-repeat 0 0/100% 100%;-webkit-box-decoration-break:clone;box-decoration-break:clone}
 h1 del{text-decoration-thickness:.1em;opacity:.6}

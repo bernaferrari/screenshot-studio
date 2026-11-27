@@ -145,13 +145,13 @@ export function GalleryToolbar({
                 min={240}
                 max={760}
                 step={20}
-                className="w-28"
+                className="w-28 data-horizontal:w-28"
                 onValueChange={(next) => {
                   const value = Array.isArray(next) ? next[0] : next;
                   if (value != null) onHeight(value);
                 }}
               />
-              <span className="w-12 text-right text-xs text-muted-foreground tabular-nums">
+              <span className="w-14 text-right text-xs whitespace-nowrap text-muted-foreground tabular-nums">
                 {height} px
               </span>
             </div>

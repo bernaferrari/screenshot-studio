@@ -1,7 +1,7 @@
 /* {{name}}: A rounded, softly lit color panel per card, each a turn of the primary's hue, on faint graph paper. */
 /* Colors are shadcn/ui tokens: re-brand with --background (the page between the panels), --foreground (the type) and
    --primary (the first panel), or paste a palette from ui.shadcn.com/themes. Later panels turn the primary's hue
-   (theme.js sets --turn per card); each panel's ink is the type color mixed with a deep shade of the panel's own
+   (theme.ts sets --turn per card); each panel's ink is the type color mixed with a deep shade of the panel's own
    hue, and its highlight a brighter, warmer shade. The graph paper is --border. */
 @import "studio/layouts.css";
 :root{
@@ -29,7 +29,7 @@
 body,.campaign{background:var(--background);color:var(--panel-ink);font-family:Panels,var(--script-font),sans-serif}
 
 /* The panel: inset on every side so the paper shows between cards, lit from the top left, with a white wave
-   across it. theme.js moves the devices inside, so they are cut at the panel's rounded edge. */
+   across it. theme.ts moves the devices inside, so they are cut at the panel's rounded edge. */
 .panel{position:absolute;z-index:1;inset:36px;overflow:hidden;border-radius:56px;
   background:linear-gradient(155deg,var(--panel-light) 6%,var(--panel-mid) 56%,var(--panel-deep))}
 .panel .wave{position:absolute;inset:0;width:100%;height:100%}

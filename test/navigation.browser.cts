@@ -920,6 +920,32 @@ test("the copy preview shares the gallery dialog and never saves unsaved words a
   );
 });
 
+test("the gallery strip lays its cards side by side, scrolls sideways, and its size slider has room", async (t) => {
+  const fixture = await setup(t),
+    { page, base, projects } = fixture;
+  addViewerGallery(fixture, 8);
+  await page.setViewportSize({ width: 1280, height: 900 });
+  await page.goto(base + projects[0].editorURL + "?view=gallery");
+  await active(page).locator(".screenshot-card").nth(7).waitFor();
+  const layout = await page.evaluate(() => {
+    const view = document.querySelector(".editor-view:not([hidden])")!,
+      cards = [...view.querySelectorAll(".screenshot-card")].map((card) => card.getBoundingClientRect()),
+      strip = view.querySelector('[data-slot="scroll-area-viewport"]')!,
+      slider = document.querySelector('[data-slot="slider"]')!.getBoundingClientRect();
+    return {
+      tops: cards.map((box) => Math.round(box.top)),
+      lefts: cards.map((box) => Math.round(box.left)),
+      overflow: strip.scrollWidth - strip.clientWidth,
+      slider: slider.width,
+    };
+  });
+  assert.equal(layout.tops.length, 8);
+  assert.equal(new Set(layout.tops).size, 1, `cards share one row: ${layout.tops}`);
+  assert(layout.lefts.every((left, i) => i === 0 || left > layout.lefts[i - 1]), `cards run left to right: ${layout.lefts}`);
+  assert(layout.overflow > 0, "the strip scrolls sideways");
+  assert(layout.slider >= 100, `the size slider is ${layout.slider}px wide`);
+});
+
 test("a long gallery stays fitted and keeps controls visible on mobile and after resize", async (t) => {
   const fixture = await setup(t),
     { page, base, projects } = fixture;

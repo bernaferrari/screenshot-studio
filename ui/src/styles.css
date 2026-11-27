@@ -136,9 +136,6 @@
 .skip-link:focus {
   transform: none;
 }
-.gallery-scroll [data-slot="scroll-area-viewport"] > div {
-  display: block !important;
-}
 .capture-stage {
   line-height: 0;
 }
