@@ -126,7 +126,7 @@ export async function main(argv: string[]): Promise<number> {
 
 // The library, for tools and tests: `require('screenshot-studio')`.
 export {exportListing, formatSummary, mergeReport} from '../node/export';
-export {recapture, bootEmulator, tourFile} from '../node/recapture';
+export {recapture, bootEmulator, tourFile, usableAvds} from '../node/recapture';
 export {runTour} from '../node/capture/tour';
 export {appleLanguage} from '../node/capture/simulator';
 export {checkListing, formatIssues, imageSize} from '../node/check';

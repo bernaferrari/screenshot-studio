@@ -84,7 +84,7 @@ test('text that blends into what is behind it is a warning; the same card with r
   const faint = await run();
   const warnings = faint.warnings.filter(w => /hard to read/.test(w));
   assert.equal(warnings.length, 1, faint.warnings.join('\n'));
-  assert.match(warnings[0], /contrast 1\.\d:1, needs at least 2\.5:1/);
+  assert.match(warnings[0], /contrast 1\.\d:1, needs at least 3:1/);
   // Text painted with -webkit-text-fill-color is measured in that color: a readable fill is fine whatever `color` says.
   fs.appendFileSync(path.join(listing, 'theme.css'), '\nh1 em{-webkit-text-fill-color:#2747d8}\n');
   assert.deepEqual((await run()).warnings.filter(w => /hard to read/.test(w)), []);

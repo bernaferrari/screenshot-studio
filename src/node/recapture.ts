@@ -108,7 +108,38 @@ export function missingEmulator(serial: string): string | null {
     'Captures run only on emulators, never on a phone.'].join('\n');
 }
 
-/** Start an emulator headless on the serial's port and wait until Android has booted. */
+/** Where the emulator keeps its images (AVDs). */
+const avdHome = () => process.env.ANDROID_AVD_HOME
+  || path.join(process.env.ANDROID_USER_HOME || path.join(os.homedir(), '.android'), 'avd');
+
+/** An AVD's settings file as key → value (both "key=value" and "key = value"). */
+function iniFile(file: string): Record<string, string> | null {
+  try {
+    return Object.fromEntries(fs.readFileSync(file, 'utf8').split('\n').map(line => line.match(/^\s*([^=#]+?)\s*=\s*(.*?)\s*$/)).filter(Boolean).map(m => [m![1], m![2]]));
+  } catch { return null; }
+}
+
+/**
+ * The AVDs among `names` that can start, newest Android first: their folder and settings exist and their system image
+ * is installed. Android Studio leaves entries behind when an AVD's folder is deleted, and the emulator lists them.
+ */
+export function usableAvds(names: string[], home = avdHome(), sdk = sdkRoot()): string[] {
+  const found = names.flatMap(name => {
+    const entry = iniFile(path.join(home, `${name}.ini`));
+    const folder = entry?.path || path.join(home, `${name}.avd`);
+    const config = iniFile(path.join(folder, 'config.ini'));
+    const image = config?.['image.sysdir.1'];
+    if (!config || !image || !fs.existsSync(path.join(sdk, image))) return [];
+    const api = Number((entry?.target || image).match(/android-(\d+)/)?.[1]) || 0;
+    return [{name, api}];
+  });
+  return found.sort((a, b) => b.api - a.api).map(avd => avd.name);
+}
+
+/**
+ * Start an emulator headless on the serial's port and wait until Android has booted. Read-only: the image is left as it
+ * was, and it can boot while the same image is open in Android Studio.
+ */
 export async function bootEmulator(serial: string, avd: string | undefined, log: (line: string) => void): Promise<void> {
   if (booted(serial)) return;
   const port = Number(serial.replace('emulator-', ''));
@@ -116,13 +147,21 @@ export async function bootEmulator(serial: string, avd: string | undefined, log:
   const emulator = path.join(sdkRoot(), 'emulator', process.platform === 'win32' ? 'emulator.exe' : 'emulator');
   if (!fs.existsSync(emulator)) throw new Error('No Android emulator found. Set ANDROID_HOME to your Android SDK.');
   const images = spawnSync(emulator, ['-list-avds'], {encoding: 'utf8'}).stdout.split('\n').map(line => line.trim()).filter(Boolean);
-  const name = avd || images[0];
-  if (!name) throw new Error('No emulator image (AVD) found. Create one in Android Studio, then set "capture": {"avd": "…"} in studio.json.');
-  if (!images.includes(name)) throw new Error(`No emulator image named ${name}. Available: ${images.join(', ') || 'none'}`);
+  const usable = usableAvds(images);
+  const name = avd || usable[0];
+  if (!name) throw new Error(images.length
+    ? `None of the emulator images (${images.join(', ')}) can start: their folder or system image is missing. Create one in Android Studio's Device Manager, then set "capture": {"avd": "…"} in studio.json.`
+    : 'No emulator image (AVD) found. Create one in Android Studio\'s Device Manager, then set "capture": {"avd": "…"} in studio.json.');
+  if (!images.includes(name)) throw new Error(`No emulator image named ${name}. Ones that can start: ${usable.join(', ') || 'none'}`);
+  if (!usable.includes(name)) throw new Error(`The emulator image ${name} can't start: its folder or system image is missing. Ones that can: ${usable.join(', ') || 'none'}`);
   log(`Booting ${name} as ${serial} (headless)…`);
-  spawn(emulator, ['-avd', name, '-port', String(port), '-no-window', '-no-audio', '-no-boot-anim'], {detached: true, stdio: 'ignore'}).unref();
+  const child = spawn(emulator, ['-avd', name, '-port', String(port), '-read-only', '-no-window', '-no-audio', '-no-boot-anim'], {detached: true, stdio: 'ignore'});
+  let exited: number | null = null;
+  child.on('exit', code => { exited = code ?? -1; });
+  child.unref();
   const deadline = Date.now() + 5 * 60_000;
   while (!booted(serial)) {
+    if (exited !== null) throw new Error(`The emulator ${name} quit while starting (exit ${exited}). Run \`${emulator} -avd ${name} -port ${port}\` to see why.`);
     if (Date.now() > deadline) throw new Error(`${serial} did not finish booting in 5 minutes`);
     await new Promise(resolve => setTimeout(resolve, 3000));
   }

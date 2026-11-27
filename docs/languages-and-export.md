@@ -56,7 +56,7 @@ Every export also writes `export-report.json` beside `gallery.json`: the same re
 - a headline line or supporting line leaves one or two words on a short last line (under a third of the longest line) even after balancing and that last bit of shrinking: reword or shorten it, since it reads as a mistake at thumbnail size. A line break the copy asks for (`\n`, kept by `white-space: pre-line`) is the writer's and never counts;
 - a gallery folder holds images no card writes any more (delete them, or export with `--prune`);
 - a continuous background breaks between cards;
-- text is hard to read against what's behind it: every headline run, supporting line, label, name banner and layer in front is measured against the pixels under it, and its worst tenth must reach 2.5:1 contrast (art, stripes or a layer running behind words are the usual cause). Text under 30% opacity, or marked `aria-hidden`, is decoration and isn't measured;
+- text is hard to read against what's behind it: every headline run, supporting line, label, name banner and layer in front is measured against the pixels under it, and its worst tenth must reach 3:1 contrast, WCAG's bar for large text (art, stripes or a layer running behind words are the usual cause). Text under 30% opacity, or marked `aria-hidden`, is decoration and isn't measured;
 - `listing.json` is over Play's limits: title 30, short description 80, full description 4,000 characters;
 - with `--strict`: untranslated words, borrowed captures or unresolved callouts in a translated language.
 

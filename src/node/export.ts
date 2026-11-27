@@ -119,11 +119,10 @@ function seamBreak([leftInner, leftOuter]: [Column, Column], [rightOuter, rightI
   return bad / rows > .02 || sum / rows > 6 ? Math.round(bad / rows * 100) : null;
 }
 
-/**
- * Below this contrast against what's behind it, text blends into the art. (WCAG asks 3:1 of large text; muted
- * supporting lines sit just under that on purpose, so the check is for words the background swallows.)
- */
-const MIN_CONTRAST = 2.5;
+/** Below this contrast against what's behind it, text blends into the art: WCAG's bar for large text. */
+const MIN_CONTRAST = 3;
+/** How a card that timed out with no error ends its message. */
+const NOT_READY = 'never became ready';
 
 /**
  * Text the background swallows. Every piece of text on the card (each headline run, the body, labels, the name
@@ -455,7 +454,9 @@ function plan(run: Run): LocalePlan[] {
       const cards = [...slides.entries()].filter(([i]) => options.card === undefined || options.card === i).map(([index, slide]) => {
         const file = outputFile(kind, slide, index);
         const job: CardJob = {locale, kind, index, slide, file, label: `${locale}/${file}`};
-        return {...job, rendered: run.queue.add(browser => withCardPage(run, browser, locale, kind, page => renderCard(run, page, job, !!destination)))};
+        // A card that times out with nothing wrong (a 3D card on a busy machine) gets one more try on a fresh page.
+        const render = (browser: Browser) => withCardPage(run, browser, locale, kind, page => renderCard(run, page, job, !!destination));
+        return {...job, rendered: run.queue.add(browser => render(browser).catch((error: Error) => error.message.endsWith(NOT_READY) ? render(browser) : Promise.reject(error)))};
       });
       galleryPlans.push({kind, width, height, slides, cards, destination});
     }
@@ -517,7 +518,7 @@ async function renderCard(run: Run, page: Page, {locale, kind, index, slide, fil
     if (r.status() >= 400 && r.request().method() !== 'HEAD' && !/\/(copy|[^/]+\.nodes)\.json$|\/raw\//.test(new URL(r.url()).pathname)) errors.push(`${r.status()} ${r.url()}`);
   });
   await page.goto(`${run.base}/studio/preview.html?locale=${locale}&kind=${kind}&slide=${index}`);
-  await page.locator('html[data-ready="true"]').waitFor({timeout: 30_000}).catch(() => { throw new Error(`${label}: ${errors.join('\n') || 'never became ready'}`); });
+  await page.locator('html[data-ready="true"]').waitFor({timeout: 30_000}).catch(() => { throw new Error(`${label}: ${errors.join('\n') || NOT_READY}`); });
   const report: CardReport = JSON.parse(await page.locator('html').getAttribute('data-report') || '{}');
   const fonts = await page.evaluate(() => [...document.fonts].map(f => f.status));
   if (fonts.includes('error') || (slide.title && !fonts.includes('loaded'))) throw new Error(`Fonts failed to load: ${label}`);

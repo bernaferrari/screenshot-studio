@@ -148,7 +148,7 @@ after resetting the emulator. Then it exports each language (one failing languag
 | `runs` | How often to run the tour, and with what (below); default one run in every language |
 | `retries` | Tries per run after a failure |
 | `serial` | The capture emulator (default `emulator-5578`, or `CAPTURE_SERIAL`); it must be an emulator, never a phone |
-| `avd` | The emulator image `--boot` starts (default: the first in `emulator -list-avds`) |
+| `avd` | The emulator image `--boot` starts (default: the newest Android among the images that can start; ones whose folder or system image is gone are skipped) |
 | `export` | A command to run per language instead of the studio's export (`{locale}` is replaced) |
 | `after` | Shell commands once everything is exported |
 
@@ -160,7 +160,7 @@ after resetting the emulator. Then it exports each language (one failing languag
 
 | Option | Does |
 |---|---|
-| `--boot` | Starts the capture emulator headless when it isn't running, waits until Android has booted, then captures. It needs the Android SDK (`ANDROID_HOME`, or the default SDK folder). |
+| `--boot` | Starts the capture emulator headless (read-only, so the image is left as it was and can stay open in Android Studio) when it isn't running, waits until Android has booted, then captures. It needs the Android SDK (`ANDROID_HOME`, or the default SDK folder). |
 | `--profile phone` | One gallery's captures only |
 | `--no-build`, `--no-capture`, `--no-export` | Skip a step |
 | `--dry-run` | Print the commands without running them |

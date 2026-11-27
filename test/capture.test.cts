@@ -101,3 +101,24 @@ fs.writeFileSync(f,JSON.stringify(s));process.stdout.write(out);
   assert.deepEqual(JSON.parse(fs.readFileSync(dimensions)),{landscape:[400,200],portrait:[200,400]});
   assert.deepEqual(JSON.parse(fs.readFileSync(file)),initial);
 });
+
+test('--boot picks an emulator image that can start, newest Android first', () => {
+  const {usableAvds} = require('../studio/studio.cjs');
+  const fs = require('node:fs'), os = require('node:os'), path = require('node:path');
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'avd-')), home = path.join(root, 'avd'), sdk = path.join(root, 'sdk');
+  const image = api => { fs.mkdirSync(path.join(sdk, `system-images/android-${api}/google_apis/arm64-v8a`), {recursive: true}); return `system-images/android-${api}/google_apis/arm64-v8a/`; };
+  const avd = (name, {api, folder = true, installed = true, elsewhere}) => {
+    const dir = elsewhere || path.join(home, `${name}.avd`);
+    fs.mkdirSync(home, {recursive: true});
+    fs.writeFileSync(path.join(home, `${name}.ini`), `path=${dir}\ntarget=android-${api}\n`);
+    if (!folder) return;
+    fs.mkdirSync(dir, {recursive: true});
+    fs.writeFileSync(path.join(dir, 'config.ini'), `image.sysdir.1 = ${installed ? image(api) : `system-images/android-${api}/missing/`}\n`);
+  };
+  avd('AOld', {api: 30});
+  avd('BGone', {api: 36, folder: false});
+  avd('CNoImage', {api: 35, installed: false});
+  avd('DNew', {api: 36, elsewhere: path.join(root, 'other/DNew.avd')});
+  assert.deepEqual(usableAvds(['AOld', 'BGone', 'CNoImage', 'DNew', 'EUnlisted'], home, sdk), ['DNew', 'AOld']);
+  fs.rmSync(root, {recursive: true, force: true});
+});
