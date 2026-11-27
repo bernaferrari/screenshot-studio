@@ -11,7 +11,7 @@ function fixture(t) {
   write('profiles.json',{phone:{width:200,height:400,frame:'none',captureWidth:200,captureHeight:400,captureDensity:160},tablet:{width:400,height:600,frame:'none',captureWidth:400,captureHeight:600,captureDensity:160}});
   write('gallery.json',{phone:[{feature:'one'},{feature:'two'}]});write('en-US/copy.json',{});
   fs.writeFileSync(path.join(listing,'theme.css'),'body{background:white}');
-  fs.writeFileSync(path.join(listing,'capture.tour.mjs'),'export default {app:"test",scenes:{}}');
+  fs.writeFileSync(path.join(listing,'capture.tour.ts'),'export default {app:"test",scenes:{}}');
   return {root,listing,write};
 }
 test('partial exports preserve manifests, invalid selectors fail, strict failures preserve Fastlane text',async t=>{
@@ -85,4 +85,42 @@ test('text that blends into what is behind it is a warning; the same card with r
   const warnings = faint.warnings.filter(w => /hard to read/.test(w));
   assert.equal(warnings.length, 1, faint.warnings.join('\n'));
   assert.match(warnings[0], /contrast 1\.\d:1, needs at least 2\.5:1/);
+  // Text painted with -webkit-text-fill-color is measured in that color: a readable fill is fine whatever `color` says.
+  fs.appendFileSync(path.join(listing, 'theme.css'), '\nh1 em{-webkit-text-fill-color:#2747d8}\n');
+  assert.deepEqual((await run()).warnings.filter(w => /hard to read/.test(w)), []);
+  // Deliberately faint text (a watermark) and aria-hidden text are decoration, not copy.
+  fs.appendFileSync(path.join(listing, 'theme.css'), '\nheader p{opacity:.12}\nh1 em{-webkit-text-fill-color:#e9ecf8}\n');
+  const decorated = await run();
+  const flagged = decorated.warnings.filter(w => /hard to read/.test(w));
+  assert.equal(flagged.length, 1, decorated.warnings.join('\n'));
+  assert.doesNotMatch(flagged[0], /Deadline|Watch|page/);
+});
+
+test('--depth draws devices in 3D: the 3d and tilt words turn it on, flat turns it off, and CSS sets it anywhere', {timeout: 180_000}, async t => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'studio-depth-'));
+  t.after(() => fs.rmSync(root, {recursive: true, force: true}));
+  const listing = path.join(root, 'store-listing');
+  fs.cpSync(path.join(__dirname, 'fixtures', 'golden'), listing, {recursive: true});
+  const theme = path.join(__dirname, '..', 'themes', 'starter');
+  for (const file of ['theme.css', 'theme.ts']) fs.copyFileSync(path.join(theme, file), path.join(listing, file));
+  const galleryFile = path.join(listing, 'gallery.json'), gallery = JSON.parse(fs.readFileSync(galleryFile, 'utf8'));
+  const css = fs.readFileSync(path.join(listing, 'theme.css'), 'utf8');
+  const render = async (layout, extraCss = '') => {
+    gallery.phone[0].layout = layout;
+    fs.writeFileSync(galleryFile, JSON.stringify(gallery));
+    fs.writeFileSync(path.join(listing, 'theme.css'), css + extraCss);
+    const result = await exportListing({listing, locales: ['en-US'], kind: 'phone', card: 0, jobs: 1, log: () => {}});
+    assert.equal(result.ok, true, result.error);
+    return fs.readFileSync(path.join(listing, result.cards[0].file));
+  };
+  const flat = await render('big');
+  const deep = await render('big 3d');
+  assert.notDeepEqual(deep, flat, 'the 3d word draws the phone in 3D');
+  assert.deepEqual(await render('big 3d flat'), flat, 'flat keeps the flat frame');
+  assert.deepEqual(await render('big', '\n.device{--depth:1}\n'), deep, 'a theme turns it on with --depth');
+  assert.deepEqual(await render('big flat', '\n.device{--depth:1}\n'), flat, 'flat wins over the theme');
+  // Turned, the side shows: a tilted device is 3D on its own, and a bigger --depth is a thicker one.
+  const tilted = await render('big tilt');
+  assert.notDeepEqual(tilted, await render('big tilt flat'), 'tilt draws the phone in 3D');
+  assert.notDeepEqual(await render('big tilt', '\n.device{--depth:3}\n'), tilted, 'a bigger --depth is a thicker device');
 });

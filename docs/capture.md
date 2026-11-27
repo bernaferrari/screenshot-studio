@@ -8,8 +8,9 @@ saves each screen with its layout map, and puts the device back.
 
 `store-listing/capture.tour.ts` (`init --package` writes one):
 
-```js
-/** @type {import('screenshot-studio').Tour} */
+```ts
+import type {Tour} from 'screenshot-studio';
+
 export default {
   app: 'com.example.storecapture',
   activity: '.MainActivity',
@@ -24,7 +25,7 @@ export default {
       '05-home-dark': null,
     },
   },
-};
+} satisfies Tour;
 ```
 
 For each language, every capture profile in `profiles.json` (phone, 7-inch, 10-inch…) and each theme, the studio
@@ -96,7 +97,7 @@ tour has no sleeps or retry counts.
 
 A tour reads like a test of the app's story:
 
-```js
+```ts
 scenes: {
   light: {
     '01-home': null,
@@ -210,7 +211,7 @@ The same `store-listing/capture.tour.ts`, with the same toolkit: agent-device re
 and taps through XCTest, so `d.tap('Settings')`, `waitFor`, `scrollTo` and the tap map work as on Android (positions
 are in screenshot pixels on both). `init --platform ios` writes one:
 
-```js
+```ts
 export default {
   app: 'com.example.myapp',
   // Each theme starts the app afresh, in the capture's language; extras become launch arguments.
@@ -223,7 +224,7 @@ export default {
     },
     dark: {'04-home-dark': null},
   },
-};
+} satisfies Tour;
 ```
 
 While the tour runs, each simulator gets a status bar at 9:41 with full battery, Wi-Fi and signal and no carrier

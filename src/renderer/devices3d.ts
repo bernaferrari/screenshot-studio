@@ -6,6 +6,7 @@
 // solid background), white by default.
 import * as THREE from 'three';
 import {RoomEnvironment} from 'three/examples/jsm/environments/RoomEnvironment.js';
+import {depthOf} from './devices';
 
 const roundedRect = (w: number, h: number, r: number) => {
   const s = new THREE.Shape(), x = -w / 2, y = -h / 2;
@@ -42,14 +43,17 @@ function bodyColor(front: HTMLElement): THREE.Color {
   return color;
 }
 
-/** Draws `front` (a .device) as a 3D device on a 2D canvas over `main`, disposing its WebGL context immediately. */
-export async function renderDevice(main: HTMLElement, front: HTMLElement): Promise<HTMLCanvasElement> {
+/**
+ * Draws `front` (a .device) as a 3D device `amount` times as thick as the real one, on a 2D canvas over `main`, disposing
+ * its WebGL context immediately.
+ */
+export async function renderDevice(main: HTMLElement, front: HTMLElement, amount = 1): Promise<HTMLCanvasElement> {
   const style = getComputedStyle(front);
   const cardW = main.clientWidth, cardH = main.clientHeight;
   const W = front.offsetWidth, H = front.offsetHeight;
   const bezel = parseFloat(style.paddingLeft) || 0, radius = parseFloat(style.borderTopLeftRadius) || 0;
   const cx = front.offsetLeft + W / 2, cy = front.offsetTop + H / 2;
-  const short = Math.min(W, H), thickness = front.classList.contains('device-frame-tablet') ? DEPTH.tablet : DEPTH.phone;
+  const short = Math.min(W, H), thickness = (front.classList.contains('device-frame-tablet') ? DEPTH.tablet : DEPTH.phone) * amount;
   const {perspective, rotation} = pose(front);
 
   const glCanvas = document.createElement('canvas');
@@ -173,9 +177,9 @@ export async function renderDevice(main: HTMLElement, front: HTMLElement): Promi
   }
 }
 
-/** Every phone and tablet frame on the card as a 3D device, except on `flat` cards. */
-export async function renderDevices(main: HTMLElement): Promise<void> {
-  if (main.classList.contains('flat')) return;
-  for (const front of main.querySelectorAll<HTMLElement>('.device:is(.device-frame-phone, .device-frame-iphone, .device-frame-tablet)'))
-    await renderDevice(main, front);
+/** These frames as 3D devices, each as thick as its --depth says. Returns each frame's drawing. */
+export async function renderDevices(main: HTMLElement, fronts: HTMLElement[]): Promise<Map<HTMLElement, HTMLCanvasElement>> {
+  const drawn = new Map<HTMLElement, HTMLCanvasElement>();
+  for (const front of fronts) drawn.set(front, await renderDevice(main, front, depthOf(front)));
+  return drawn;
 }

@@ -46,10 +46,20 @@ export function loadListing(listing: string): ListingFiles {
 
 export const readCopy = (listing: string, locale: string): Copy => readJson<Copy>(path.join(listing, locale, 'copy.json'), {});
 
-/** A listing's theme script: theme.ts, or theme.js (themes before TypeScript); null for a theme of CSS alone. */
+/** A listing's theme script, theme.ts; null for a theme of CSS alone. */
 export function themeScript(listing: string): string | null {
-  for (const name of ['theme.ts', 'theme.js']) if (fs.existsSync(path.join(listing, name))) return path.join(listing, name);
-  return null;
+  const file = path.join(listing, 'theme.ts');
+  return fs.existsSync(file) ? file : null;
+}
+
+/** Files the studio used to read under a JavaScript name, by their TypeScript name now. */
+const RENAMED: Record<string, string> = {'theme.js': 'theme.ts', 'capture.tour.mjs': 'capture.tour.ts', 'capture.tour.mts': 'capture.tour.ts'};
+
+/** The old-named files in a listing, each with what to rename it to. The studio doesn't read them. */
+export function oldNames(listing: string): {file: string; rename: string; fix: string}[] {
+  return Object.entries(RENAMED).filter(([file]) => fs.existsSync(path.join(listing, file))).map(([file, rename]) => ({
+    file, rename, fix: `Rename store-listing/${file} to ${rename}: plain JavaScript is valid TypeScript, and \`satisfies ${file.startsWith('theme') ? 'Theme' : 'Tour'}\` checks it.`,
+  }));
 }
 
 /** The studio's own files (renderer, editor, schemas, capture): the folder this bundle runs from. */

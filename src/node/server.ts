@@ -92,9 +92,10 @@ export function serve(root: string, port = 0, {editable = false, workspace = nul
         }
         if (!['GET', 'HEAD'].includes(request.method || '')) { response.writeHead(405).end(); return; }
         if (fs.existsSync(file) && fs.statSync(file).isDirectory()) file = path.join(file, 'index.html');
-        // The renderer loads ../theme.js; a listing with theme.ts (which wins over a theme.js) gets it stripped of its types.
-        const typed = path.basename(file) === 'theme.js' && path.dirname(file) === path.resolve(listingRoot) ? themeScript(listingRoot) : null;
-        if (typed?.endsWith('.ts')) {
+        // The renderer loads ../theme.js: the listing's theme.ts, stripped of its types, or nothing for a theme of CSS alone.
+        if (path.basename(file) === 'theme.js' && path.dirname(file) === path.resolve(listingRoot)) {
+          const typed = themeScript(listingRoot);
+          if (!typed) { response.writeHead(404).end(); return; }
           const script = Buffer.from(stripTypes(await fs.promises.readFile(typed, 'utf8'), 'theme.ts'));
           response.writeHead(200, {'Content-Type': 'text/javascript; charset=utf-8', 'Cache-Control': 'no-store'});
           response.end(request.method === 'HEAD' ? undefined : script); return;

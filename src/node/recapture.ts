@@ -33,7 +33,7 @@ import {Emulator} from './capture/emulator';
 import {Simulator} from './capture/simulator';
 import {runTour} from './capture/tour';
 import {spawn, spawnSync} from 'node:child_process';
-import {loadListing, requireListing, STUDIO_DIR} from './project';
+import {loadListing, oldNames, requireListing, STUDIO_DIR} from './project';
 import {bootSimulator, findSimulator, simulatorsFor} from './ios';
 import {findPlaywright} from './playwright';
 
@@ -73,9 +73,11 @@ export function commandEnvironment(listing: string): NodeJS.ProcessEnv {
   };
 }
 
-/** The listing's tour, store-listing/capture.tour.ts (or .mjs); a Python tour from older versions is named, with what to do. */
+/** The listing's tour, store-listing/capture.tour.ts; a tour under an older name is named, with what to do. */
 export function tourFile(listing: string): string {
-  for (const name of ['capture.tour.ts', 'capture.tour.mts', 'capture.tour.mjs']) if (fs.existsSync(path.join(listing, name))) return path.join(listing, name);
+  if (fs.existsSync(path.join(listing, 'capture.tour.ts'))) return path.join(listing, 'capture.tour.ts');
+  const renamed = oldNames(listing).find(old => old.rename === 'capture.tour.ts');
+  if (renamed) throw new Error(renamed.fix);
   const old = ['capture-emulator.py', 'capture-simulator.py'].find(name => fs.existsSync(path.join(listing, name)));
   if (old) throw new Error(`store-listing/${old} is a Python tour, which this version no longer runs. Write its scenes as store-listing/capture.tour.ts (docs/capture.md shows the shape), then delete ${old}.`);
   throw new Error('No capture tour: write store-listing/capture.tour.ts (docs/capture.md shows the shape).');

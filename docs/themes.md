@@ -44,7 +44,8 @@ Every theme styles these layout words on the phone, 7-inch and 10-inch galleries
 | `big` | One device, large, under the copy (on the 10-inch: copy left, tablet right) |
 | `hang` | The phone hangs from the top edge, the copy below it (on the 10-inch the tablet stays whole, top right) |
 | `duo` | Two devices, roles `primary` and `secondary`, the second stepping in front |
-| `tilt` | Beside another word (`"big tilt"`): the device turned in perspective, set by `--tilt` |
+| `tilt` | Beside another word (`"big tilt"`): the device turned in perspective (`--tilt`), drawn in 3D |
+| `3d`, `flat` | A real 3D device standing straight; or the flat frame, whatever else says (see 3D devices) |
 
 They come from `studio/layouts.css`, which a theme opts into with its first rule, and places with a few variables per
 gallery, so a new gallery size gets all three layouts without new CSS:
@@ -84,10 +85,12 @@ export default {
 } satisfies Theme;
 ```
 
-`satisfies Theme` checks every hook and its `ctx`. For your editor to check it too, add the package as a dev
+`satisfies Theme` checks every hook and its `ctx`. A theme that reads card fields of its own from `gallery.json` (a
+`"glyph": "∑"` on a card, say) names them, `satisfies Theme<{glyph?: string}>`, so `ctx.slide.glyph` is typed and
+anyone reading the theme sees which fields it takes. For your editor to check it too, add the package as a dev
 dependency (`npm i -D screenshot-studio`): it ships the types of `screenshot-studio` and `screenshot-studio/shapes`.
-Write plain TypeScript: types are stripped, not compiled, so enums and namespaces aren't supported. A `theme.js` from an
-older version still works; when both exist, `theme.ts` wins.
+Write plain TypeScript: types are stripped, not compiled, so enums and namespaces aren't supported. The studio reads
+`theme.ts` only; `check` names a `theme.js` from an older version, to rename.
 
 ## Tailwind
 
@@ -122,24 +125,32 @@ the shapes): they lay art out across the strip so seams continue. `art()` may wr
 (`fill="var(--primary)"`, `stop-color="color-mix(…)"`); the renderer moves them into `style`, where CSS applies. A
 CSS-only theme that draws across seams says so with `--continuous: 1`, so the exporter checks them.
 
+Words a theme places itself (a panel's title from a device's own field, say) take the copy's markup with `markup(text)`
+from the same module: `*highlight*`, `~struck~`, `[inserted]` and new lines, as em, del, ins and one `.line` per line.
+
 For words or art on one card only, use the card's `layers` ([Setting up an app](setup.md#cards)) and style their
 classes here. `z-index: 1` sits over the background and under the devices (2) and headline (3). Keep anything
 decorative away from the headline, and inside the card: a motif cut at a card's edge breaks the seam.
 
 ## 3D devices
 
-A theme can draw its phones and tablets as real 3D devices (three.js, loaded only for those cards):
+Phones and tablets can be real 3D devices: true thickness, rounded edges, a glass face, the capture on the screen
+(three.js, loaded only for the cards that have one). It's one CSS variable on the frame, `--depth`: the device's
+thickness as a multiple of the real one's. `0`, the default, is the flat frame.
 
-```js
-export default {
-  depth: true,        // or a list of galleries: ['phone', 'tablet7']
-};
-```
+| To | Write |
+|---|---|
+| Tilt one card's phone, in 3D | `"layout": "big tilt"` in gallery.json (`--tilt` changes the pose) |
+| Stand one card's phone up straight, in 3D | `"layout": "big 3d"` |
+| Make every device 3D | `.device{--depth:1}` in theme.css |
+| Only one gallery, or one device | `.phone .device{--depth:1}`, or by its role: `.device.hero{--depth:1}` |
+| A chunkier device | `--depth:2` |
+| Keep a card's, or one device's, flat frame | the layout word `flat`, or `flat` in the device's role (wins over everything) |
 
-Each device keeps its frame's size, bezel and corners, and takes its pose from the frame's CSS `transform`, so a tilt is
-plain CSS: the `tilt` layout word, `--tilt` for its angle, or any `perspective(…) rotateY(…)` of your own. The body is
-white, or `--device-body` on `.device`. The flat frame stays in place, hidden, so bounds checks and callouts work as
-before. A card opts out with the layout word `flat`. `npx screenshot-studio demo --3d` shows it.
+The device takes its pose from its frame's CSS `transform`, so any `perspective(…) rotateY(…)` of your own works too,
+and its body color from `--device-body` (white by default). The flat frame stays in place, hidden, so layout, bounds
+checks and callouts work as before; in a theme, `ctx.devices[i].canvas` is the 3D drawing (to clip it at a panel's
+edge in `decorate`, say). `npx screenshot-studio demo --3d` shows it.
 
 ## Fonts
 

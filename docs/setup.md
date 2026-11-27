@@ -130,7 +130,7 @@ One entry per gallery (phone, 7-inch, 10-inch, README, a feature graphic…):
 | `vars` | CSS custom properties for this card |
 | `layers` | Text or art on this card, behind or in front of the devices (below) |
 
-A card with no capture is art only (a drawn feature graphic, say). `"frame": "none"` shows a capture as the whole image. Any other key reaches the theme as `ctx.slide`.
+A card with no capture is art only (a drawn feature graphic, say). `"frame": "none"` shows a capture as the whole image. Any other key reaches the theme as `ctx.slide` (a theme names the ones it reads: `satisfies Theme<{glyph?: string}>`).
 
 **Tablets can inherit.** `{"inherits": "phone", "cards": [...]}` merges each card over the phone card at the same position, so a tablet gallery swaps captures and layout but keeps the phone's words.
 

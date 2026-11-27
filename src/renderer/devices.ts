@@ -38,6 +38,9 @@ export function createDevices(main: HTMLElement, slide: Card, profile: Profile, 
   });
 }
 
+/** A device's --depth: its thickness as a multiple of the real device's; 0 draws the flat frame. */
+export const depthOf = (node: HTMLElement): number => Math.max(0, parseFloat(getComputedStyle(node).getPropertyValue('--depth')) || 0);
+
 /** Wait for every capture; fail on one that is missing or not a configured device ratio. */
 export async function settleDevices(devices: Device[], profiles: Profiles): Promise<(string | null)[]> {
   const locales = await Promise.all(devices.map(d => d.loaded));

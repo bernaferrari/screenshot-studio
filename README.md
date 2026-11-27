@@ -53,7 +53,7 @@ The same card in each of the six themes. Every theme recolors from three [shadcn
 
 ## Real 3D phones
 
-Turn on `depth` in a theme and every phone and tablet is drawn as a real 3D device, with its thickness, rounded edges and glass, posed by the frame's CSS. Add the `tilt` layout word to angle one. Try it: `npx screenshot-studio demo --3d`.
+Add `tilt` to a card's layout and its phone turns in perspective as a real 3D device, with its thickness, rounded edges and glass. `3d` stands it up straight, and one CSS variable, `--depth`, makes any device 3D (or thicker) from the theme. Try it: `npx screenshot-studio demo --3d`.
 
 <p align="center">
   <img src="docs/images/depth.jpg" width="100%" alt="The demo's three cards in porcelain with real 3D phones, tilted so their edges show">

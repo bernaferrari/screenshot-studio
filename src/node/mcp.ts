@@ -44,7 +44,7 @@ export function createTools(defaultListing?: string): Tool[] {
         const copy = readCopy(listing, defaultLocale);
         return [text({
           listing, app: config.app, defaultLocale, locales,
-          files: {theme: ['theme.css', 'theme.ts', 'theme.js'].filter(f => fs.existsSync(path.join(listing, f))), gallery: 'gallery.json', copy: `${defaultLocale}/copy.json`},
+          files: {theme: ['theme.css', 'theme.ts'].filter(f => fs.existsSync(path.join(listing, f))), gallery: 'gallery.json', copy: `${defaultLocale}/copy.json`},
           galleries: Object.fromEntries(Object.keys(galleries).map(kind => [kind, {
             size: `${profiles[kind].width}×${profiles[kind].height}`, frame: profiles[kind].frame, defaultLocaleOnly: !!profiles[kind].defaultLocaleOnly,
             cards: cardsFor(galleries, kind).map((card, index) => ({

@@ -50,12 +50,13 @@ results you can parse, and open the images yourself.
 | Which cards, their order, captures, layout words, callouts | `gallery.json` |
 | Words or art on one card (a sticker, a big number, a shape) | the card's `layers` in `gallery.json`: Tailwind classes when `theme.css` imports `tailwindcss`, otherwise classes styled in `theme.css` |
 | Fonts, colors (shadcn/ui tokens: `--background`, `--foreground`, `--primary`), where devices sit | `theme.css` |
-| Background art, extra elements, real 3D devices (`depth: true`) | `theme.ts` |
+| Background art, extra elements | `theme.ts` |
+| Real 3D devices | the layout words `tilt` or `3d` in `gallery.json`, or `.device{--depth:1}` in `theme.css` |
 | Image sizes, capture sizes | `profiles.json` |
 | Store text (title, short description) | `<locale>/listing.json` |
 
 **Placing devices.** Cards use layout words in `gallery.json`: `big` (one large device), `hang` (from the top, copy
-below), `duo` (two devices), plus `tilt` beside any of them. Themes place them with variables per gallery in
+below), `duo` (two devices), plus `tilt` (turned, in 3D), `3d` or `flat` beside any of them. Themes place them with variables per gallery in
 `theme.css`: `.phone{--device-top:600px;--device-left:84px;--hang-top:-640px;--duo-width:540px;--duo-step:180px}`
 (full list in `docs/themes.md`). Change a variable, render, and read `layout` to confirm the numbers. One card placed by
 hand: an ordinary rule wins, `.phone .home .device{top:560px}`.

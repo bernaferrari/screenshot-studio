@@ -34,7 +34,7 @@ export function CardChecks({
         </p>
       ) : state.status === "failed" ? (
         <p className="text-sm text-destructive">
-          The live preview didn't finish rendering. Check theme.js for errors.
+          The live preview didn't finish rendering. Check theme.ts for errors.
         </p>
       ) : null}
       {notes.length > 0 && (

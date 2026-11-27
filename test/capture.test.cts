@@ -48,7 +48,9 @@ test('a listing still on a Python tour is told to write capture.tour.ts', t => {
   fs.writeFileSync(path.join(listing, 'capture-emulator.py'), '');
   assert.throws(() => tourFile(listing), /capture-emulator\.py is a Python tour, which this version no longer runs/);
   fs.writeFileSync(path.join(listing, 'capture.tour.mjs'), 'export default {}');
-  assert.equal(tourFile(listing), path.join(listing, 'capture.tour.mjs'));
+  assert.throws(() => tourFile(listing), /Rename store-listing\/capture\.tour\.mjs to capture\.tour\.ts/);
+  fs.writeFileSync(path.join(listing, 'capture.tour.ts'), 'export default {}');
+  assert.equal(tourFile(listing), path.join(listing, 'capture.tour.ts'));
 });
 
 test('iOS launches in the capture language with the language and region iOS names', () => {
@@ -89,7 +91,7 @@ fs.writeFileSync(f,JSON.stringify(s));process.stdout.write(out);
 `,{mode:0o755});
   fs.writeFileSync(path.join(root,'studio.json'),JSON.stringify({app:'Test',locales:['en-US']}));
   fs.writeFileSync(path.join(root,'profiles.json'),JSON.stringify({phone:{width:200,height:400,captureWidth:200,captureHeight:400,captureDensity:160}}));
-  const dimensions=path.join(root,'dimensions.json'),tour=path.join(root,'capture.tour.mjs');
+  const dimensions=path.join(root,'dimensions.json'),tour=path.join(root,'capture.tour.ts');
   fs.writeFileSync(tour,`import fs from 'node:fs';export default {app:'example.app',tapMap:false,async run(d){await d.rotate(true);const landscape=[d.width,d.height];await d.rotate(false);fs.writeFileSync(${JSON.stringify(dimensions)},JSON.stringify({landscape,portrait:[d.width,d.height]}));throw new Error('intentional failure');}};`);
   const previous=process.env.PATH;process.env.PATH=root+path.delimiter+previous;
   try {

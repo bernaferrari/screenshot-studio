@@ -10,7 +10,7 @@ import path from 'node:path';
 import {validate, type Schema} from '../core/validate';
 import {cardsFor, devicesFor, requiredCopyFields} from '../core/gallery';
 import {cardWords, fillWords} from '../core/layout';
-import {readJson, requireListing, STUDIO_DIR} from './project';
+import {oldNames, readJson, requireListing, STUDIO_DIR} from './project';
 import type {Copy, Galleries, Listing, Profiles, StudioConfig} from '../core/types';
 import {isStoreGallery, listingProblems, SCREENSHOT_LIMIT, storeFor} from '../core/stores';
 
@@ -90,6 +90,8 @@ export function checkListing(listingDir?: string): CheckResult {
     for (const problem of problems) error(file, problem.message, {path: problem.path});
     return problems.length ? null : value;
   };
+
+  for (const old of oldNames(listing)) error(old.file, `is no longer read; the studio reads ${old.rename}`, {fix: old.fix});
 
   const config = load<StudioConfig>('studio.json', 'studio');
   const profiles = load<Profiles>('profiles.json', 'profiles');

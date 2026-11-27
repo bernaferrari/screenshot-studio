@@ -103,7 +103,7 @@ async function setup(t) {
       });
     }
     write(l + "/en-US/phone/01-hello.png", png(400, 800));
-    write(l + "/theme.js", "export default {}");
+    write(l + "/theme.ts", "export default {}");
     write(
       l + "/theme.css",
       "body{background:#eee;font-family:Arial}header{top:30px;left:20px;right:20px}h1{font-size:36px}.device{left:60px;top:220px;width:280px;--bezel:6px;--radius:20px}",
@@ -1516,7 +1516,7 @@ test('failed preview reloads retain at most the last successful and newest frame
   const {page,base,projects,roots,write}=await setup(t);
   const listing=roots[0]+'/store-listing';
   // Fail the render without generating uncaught page errors in the editor itself.
-  write(listing+'/theme.js','export default {async compose(){await new Promise(()=>{})}}');
+  write(listing+'/theme.ts','export default {async compose(){await new Promise(()=>{})}}');
   await page.goto(base+projects[0].editorURL+'?view=gallery');
   const card=page.locator('[data-card-frame=live]').first();await card.waitFor();
   for(let i=0;i<4;i++){write(listing+'/theme.css',`body{background:rgb(${i},0,0)}`);await page.waitForTimeout(350);}

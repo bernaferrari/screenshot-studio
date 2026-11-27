@@ -297,7 +297,7 @@ export function init(options: InitOptions = {}): InitResult {
  */
 export function installTheme(listing: string, theme: string, options: {fill: (text: string) => string; write: (relative: string, content: string) => void; result?: {created: string[]; kept: string[]}; ios?: boolean; overwrite?: boolean}) {
   if (!fs.existsSync(path.join(THEMES, theme, 'theme.css'))) throw new Error(`No theme "${theme}". Available: ${themes().map(t => t.name).join(', ')}`);
-  for (const file of ['theme.css', 'theme.ts', 'theme.js']) {
+  for (const file of ['theme.css', 'theme.ts']) {
     const from = path.join(THEMES, theme, file);
     const extra = options.ios && file === 'theme.css' ? fs.readFileSync(path.join(IOS_TEMPLATES, 'theme.css'), 'utf8') : '';
     if (fs.existsSync(from)) options.write(file, options.fill(fs.readFileSync(from, 'utf8') + extra));

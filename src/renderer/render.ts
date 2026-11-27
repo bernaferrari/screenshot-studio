@@ -1,12 +1,12 @@
 // Screenshot Studio renderer. One card per page: preview.html?locale=de-DE&kind=phone&slide=0[&fit]
 // The app supplies ../studio.json, ../profiles.json, ../gallery.json (layout), ../theme.css,
-// ../theme.js, and per locale ../<locale>/copy.json (words) and ../<locale>/raw/ (captures).
+// ../theme.js (the listing's theme.ts), and per locale ../<locale>/copy.json (words) and ../<locale>/raw/ (captures).
 // Each step lives in its own module; the theme's hooks run between them: art and compose before captures load,
 // layout once frames have their size, decorate once everything is placed, refit while copy shrinks.
 import {cardWords, plainHeadline} from '../core/layout';
 import type {ThemeContext} from '../core/types';
 import {drawCallouts} from './callouts';
-import {captureLoader, checkBounds, createDevices, labelDevices, measure, relative, settleDevices, sizeFrames} from './devices';
+import {captureLoader, checkBounds, createDevices, depthOf, labelDevices, measure, relative, settleDevices, sizeFrames} from './devices';
 import {findWidows, fitCopy} from './fit';
 import {identity} from './identity';
 import {addLayers, cssAttributes, wordAttributes} from './layers';
@@ -69,10 +69,11 @@ const locales = await settleDevices(devices, profiles);
 report.fallbackCaptures = devices.filter(d => report.fallbackCaptures.includes(d.spec.raw)).map(d => d.spec.raw);
 sizeFrames(devices, config, layoutWords);
 if (theme.layout) await theme.layout(context);
-// A theme with `depth` draws its phones and tablets as real 3D devices; three.js loads only for those cards.
-if (Array.isArray(theme.depth) ? theme.depth.includes(kind) : theme.depth)
-  await (await import(/* @vite-ignore */ './devices3d.js' as string) as typeof import('./devices3d')).renderDevices(main);
+// Phones and tablets with a --depth are drawn as real 3D devices; three.js loads only for the cards that have one.
+const deep = devices.filter(device => ['phone', 'iphone', 'tablet'].includes(device.frame) && depthOf(device.node) > 0).map(device => device.node);
+const drawn = deep.length ? await (await import(/* @vite-ignore */ './devices3d.js' as string) as typeof import('./devices3d')).renderDevices(main, deep) : null;
 const measured = context.devices = measure(main, devices, locales);
+for (const device of measured) device.canvas = drawn?.get(device.node);
 labelDevices(main, measured);
 context.device = measured[0]?.box;
 context.screen = measured[0]?.screen;

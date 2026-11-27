@@ -2,7 +2,7 @@
 //   studio.cjs   every command and the Node library (src/cli, src/node, src/core), one file
 //   render.js    the card renderer (src/renderer/render.ts), loaded by preview.html
 //   shapes.js    helpers themes import (src/renderer/shapes.ts)
-//   devices3d.js real 3D devices for themes with `depth` (src/renderer/devices3d.ts, with three.js), loaded on demand
+//   devices3d.js real 3D devices for frames with a --depth (src/renderer/devices3d.ts, with three.js), loaded on demand
 //   types.d.ts   types for themes and tools; schemas/ (generated from them) for checks and editor autocomplete
 // The editor (studio/index.html, studio/assets/) is built separately by `npm run build:ui`.
 import fs from 'node:fs';

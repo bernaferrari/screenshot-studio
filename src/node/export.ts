@@ -17,7 +17,7 @@ import type {Server} from 'node:http';
 import type {Browser, Page} from 'playwright';
 import type {Card, CardReport, Listing, ReadmeStrip} from '../core/types';
 import {checkListing} from './check';
-import {loadListing, readJson, requireListing, type ListingFiles} from './project';
+import {loadListing, oldNames, readJson, requireListing, type ListingFiles} from './project';
 import {serve} from './server';
 import {launchBrowser} from './playwright';
 import {listingProblems, storeFor} from '../core/stores';
@@ -130,32 +130,39 @@ const MIN_CONTRAST = 2.5;
  * text made transparent, keeping each element's own background, and the darkest-to-text tenth of those pixels must
  * still reach MIN_CONTRAST. Decorative layers behind the devices aren't text to read and are skipped.
  */
+/** Text below this effective opacity is decoration, which the contrast check leaves alone. */
+const FAINT = .3;
+
 async function hardToRead(page: Page): Promise<{text: string; contrast: number}[]> {
-  const targets = await page.evaluate(() => {
+  const targets = await page.evaluate(FAINT => {
     const ink = document.createElement('canvas').getContext('2d', {willReadFrequently: true})!;
     const rgba = (color: string) => { ink.clearRect(0, 0, 1, 1); ink.fillStyle = color; ink.fillRect(0, 0, 1, 1); return [...ink.getImageData(0, 0, 1, 1).data]; };
     const found: {text: string; color: number[]; boxes: {x: number; y: number; w: number; h: number}[]}[] = [];
     const main = document.querySelector('main');
     if (!main) return found;
     for (const element of main.querySelectorAll<HTMLElement>('*')) {
-      if (element.closest('.art, .device, .layer-behind, svg')) continue;
+      // Art, devices, and text a reader isn't meant to read (aria-hidden) aren't copy.
+      if (element.closest('.art, .device, .layer-behind, svg, [aria-hidden="true"]')) continue;
       const nodes = [...element.childNodes].filter(n => n.nodeType === Node.TEXT_NODE && n.textContent!.trim());
       if (!nodes.length) continue;
       const style = getComputedStyle(element);
       if (style.visibility === 'hidden') continue;
       let opacity = 1;
       for (let e: HTMLElement | null = element; e; e = e.parentElement) opacity *= Number(getComputedStyle(e).opacity);
-      const color = rgba(style.color);
+      // Text is painted in its fill color, which is its color unless a theme sets -webkit-text-fill-color. A
+      // transparent fill is gradient text, painted by its background: no one color to measure.
+      const color = rgba(style.webkitTextFillColor || style.color);
       color[3] = color[3] / 255 * opacity;
-      if (color[3] < .05) continue;
+      // Text this faint is decoration by design (a watermark, a big background glyph), not copy.
+      if (color[3] < FAINT) continue;
       const boxes = nodes.flatMap(node => { const range = document.createRange(); range.selectNodeContents(node); return [...range.getClientRects()]; })
         .filter(r => r.width > 2 && r.height > 2).map(r => ({x: r.x, y: r.y, w: r.width, h: r.height}));
       if (boxes.length) found.push({text: nodes.map(n => n.textContent!.trim()).join(' '), color, boxes});
     }
     return found;
-  });
+  }, FAINT);
   if (!targets.length) return [];
-  const style = await page.addStyleTag({content: 'main, main * {color: transparent !important; -webkit-text-stroke-color: transparent !important; text-shadow: none !important; text-decoration-color: transparent !important}'});
+  const style = await page.addStyleTag({content: 'main, main * {color: transparent !important; -webkit-text-fill-color: transparent !important; -webkit-text-stroke-color: transparent !important; text-shadow: none !important; text-decoration-color: transparent !important}'});
   const shot = (await page.screenshot({type: 'png', scale: 'css'})).toString('base64');
   await style.evaluate(node => (node as Element).remove());
   return page.evaluate(async ({data, targets, min}) => {
@@ -322,6 +329,10 @@ export async function exportListing(options: ExportOptions = {}): Promise<Export
     try { fs.writeFileSync(path.join(listing, 'export-report.json'), JSON.stringify({...result, finishedAt: new Date().toISOString(), options: ran}, null, 2) + '\n'); } catch {}
     return result;
   };
+
+  // A theme under its old name would render as CSS alone: stop and say what to rename.
+  const renamed = oldNames(listing);
+  if (renamed.length) return finish({ok: false, cards, warnings, locales: tallies, error: renamed.map(old => old.fix).join('\n')});
 
   // What no render shows but check knows: starter words still in place, more cards than the store takes.
   const checked = checkListing(listing).issues;

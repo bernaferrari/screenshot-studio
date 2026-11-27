@@ -45,7 +45,7 @@ export async function loadCard(q: URLSearchParams): Promise<Loaded> {
   const index = Math.max(0, Math.min(cards.length - 1, Number(q.get('slide') || 0)));
   const {card: slide, missing} = withCopy(cards[index], kind, copy || {}, fallback);
   // The app's theme sits beside the studio folder and loads at runtime (the build keeps it external). A theme may be
-  // CSS alone, without a theme.js.
+  // CSS alone, without a theme.ts (the server answers ../theme.js with it, stripped of its types).
   const theme: Theme = (await fetch('../theme.js', {method: 'HEAD'})).ok ? (await import(/* @vite-ignore */ '../theme.js' as string)).default || {} : {};
   return {
     config, profiles, locale, defaultLocale, kind, profile, index, slide, theme,

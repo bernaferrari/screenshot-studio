@@ -365,8 +365,8 @@ export interface UiNode {
 
 export interface Box {left: number; top: number; width: number; height: number}
 
-/** What a theme's hooks receive. */
-export interface ThemeContext {
+/** What a theme's hooks receive. `Fields` are the theme's own card fields (see Theme). */
+export interface ThemeContext<Fields extends object = {}> {
   W: number;
   H: number;
   /** The gallery being rendered (phone, tablet7, readme…). */
@@ -376,9 +376,9 @@ export interface ThemeContext {
   /** This card's position in its gallery. */
   index: number;
   /** This card, with its words. */
-  slide: Card;
+  slide: Card & Fields;
   /** Every card in the gallery, with words. */
-  slides: Card[];
+  slides: (Card & Fields)[];
   profile: Profile;
   profiles: Profiles;
   config: StudioConfig;
@@ -400,30 +400,31 @@ export interface RenderedDevice {
   locale: string | null;
   box: Box;
   screen: Box;
+  /** A device with a --depth: the canvas it is drawn on in 3D, over the whole card (its flat frame stays, hidden). */
+  canvas?: HTMLCanvasElement;
 }
 
-/** store-listing/theme.ts's default export. Every hook is optional. */
-export interface Theme {
+/**
+ * store-listing/theme.ts's default export. Every hook is optional. `Fields` names the card fields of gallery.json the
+ * theme reads beyond the studio's own, so ctx.slide has them typed:
+ *   export default {compose({slide, main}) { if (slide.glyph) … }} satisfies Theme<{glyph?: string}>;
+ */
+export interface Theme<Fields extends object = {}> {
   /**
    * The background layer: SVG markup or nodes. Attributes may use CSS (fill="var(--primary)", stop-color="color-mix(…)");
    * the renderer moves them into style, where CSS applies.
    */
-  art?(ctx: ThemeContext): string | Node | void;
+  art?(ctx: ThemeContext<Fields>): string | Node | void;
   /** Add elements before captures load: a brand mark, panels, notes. */
-  compose?(ctx: ThemeContext): void | Promise<void>;
+  compose?(ctx: ThemeContext<Fields>): void | Promise<void>;
   /** Adjust or redraw frames once captures have their size. */
-  layout?(ctx: ThemeContext): void | Promise<void>;
+  layout?(ctx: ThemeContext<Fields>): void | Promise<void>;
   /** Final touches with devices measured; throw to fail the export. */
-  decorate?(ctx: ThemeContext): void | Promise<void>;
+  decorate?(ctx: ThemeContext<Fields>): void | Promise<void>;
   /** Called each time copy shrinks to fit. */
-  refit?(ctx: ThemeContext): void | Promise<void>;
+  refit?(ctx: ThemeContext<Fields>): void | Promise<void>;
   /** The background runs across cards (all galleries, or these); the exporter checks the seams. */
   continuous?: boolean | string[];
-  /**
-   * Draw phones and tablets as real 3D devices (three.js), in every gallery or in these: each takes its frame's size,
-   * corners and CSS `transform` as its pose, and `--device-body` as its color. A card opts out with the layout word `flat`.
-   */
-  depth?: boolean | string[];
 }
 
 /**
@@ -431,10 +432,22 @@ export interface Theme {
  * capture size (profiles.json entries with captureWidth, captureHeight and captureDensity), sets the emulator up (size,
  * density, 9:41 demo status bar, the app's language, light or dark), saves each scene as
  * <locale>/raw/<profile>/<scene>.png with its layout map, and puts everything back afterwards.
- *   /** @type {import('./studio/types').Tour} *\/
- *   export default {app: 'com.example.app.storecapture', scenes: {light: {'01-home': null, '02-settings': d => d.tap('Settings')}}};
+ *   import type {Tour} from 'screenshot-studio';
+ *   export default {app: 'com.example.app.storecapture', scenes: {light: {'01-home': null, '02-settings': d => d.tap('Settings')}}} satisfies Tour;
+ * A tour gives either `scenes` or `run`.
  */
-export interface Tour {
+export type Tour = TourOptions & ({scenes: TourScenes; run?: undefined} | {
+  /** Instead of scenes: drive everything yourself, calling d.shot(). For apps that capture with their own test. */
+  run: TourStep;
+  scenes?: undefined;
+});
+/**
+ * Scenes per theme, in order: each says how to reach its screen from the previous one, then the studio saves it.
+ * `null` saves the screen as it is; return `false` to skip a scene for this profile or language.
+ */
+export type TourScenes = Partial<Record<'light' | 'dark', Record<string, TourStep | null>>>;
+/** What every tour may set, whether it gives scenes or drives the capture with run. */
+export interface TourOptions {
   /** The app's package (the capture build's). */
   app: string;
   /** Its launch activity, when the package has several (`.MainActivity` or the full name). */
@@ -446,20 +459,13 @@ export interface Tour {
   install?: string;
   /** Uninstall the app when the tour ends, so it never shows up in another app's app list (default false). */
   uninstall?: boolean;
-  /**
-   * Scenes per theme, in order: each says how to reach its screen from the previous one, then the studio saves it.
-   * `null` saves the screen as it is; return `false` to skip a scene for this profile or language.
-   */
-  scenes: Partial<Record<'light' | 'dark', Record<string, TourStep | null>>>;
   /** Profiles whose scenes differ (a README-only size, say): these replace `scenes` for that profile. */
-  profiles?: Record<string, Tour['scenes']>;
+  profiles?: Record<string, TourScenes>;
   /** Before each profile's run of a theme's scenes. Default: launch the app with its data cleared. */
   start?: TourStep;
   /** Once per language, before the first profile (install fixtures, say), and after the last (even when a scene failed). */
   setup?: TourStep;
   teardown?: TourStep;
-  /** Instead of scenes: drive everything yourself, calling d.shot(). For apps that capture with their own test. */
-  run?: TourStep;
   /** Scenes that capture a frame of real motion: their layout is read with animations off, then they run for a moment. */
   animated?: string[];
   /** Battery level the demo-mode status bar shows (default 100). */
@@ -501,7 +507,7 @@ export interface TourDevice {
   // then for the screen to settle (two identical frames in a row), so a tour needs no sleeps.
 
   /** Start the app, in front and settled; `clear` wipes its data first (its language is set again); extras become intent extras. */
-  launch(options?: {clear?: boolean; activity?: string; extras?: Record<string, string | number | boolean>; wait?: number}): Promise<void>;
+  launch(options?: {clear?: boolean; activity?: string; extras?: Record<string, string | number | boolean | undefined>; wait?: number}): Promise<void>;
   /**
    * Tap the element whose text (or description, unless textOnly) is `label`, a regular expression matched whole,
    * waiting up to `timeout` for it to show up. `above`/`below` keep to a band of the screen (fractions of its height).

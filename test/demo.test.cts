@@ -31,11 +31,9 @@ test('demo --3d draws real 3D phones, tilted, and running it again without the f
     const deep = demo(cwd, '--3d');
     assert.equal(deep.status, 0, deep.stdout + deep.stderr);
     assert.doesNotMatch(deep.stdout, /warning/i);
-    assert.match(fs.readFileSync(path.join(listing, 'theme.ts'), 'utf8'), /depth: true/);
     assert.ok(JSON.parse(fs.readFileSync(path.join(listing, 'gallery.json'), 'utf8')).phone.every(card => card.layout.split(' ').includes('tilt')));
     const flat = demo(cwd);
     assert.equal(flat.status, 0, flat.stdout + flat.stderr);
-    assert.doesNotMatch(fs.readFileSync(path.join(listing, 'theme.ts'), 'utf8'), /depth/);
     assert.ok(JSON.parse(fs.readFileSync(path.join(listing, 'gallery.json'), 'utf8')).phone.every(card => !card.layout.includes('tilt')));
   } finally { fs.rmSync(cwd, {recursive: true, force: true}); }
 });

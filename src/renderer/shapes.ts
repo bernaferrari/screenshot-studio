@@ -1,4 +1,5 @@
-// Small helpers themes share: colors, panorama coordinates, and Material 3 Expressive shapes.
+// Small helpers themes share: colors, panorama coordinates, Material 3 Expressive shapes, and the copy's markup.
+import {parseHeadline} from '../core/layout';
 import type {ThemeContext} from '../core/types';
 
 type Rgb = number[];
@@ -77,3 +78,20 @@ export const shapes: Record<'clover' | 'cookie' | 'flower' | 'sunny' | 'circle' 
   circle: (cx, cy, r) => `<circle cx="${cx}" cy="${cy}" r="${r}"/>`,
   pill: (cx, cy, r, rot = 0) => `<rect x="${cx - r * 1.25}" y="${cy - r * .5}" width="${r * 2.5}" height="${r}" rx="${r * .5}" transform="rotate(${rot * 180 / Math.PI} ${cx} ${cy})"/>`
 };
+
+/**
+ * Text in the copy's markup (*highlight*, ~struck out~, [inserted], a new line per \n) as an element, for words a theme
+ * places itself: a panel's title, a caption. Styled like a headline's: em, del and ins, one span.line per line (.markup .line is a block).
+ *   panel.append(markup(spec.title, 'h2'));
+ */
+export function markup(text: string, tag = 'div'): HTMLElement {
+  const element = document.createElement(tag);
+  element.classList.add('markup');
+  for (const runs of parseHeadline(text)) {
+    const line = document.createElement('span');
+    line.className = 'line';
+    for (const run of runs) line.append(run.tag ? Object.assign(document.createElement(run.tag), {textContent: run.text}) : run.text);
+    element.append(line);
+  }
+  return element;
+}

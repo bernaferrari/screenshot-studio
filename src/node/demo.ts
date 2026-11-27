@@ -3,7 +3,7 @@
  * theme, exported and opened in the editor.
  *   npx screenshot-studio demo [folder] [--theme aurora] [--3d] [--no-open]
  * Run it again with another --theme to see the same cards in another look; your edits to the words are kept. --3d
- * draws the phones as real 3D devices, tilted (the theme's `depth` and the `tilt` layout word).
+ * tilts the phones (the `tilt` layout word), which draws them as real 3D devices.
  */
 import fs from 'node:fs';
 import path from 'node:path';
@@ -36,8 +36,8 @@ export async function run(argv: string[]): Promise<number> {
   // The theme is swapped whole: its files and fonts replace the last one's.
   fs.rmSync(path.join(listing, 'assets'), {recursive: true, force: true});
   installTheme(listing, theme, {fill: text => text.replaceAll('{{name}}', 'ChangeDetection'), overwrite: true,
-    write: (relative, content) => fs.writeFileSync(path.join(listing, relative), content.replace(/^export default \{/m, depth && /^theme\.[jt]s$/.test(relative) ? 'export default {\n  depth: true,' : '$&'))});
-  // --3d tilts every card; without it the demo's cards stand straight again.
+    write: (relative, content) => fs.writeFileSync(path.join(listing, relative), content)});
+  // --3d tilts every card, and a tilted device is drawn in 3D; without it the demo's cards stand straight again.
   const galleryFile = path.join(listing, 'gallery.json');
   const gallery = JSON.parse(fs.readFileSync(galleryFile, 'utf8'));
   for (const card of gallery.phone) card.layout = [...(card.layout || '').split(/\s+/).filter((word: string) => word && word !== 'tilt'), ...(depth ? ['tilt'] : [])].join(' ');

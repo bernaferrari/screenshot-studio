@@ -47,8 +47,24 @@ h1 ins{text-decoration:none}
 .device.device-frame-none .screen{border-radius:0}
 .device .dots{position:absolute;left:24px;top:20px;display:flex;gap:10px}
 .device .dots i{width:13px;height:13px;border-radius:50%;background:#ff5f57}.device .dots i+i{background:#febc2e}.device .dots i+i+i{background:#28c840}
+/* Real 3D devices. --depth is a phone or tablet's thickness as a multiple of the real device's (0, the default, is the
+   flat frame); set it anywhere CSS reaches: every device, a gallery (.phone .device), a role (.device.hero). The layout
+   word tilt turns the device in perspective (--tilt is the pose) and shows its thickness; 3d shows it standing straight;
+   flat, on a card or in a device's role, keeps the flat frame whatever else says. --device-body colors the body. In the
+   studio layer, so a theme's own --depth or transform wins (except over flat). */
+@layer studio{
+  .tilt .device{--depth:1;transform:var(--tilt,perspective(2400px) rotateY(-18deg) rotateX(6deg) rotateZ(1.5deg))}
+  [class~="3d"] .device{--depth:1}
+  .flat .device,.device.flat{--depth:0 !important}
+}
 
 .callout{position:absolute;z-index:4;background-repeat:no-repeat}
+
+/* Copy wraps into even lines, never a word or two alone on the last: a card's few lines of supporting text, a headline
+   line that is allowed to wrap, and a theme's own words. Export still warns about any short last line that remains. */
+@layer studio{
+  header p,h1 .line,.markup{text-wrap:balance}
+}
 
 /* Layers (a card's "layers" in gallery.json): placed by their own style and the theme's classes. Behind sits over the
    background and under the devices (z-index 2) and headline (3); front sits over everything but the name banner.
@@ -58,7 +74,7 @@ h1 ins{text-decoration:none}
   .layer{position:absolute;pointer-events:none;margin:0}
   .layer-behind{z-index:1}
   .layer-front{z-index:4}
-  .layer .line{display:block}
+  .layer .line,.markup .line{display:block}
   .layer em{font-style:normal}
   .layer ins{text-decoration:none}
 }

@@ -118,3 +118,17 @@ test('layers: a missing image or a word the card does not have is an error at it
   assert.match(layers[1].message, /\{nope\}/);
   assert.match(layers[1].fix, /copy\.json/);
 });
+
+test('a theme or tour under its old JavaScript name is an error that says what to rename, and export refuses it', async () => {
+  const {exportListing} = require('../studio/studio.cjs');
+  const listing = fixture(dir => {
+    fs.writeFileSync(path.join(dir, 'theme.js'), 'export default {}');
+    fs.writeFileSync(path.join(dir, 'capture.tour.mjs'), 'export default {}');
+  });
+  const errors = checkListing(listing).issues.filter(issue => issue.level === 'error');
+  assert.deepEqual(errors.map(issue => issue.file).sort(), ['capture.tour.mjs', 'theme.js']);
+  assert.match(errors.find(issue => issue.file === 'theme.js').fix, /Rename store-listing\/theme\.js to theme\.ts/);
+  const result = await exportListing({listing, log: () => {}});
+  assert.equal(result.ok, false);
+  assert.match(result.error, /theme\.js to theme\.ts/);
+});

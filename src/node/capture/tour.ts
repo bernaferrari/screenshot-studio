@@ -32,7 +32,7 @@ export interface TourOptions {
 
 export async function loadTour(file: string): Promise<Tour> {
   const tour = (await import(`${pathToFileURL(path.resolve(file)).href}?${fs.statSync(file).mtimeMs}`)).default as Tour;
-  if (!tour?.app || (!tour.scenes && !tour.run)) throw new Error(`${file} must export default {app, scenes} (see the Tour type in studio/types.d.ts).`);
+  if (!tour?.app || (!tour.scenes && !tour.run)) throw new Error(`${file} must export default {app, scenes} or {app, run} (type it with "import type {Tour} from 'screenshot-studio'" and "satisfies Tour").`);
   return tour;
 }
 
@@ -102,7 +102,9 @@ export async function runTour(file: string, options: TourOptions): Promise<strin
         if (Date.now() > end) throw new Error(`${message || 'What the tour waits for never happened'} ${where()}`);
       }
     },
-    async launch({clear = false, wait = 0, activity = tour.activity, extras = {}} = {}) {
+    async launch({clear = false, wait = 0, activity = tour.activity, extras: given = {}} = {}) {
+      // An extra left undefined (a default that isn't set) isn't passed at all, rather than as the word "undefined".
+      const extras = Object.fromEntries(Object.entries(given).filter(([, value]) => value !== undefined && value !== null));
       if (ios) {
         const device = simulator();
         // iOS keeps no "clear data": a fresh install is a fresh start.
