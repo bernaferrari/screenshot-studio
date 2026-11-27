@@ -11,8 +11,10 @@ import fs from 'node:fs';
 import path from 'node:path';
 import {imageSize} from './check';
 import {readJson, writeJson} from './project';
+import {installSkill, SKILL_FILE} from './skill';
 import {APP_STORE, defaultSimulators, iosGalleryFor} from './ios';
 import type {Card, Copy, Galleries, Profile, Profiles, StudioConfig} from '../core/types';
+import {usage} from '../cli/commands';
 
 /** The package this command runs from: its templates/, themes/ and skills/. */
 const PACKAGE = path.resolve(__dirname, '..');
@@ -197,7 +199,7 @@ function importLocale(images: string[], listing: string, locale: string, importe
     fs.copyFileSync(source, path.join(listing, locale, 'raw', card.raw));
     count++;
   }
-  log(`imported  ${count} screenshot(s) for ${locale}`);
+  log(`imported  ${count === 1 ? '1 screenshot' : `${count} screenshots`} for ${locale}`);
   return count;
 }
 
@@ -281,15 +283,12 @@ export function init(options: InitOptions = {}): InitResult {
   template('gitignore', '.gitignore');
   template('README.md');
   installTheme(listing, theme, {fill, write, result, ios});
-  // Agents working in the app find the playbook here.
-  const skill = path.join(PACKAGE, 'skills', 'store-screenshots', 'SKILL.md');
-  if (fs.existsSync(skill) && !fs.existsSync(path.join(app, '.claude', 'skills', 'store-screenshots', 'SKILL.md'))) {
-    fs.mkdirSync(path.join(app, '.claude', 'skills', 'store-screenshots'), {recursive: true});
-    fs.copyFileSync(skill, path.join(app, '.claude', 'skills', 'store-screenshots', 'SKILL.md'));
-    log('created   .claude/skills/store-screenshots/SKILL.md');
-  }
+  // Agents working in the app find the playbook here, kept current with the studio.
+  const skill = installSkill(app);
+  if (skill === 'created' || skill === 'updated') log(`${skill.padEnd(9)} ${SKILL_FILE}`);
   return result;
 }
+
 
 /**
  * Copy a theme into a listing: theme.css and theme.ts (with the app's name filled in; iOS galleries get their positions
@@ -323,13 +322,13 @@ export async function run(argv: string[]): Promise<number> {
       screenshots: {type: 'string'},
       locales: {type: 'string'},
       platform: {type: 'string'},
-    }, {allowPositionals: true, usage: 'Usage: npx screenshot-studio init [app] [--name "My App"] [--package com.example.app] [--theme starter] [--screenshots ./folder] [--locales en-US,de-DE] [--platform android|ios]'});
+    }, {allowPositionals: true, usage: usage('init')});
     if (positionals.length > 1) throw new Error(`Unexpected argument "${positionals[1]}": pass at most one app folder.`);
     const result = init({app: positionals[0], name: values.name, package: values.package, theme: values.theme, screenshots: values.screenshots,
       locales: parseListOption(values.locales), platform: values.platform as InitOptions['platform']});
     const where = path.relative(process.cwd(), path.dirname(result.listing)) || '.';
     const cd = where === '.' ? '' : `cd ${where} && `;
-    console.log(`\nReady: ${result.cards} card(s) with the ${result.theme} theme.\n`);
+    console.log(`\nReady: ${result.cards === 1 ? '1 card' : `${result.cards} cards`} with the ${result.theme} theme.\n`);
     const others = result.locales.slice(1);
     // Spelled out for whoever runs this next, often an agent: what to fill in, then how to check and render.
     console.log(result.imported

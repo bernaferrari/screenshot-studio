@@ -39,7 +39,7 @@ Prefer the MCP server (`claude mcp add screenshot-studio -- npx screenshot-studi
 | `view_image` | Look at a card, a capture, or `en-US/contact-phone.jpg` (the whole strip at once). |
 | `emulator_screen`, `emulator_tap` | See and move around the app on the capture emulator (section 6). |
 
-Without MCP, the CLI does the same: `check`, `export --kind phone --card 0`, `export`, `screen`; add `--json` for
+Without MCP, the CLI does the same: `check`, `export --gallery phone --card home`, `export`, `screen`; add `--json` for
 results you can parse, and open the images yourself.
 
 ## 3. What to edit

@@ -1,6 +1,6 @@
 /**
  * Render every card to a store-ready image and check the composition (with Playwright, found wherever it is installed).
- *   node store-listing/studio/export.cjs [--locale de-DE] [--kind phone] [--card 3] [--strict] [--fastlane] [--jobs 4] [--json]
+ *   npx screenshot-studio export [--locale de-DE] [--gallery phone] [--card home] [--strict] [--fastlane] [--jobs 4] [--json]
  * Without --locale every locale in studio.json is rendered. --strict fails when a non-default locale
  * still borrows default-locale words or captures, or a callout could not follow its UI element.
  * It also warns (and --strict fails) when a gallery folder holds images no card writes any more, when a
@@ -21,6 +21,7 @@ import {loadListing, oldNames, readJson, requireListing, type ListingFiles} from
 import {serve} from './server';
 import {launchBrowser} from './playwright';
 import {listingProblems, storeFor} from '../core/stores';
+import {count} from '../core/layout';
 
 export interface ExportOptions {
   /** The store-listing folder (default: the one this studio copy lives in). */
@@ -28,9 +29,9 @@ export interface ExportOptions {
   /** Only these languages (default: every language in studio.json). */
   locales?: string[];
   /** Only this gallery (or `strips` for README strips). */
-  kind?: string;
-  /** Only this card (0-based) of `kind`. */
-  card?: number;
+  gallery?: string;
+  /** Only this card: its feature name, or its 0-based index (in `gallery`, or in every gallery). */
+  card?: number | string;
   /** Warnings and borrowed words fail the export. */
   strict?: boolean;
   /** Also write fastlane / F-Droid metadata. */
@@ -162,16 +163,23 @@ async function hardToRead(page: Page): Promise<{text: string; contrast: number}[
     return found;
   }, FAINT);
   if (!targets.length) return [];
+  // Two screenshots: as it is, and with the text made transparent. Where they differ is ink; the second shows what is
+  // behind it there.
+  const inked = (await page.screenshot({type: 'png', scale: 'css'})).toString('base64');
   const style = await page.addStyleTag({content: 'main, main * {color: transparent !important; -webkit-text-fill-color: transparent !important; -webkit-text-stroke-color: transparent !important; text-shadow: none !important; text-decoration-color: transparent !important}'});
   const shot = (await page.screenshot({type: 'png', scale: 'css'})).toString('base64');
   await style.evaluate(node => (node as Element).remove());
-  return page.evaluate(async ({data, targets, min}) => {
-    const image = new Image();
-    image.src = `data:image/png;base64,${data}`;
-    await image.decode();
-    const canvas = Object.assign(document.createElement('canvas'), {width: image.naturalWidth, height: image.naturalHeight});
-    const context = canvas.getContext('2d', {willReadFrequently: true})!;
-    context.drawImage(image, 0, 0);
+  return page.evaluate(async ({data, inked, targets, min}) => {
+    const pixels = async (source: string) => {
+      const image = new Image();
+      image.src = `data:image/png;base64,${source}`;
+      await image.decode();
+      const canvas = Object.assign(document.createElement('canvas'), {width: image.naturalWidth, height: image.naturalHeight});
+      const context = canvas.getContext('2d', {willReadFrequently: true})!;
+      context.drawImage(image, 0, 0);
+      return {canvas, context};
+    };
+    const {canvas, context} = await pixels(data), ink = (await pixels(inked)).context;
     const linear = (v: number) => { v /= 255; return v <= .04045 ? v / 12.92 : ((v + .055) / 1.055) ** 2.4; };
     const luminance = (r: number, g: number, b: number) => .2126 * linear(r) + .7152 * linear(g) + .0722 * linear(b);
     const poor: {text: string; contrast: number}[] = [];
@@ -181,11 +189,13 @@ async function hardToRead(page: Page): Promise<{text: string; contrast: number}[
         const x = Math.max(0, Math.floor(box.x)), y = Math.max(0, Math.floor(box.y));
         const w = Math.min(canvas.width - x, Math.ceil(box.w)), h = Math.min(canvas.height - y, Math.ceil(box.h));
         if (w < 1 || h < 1) continue;
-        const px = context.getImageData(x, y, w, h).data;
-        // Sample a grid of at most ~4,000 points per box.
-        const step = Math.max(1, Math.floor(Math.sqrt(w * h / 4000)));
+        const px = context.getImageData(x, y, w, h).data, drawn = ink.getImageData(x, y, w, h).data;
+        // Sample a grid of at most ~8,000 points per box, keeping those the text paints: what sits behind the glyphs,
+        // not a highlight or a neighbour's art that only reaches into the line's box.
+        const step = Math.max(1, Math.floor(Math.sqrt(w * h / 8000)));
         for (let j = 0; j < h; j += step) for (let i = 0; i < w; i += step) {
           const k = (j * w + i) * 4, R = px[k], G = px[k + 1], B = px[k + 2];
+          if (Math.abs(drawn[k] - R) + Math.abs(drawn[k + 1] - G) + Math.abs(drawn[k + 2] - B) < 24) continue;
           const back = luminance(R, G, B), fore = luminance(a * r + (1 - a) * R, a * g + (1 - a) * G, a * b + (1 - a) * B);
           ratios.push((Math.max(back, fore) + .05) / (Math.min(back, fore) + .05));
         }
@@ -196,7 +206,7 @@ async function hardToRead(page: Page): Promise<{text: string; contrast: number}[
       if (worst < min) poor.push({text, contrast: Math.round(worst * 10) / 10});
     }
     return poor;
-  }, {data: shot, targets, min: MIN_CONTRAST});
+  }, {data: shot, inked, targets, min: MIN_CONTRAST});
 }
 
 /** Re-encode a PNG through a canvas, which always writes RGBA: stores want transparent-capable art as 32-bit PNG. */
@@ -295,7 +305,8 @@ type Manifest = {galleries: Record<string, (ExportedCard & {slide: number; sourc
 
 /** One export: the listing, the browser and the server, and what it has found and written so far. */
 interface Run extends ListingFiles {
-  options: ExportOptions;
+  /** The options, with the card resolved to its index. */
+  options: Omit<ExportOptions, 'card'> & {card?: number};
   /** The export's own browser, which also draws the contact sheets and strips. */
   browser: Browser;
   /** The store-listing folder's address on the server. */
@@ -323,9 +334,11 @@ export async function exportListing(options: ExportOptions = {}): Promise<Export
   const tallies: LocaleTally[] = [];
   const staged: Run['staged'] = [];
   const warn = (message: string) => { warnings.push(message); log(`warning: ${message}`); };
+  /** The card asked for, as its index once resolved. */
+  let card: number | undefined;
   // export-report.json: the last export's result, for the editor's review queue.
   const finish = (result: ExportResult): ExportResult => {
-    const ran = {locales: options.locales, kind: options.kind, card: options.card, strict: !!options.strict};
+    const ran = {locales: options.locales, gallery: options.gallery, card, strict: !!options.strict};
     try { fs.writeFileSync(path.join(listing, 'export-report.json'), JSON.stringify({...result, finishedAt: new Date().toISOString(), options: ran}, null, 2) + '\n'); } catch {}
     return result;
   };
@@ -337,17 +350,26 @@ export async function exportListing(options: ExportOptions = {}): Promise<Export
   // What no render shows but check knows: starter words still in place, more cards than the store takes.
   const checked = checkListing(listing).issues;
   const placeholders = checked.filter(issue => issue.code === 'placeholder');
-  if (placeholders.length) warn(`${placeholders.length} field(s) in ${[...new Set(placeholders.map(issue => issue.file))].join(', ')} still hold the starter placeholder; \`npx screenshot-studio check\` lists them`);
+  if (placeholders.length) warn(`${count(placeholders.length, 'field')} in ${[...new Set(placeholders.map(issue => issue.file))].join(', ')} still hold the starter placeholder; \`npx screenshot-studio check\` lists them`);
   for (const issue of checked.filter(issue => issue.code === 'store-limit')) warn(`${issue.file}: ${issue.message}`);
 
   const gallery = await import('../core/gallery');
   let server: Server | null = null, browser: Browser | null = null, queue: RenderQueue | null = null;
   try {
-    if (options.kind && options.kind !== 'strips' && !files.galleries[options.kind]) throw new Error(`Unknown gallery ${options.kind}. Choose ${Object.keys(files.galleries).join(', ')}.`);
+    if (options.gallery && options.gallery !== 'strips' && !files.galleries[options.gallery]) throw new Error(`Unknown gallery ${options.gallery}. Choose ${Object.keys(files.galleries).join(', ')}.`);
     if (options.card !== undefined) {
-      if (!Number.isInteger(options.card) || options.card < 0) throw new Error('--card must be a nonnegative integer.');
-      const kinds = Object.keys(files.galleries).filter(kind => !options.kind || kind === options.kind);
-      if (!kinds.some(kind => gallery.cardsFor(files.galleries, kind).length > options.card!)) throw new Error(`No card ${options.card} in the selected galleries.`);
+      const kinds = Object.keys(files.galleries).filter(kind => !options.gallery || kind === options.gallery);
+      const asked = String(options.card).trim();
+      if (/^\d+$/.test(asked)) {
+        card = Number(asked);
+        if (!kinds.some(kind => gallery.cardsFor(files.galleries, kind).length > card!)) throw new Error(`No card ${card} in ${options.gallery || 'any gallery'}: cards count from 0.`);
+      } else {
+        // A feature name: the card that has it, in the one gallery asked for.
+        if (!options.gallery) throw new Error(`--card ${asked} names a card: say which gallery with --gallery (${kinds.join(', ')}).`);
+        const features = gallery.cardsFor(files.galleries, options.gallery).map(c => c.feature);
+        card = features.indexOf(asked);
+        if (card < 0) throw new Error(`No card "${asked}" in ${options.gallery}. Its cards: ${features.join(', ')}.`);
+      }
     }
     const problems = outputProblems({...files, locales: options.locales?.length ? options.locales : files.locales});
     if (problems.length) throw new Error(problems.map(p => `${p.file}: ${p.message}`).join('\n'));
@@ -357,12 +379,12 @@ export async function exportListing(options: ExportOptions = {}): Promise<Export
     const base = `http://127.0.0.1:${port}/${path.relative(files.repo, listing).split(path.sep).join('/')}`;
     browser = await launchBrowser();
     queue = renderQueue(Math.max(1, Math.floor(options.jobs || defaultJobs())), browser);
-    const run: Run = {...files, options, browser, base, queue, gallery, cards, tallies, staged, textFiles: [], log, warn};
+    const run: Run = {...files, options: {...options, card}, browser, base, queue, gallery, cards, tallies, staged, textFiles: [], log, warn};
     const plans = plan(run);
     let failures = 0;
     for (const locale of plans) if (!await writeLocale(run, locale)) failures++;
-    if (failures) throw new Error(`--strict: ${failures} locale(s) still borrow ${files.defaultLocale} words, captures or callout positions`);
-    if (options.strict && warnings.length) throw new Error(`--strict: ${warnings.length} warning(s)`);
+    if (failures) throw new Error(`--strict: ${count(failures, 'language')} still borrow ${files.defaultLocale} words, captures or callout positions`);
+    if (options.strict && warnings.length) throw new Error(`--strict: ${count(warnings.length, 'warning')}`);
     commitFastlane(staged);
     for (const {file, value} of run.textFiles) { fs.mkdirSync(path.dirname(file), {recursive: true}); fs.writeFileSync(file, value); }
     return finish({ok: true, cards, warnings, locales: tallies});
@@ -381,7 +403,7 @@ function plan(run: Run): LocalePlan[] {
   return (options.locales?.length ? options.locales : run.locales).map(locale => {
     const galleryPlans: GalleryPlan[] = [];
     for (const kind of Object.keys(galleries)) {
-      if (options.kind && options.kind !== kind) continue;
+      if (options.gallery && options.gallery !== kind) continue;
       // README art (a hero, a before/after) is written once, in the default locale.
       if (profiles[kind].defaultLocaleOnly && locale !== defaultLocale) continue;
       const slides = cardsFor(galleries, kind);
@@ -397,7 +419,7 @@ function plan(run: Run): LocalePlan[] {
     // README strips: a run of real store cards joined edge to edge, as the store carousel shows them.
     const strips: StripPlan[] = [];
     for (const strip of locale === defaultLocale && options.card === undefined ? config.readmeStrips || [] : []) {
-      if (options.kind && options.kind !== strip.kind && options.kind !== 'strips') continue;
+      if (options.gallery && options.gallery !== strip.kind && options.gallery !== 'strips') continue;
       const shots = strip.cards.map((i, n) => {
         const position = strip.cards.length === 1 ? 'only' : n === 0 ? 'first' : n === strip.cards.length - 1 ? 'last' : 'middle';
         return run.queue.add(browser => withCardPage(run, browser, locale, strip.kind, page => renderStripCard(run, page, locale, strip.kind, i, position)));
@@ -493,9 +515,9 @@ async function writeLocale(run: Run, plan: LocalePlan): Promise<boolean> {
     await contactSheet(run, plan, gallery, manifest, written);
   }
   for (const strip of plan.strips) await writeStrip(run, plan, strip, written);
-  if (!options.kind && options.card === undefined) staleOutputs(run, plan, manifest, written);
+  if (!options.gallery && options.card === undefined) staleOutputs(run, plan, manifest, written);
   writeListingText(run, locale);
-  if (config.writeAssets !== false && !options.kind && options.card === undefined) fs.writeFileSync(path.join(dir, 'assets.json'), JSON.stringify(manifest, null, 2) + '\n');
+  if (config.writeAssets !== false && !options.gallery && options.card === undefined) fs.writeFileSync(path.join(dir, 'assets.json'), JSON.stringify(manifest, null, 2) + '\n');
   run.tallies.push(tally);
   return !(options.strict && locale !== defaultLocale && (tally.untranslated || tally.borrowedCaptures || tally.fixedCallouts));
 }
@@ -579,7 +601,7 @@ async function writeStrip(run: Run, {locale, dir}: LocalePlan, {strip, shots: re
 }
 
 // Stale outputs: images in a folder of cards that no card, contact sheet or strip writes any more.
-// Only a full export knows every file it writes; a partial one (--kind, --card) can't tell stale from skipped.
+// Only a full export knows every file it writes; a partial one (--gallery, --card) can't tell stale from skipped.
 function staleOutputs(run: Run, {dir}: LocalePlan, manifest: Manifest, written: Set<string>) {
   const files = Object.values(manifest.galleries).flat().map(m => path.join(dir, m.file));
   for (const folder of new Set(files.map(f => path.dirname(f)))) {
@@ -628,29 +650,28 @@ function commitFastlane(staged: Run['staged']) {
 export function formatSummary(result: ExportResult): string {
   const lines = ['locale      cards  untranslated  borrowed captures  moved callouts  unresolved callouts  shrunk copy'];
   for (const t of result.locales) lines.push(`${t.locale.padEnd(10)}  ${String(t.cards).padStart(5)}  ${String(t.untranslated).padStart(12)}  ${String(t.borrowedCaptures).padStart(17)}  ${String(t.movedCallouts).padStart(14)}  ${String(t.fixedCallouts).padStart(19)}  ${String(t.shrunk).padStart(11)}`);
-  if (result.warnings.length) lines.push('', `${result.warnings.length} warning(s):`, ...result.warnings.map(w => `  ${w}`));
+  if (result.warnings.length) lines.push('', `${count(result.warnings.length, 'warning')}:`, ...result.warnings.map(w => `  ${w}`));
   return lines.join('\n');
 }
 
-/** `export [--locale de-DE] [--kind phone] [--card 3] [--strict] [--fastlane] [--prune] [--jobs 4] [--json]` */
+/** `export`: see its help in src/cli/commands.ts. */
 export async function run(argv: string[]): Promise<number> {
   const {parseCli, parseIntOption} = await import('./cli-args');
+  const {usage} = await import('../cli/commands');
   const {values} = parseCli(argv, {
     locale: {type: 'string'},
-    kind: {type: 'string'},
+    gallery: {type: 'string'},
     card: {type: 'string'},
     strict: {type: 'boolean'},
     fastlane: {type: 'boolean'},
     prune: {type: 'boolean'},
     jobs: {type: 'string'},
     json: {type: 'boolean'},
-    listing: {type: 'string'},
-  }, {usage: 'Usage: npx screenshot-studio export [--locale de-DE] [--kind phone] [--card 0] [--strict] [--fastlane] [--prune] [--jobs 4] [--json]'});
+  }, {usage: usage('export')});
   const json = !!values.json;
   const result = await exportListing({
-    locales: values.locale ? [values.locale] : undefined, kind: values.kind,
-    card: parseIntOption(values.card, '--card', {min: 0}),
-    strict: !!values.strict, fastlane: !!values.fastlane, prune: !!values.prune, listing: values.listing,
+    locales: values.locale ? [values.locale] : undefined, gallery: values.gallery, card: values.card,
+    strict: !!values.strict, fastlane: !!values.fastlane, prune: !!values.prune,
     jobs: parseIntOption(values.jobs, '--jobs', {min: 1}), log: json ? () => {} : undefined,
   });
   if (json) console.log(JSON.stringify(result, null, 2));

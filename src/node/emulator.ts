@@ -15,6 +15,7 @@ import {goBack, matcher, openApp, readTree, tapNode, tapPoint, type Target, type
 import {loadListing, findListing} from './project';
 import {Simulator} from './capture/simulator';
 import {findSimulator} from './ios';
+import {usage} from '../cli/commands';
 
 export interface ScreenElement {
   /** What a tour taps it by: its text, else its description, else its ID. */
@@ -111,7 +112,7 @@ export async function run(argv: string[]): Promise<number> {
     tap: {type: 'string'},
     back: {type: 'boolean'},
     json: {type: 'boolean'},
-  }, {usage: 'Usage: npx screenshot-studio screen [--serial emulator-5578 | --simulator "iPhone 17 Pro Max"] [--app com.example.app] [--out screen.png] [--json] [--tap "Settings" | --tap 540,1200 | --back]'});
+  }, {usage: usage('screen')});
   try {
     const device = emulator(values.serial, values.simulator, values.app);
     const tap = values.back ? 'back' : values.tap;

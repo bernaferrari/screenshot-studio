@@ -9,6 +9,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import {cardsFor, devicesFor, nodesFile, requiredCopyFields} from '../core/gallery';
 import {loadListing, readCopy, writeJson, type ListingFiles, requireListing} from './project';
+import {usage} from '../cli/commands';
 
 export interface Tally {
   done: number;
@@ -132,12 +133,9 @@ export function addLocale(locale: string, listing?: string): AddedLocale {
   return {locale, copyFile, addedFields, alreadyListed};
 }
 
-const USAGE = `Usage:
-  npx screenshot-studio locales                 words translated, captures present and layout sidecars per locale
-  npx screenshot-studio locales --init de-DE    add a locale with empty copy fields to fill in the editor`;
+const USAGE = usage('locales');
 
 export async function run(argv: string[]): Promise<number> {
-  if (argv.includes('--help') || argv.includes('-h')) { console.log(USAGE); return 0; }
   try {
     const {parseCli} = await import('./cli-args');
     const {values} = parseCli(argv, {init: {type: 'string'}}, {usage: USAGE});

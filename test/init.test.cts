@@ -75,3 +75,28 @@ test('init without screenshots prints capture next steps, sets .gitignore for de
   const frCopy = JSON.parse(fs.readFileSync(path.join(listing, 'fr-FR/copy.json'), 'utf8'));
   assert.equal(frCopy.$schema, 'https://unpkg.com/screenshot-studio/studio/schemas/copy.schema.json');
 });
+
+test('init keeps the agent skill current: an older copy is updated and named by check, an edited one is the app\'s own', t => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'studio-skill-'));
+  t.after(() => fs.rmSync(root, {recursive: true, force: true}));
+  const app = path.join(root, 'app'), skill = path.join(app, '.claude', 'skills', 'store-screenshots', 'SKILL.md');
+  const init = () => spawnSync(process.execPath, [STUDIO, 'init', app], {encoding: 'utf8'});
+  assert.equal(init().status, 0);
+  const installed = fs.readFileSync(skill, 'utf8');
+  assert.match(installed, /^---\nname: store-screenshots/);
+  assert.match(installed, /Installed by screenshot-studio/);
+  const listing = path.join(app, 'store-listing');
+  const skillWarnings = () => checkListing(listing).issues.filter(issue => /agent skill/.test(issue.message));
+  assert.deepEqual(skillWarnings(), []);
+  // An older studio's copy: check says so, and init brings it up to date.
+  fs.writeFileSync(skill, installed.replace('# Store screenshots', '# Store screenshots (old)'));
+  assert.equal(skillWarnings().length, 1);
+  assert.match(init().stdout, /updated\s+\.claude\/skills\/store-screenshots\/SKILL\.md/);
+  assert.equal(fs.readFileSync(skill, 'utf8'), installed);
+  // Without the marker line, the skill is the app's own: left alone, and no warning.
+  const own = installed.replace(/<!-- Installed by screenshot-studio.*-->\n/, '') + '\nOur own rule.\n';
+  fs.writeFileSync(skill, own);
+  init();
+  assert.equal(fs.readFileSync(skill, 'utf8'), own);
+  assert.deepEqual(skillWarnings(), []);
+});

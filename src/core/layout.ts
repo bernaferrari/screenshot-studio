@@ -127,3 +127,6 @@ export function fillWords(text: string, words: Record<string, string>): {text: s
   });
   return {text: filled, unknown};
 }
+
+/** A number with its noun, singular or plural: count(1, 'card') is "1 card", count(3, 'gallery', 'galleries') "3 galleries". */
+export const count = (n: number, one: string, many = `${one}s`) => `${n} ${n === 1 ? one : many}`;

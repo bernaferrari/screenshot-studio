@@ -127,8 +127,8 @@ export function ReviewView({
           {last.options?.locales?.length
             ? ` · ${last.options.locales.map(language).join(", ")}`
             : " · every language"}
-          {last.options?.kind
-            ? ` · ${model.profiles[last.options.kind]?.label || last.options.kind} only`
+          {last.options?.gallery
+            ? ` · ${model.profiles[last.options.gallery]?.label || last.options.gallery} only`
             : ""}{" "}
           · {plural(last.cards, "card")} ·{" "}
           <span

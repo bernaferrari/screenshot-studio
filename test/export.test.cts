@@ -18,7 +18,7 @@ test('partial exports preserve manifests, invalid selectors fail, strict failure
   const {root,listing,write}=fixture(t);
   const manifest={galleries:{phone:[{feature:'one'},{feature:'two'}]}};write('en-US/assets.json',manifest);
   const run=options=>exportListing({listing,jobs:1,log:()=>{},...options});
-  for(const options of [{card:999},{kind:'typo'},{card:-1},{card:NaN}]) {
+  for(const options of [{card:999},{gallery:'typo'},{card:-1},{card:NaN}]) {
     const result=await run(options);assert.equal(result.ok,false);assert.equal(result.cards.length,0);
     assert.deepEqual(JSON.parse(fs.readFileSync(path.join(listing,'en-US/assets.json'))),manifest);
   }
@@ -75,7 +75,7 @@ test('text that blends into what is behind it is a warning; the same card with r
   fs.cpSync(path.join(__dirname, 'fixtures', 'golden'), listing, {recursive: true});
   const theme = path.join(__dirname, '..', 'themes', 'starter');
   for (const file of ['theme.css', 'theme.ts']) fs.copyFileSync(path.join(theme, file), path.join(listing, file));
-  const run = () => exportListing({listing, locales: ['en-US'], kind: 'phone', card: 0, jobs: 1, log: () => {}});
+  const run = () => exportListing({listing, locales: ['en-US'], gallery: 'phone', card: 0, jobs: 1, log: () => {}});
   const readable = await run();
   assert.equal(readable.ok, true, readable.error);
   assert.deepEqual(readable.warnings.filter(w => /hard to read/.test(w)), []);
@@ -109,7 +109,7 @@ test('--depth draws devices in 3D: the 3d and tilt words turn it on, flat turns 
     gallery.phone[0].layout = layout;
     fs.writeFileSync(galleryFile, JSON.stringify(gallery));
     fs.writeFileSync(path.join(listing, 'theme.css'), css + extraCss);
-    const result = await exportListing({listing, locales: ['en-US'], kind: 'phone', card: 0, jobs: 1, log: () => {}});
+    const result = await exportListing({listing, locales: ['en-US'], gallery: 'phone', card: 0, jobs: 1, log: () => {}});
     assert.equal(result.ok, true, result.error);
     return fs.readFileSync(path.join(listing, result.cards[0].file));
   };
@@ -123,4 +123,37 @@ test('--depth draws devices in 3D: the 3d and tilt words turn it on, flat turns 
   const tilted = await render('big tilt');
   assert.notDeepEqual(tilted, await render('big tilt flat'), 'tilt draws the phone in 3D');
   assert.notDeepEqual(await render('big tilt', '\n.device{--depth:3}\n'), tilted, 'a bigger --depth is a thicker device');
+});
+
+test('a line break the copy asks for is the writer\'s: the short line after it is not a widow', {timeout: 120_000}, async t => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'studio-break-'));
+  t.after(() => fs.rmSync(root, {recursive: true, force: true}));
+  const listing = path.join(root, 'store-listing');
+  fs.cpSync(path.join(__dirname, 'fixtures', 'golden'), listing, {recursive: true});
+  const theme = path.join(__dirname, '..', 'themes', 'starter');
+  for (const file of ['theme.css', 'theme.ts']) fs.copyFileSync(path.join(theme, file), path.join(listing, file));
+  fs.appendFileSync(path.join(listing, 'theme.css'), '\nheader p{white-space:pre-line}\n');
+  const copyFile = path.join(listing, 'en-US', 'copy.json'), copy = JSON.parse(fs.readFileSync(copyFile, 'utf8'));
+  copy.home.body = 'Every page you watch, checked in the background.\nNo account.';
+  fs.writeFileSync(copyFile, JSON.stringify(copy));
+  const result = await exportListing({listing, locales: ['en-US'], gallery: 'phone', card: 0, jobs: 1, log: () => {}});
+  assert.equal(result.ok, true, result.error);
+  assert.deepEqual(result.warnings.filter(w => /short last line/.test(w)), []);
+});
+
+test('--card takes a card by its feature name, and a wrong one lists the cards there are', {timeout: 120_000}, async t => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'studio-card-'));
+  t.after(() => fs.rmSync(root, {recursive: true, force: true}));
+  const listing = path.join(root, 'store-listing');
+  fs.cpSync(path.join(__dirname, 'fixtures', 'golden'), listing, {recursive: true});
+  const theme = path.join(__dirname, '..', 'themes', 'starter');
+  for (const file of ['theme.css', 'theme.ts']) fs.copyFileSync(path.join(theme, file), path.join(listing, file));
+  const features = JSON.parse(fs.readFileSync(path.join(listing, 'gallery.json'), 'utf8')).phone.map(card => card.feature);
+  const byName = await exportListing({listing, locales: ['en-US'], gallery: 'phone', card: features[1], jobs: 1, log: () => {}});
+  assert.equal(byName.ok, true, byName.error);
+  assert.deepEqual(byName.cards.map(card => [card.index, card.feature]), [[1, features[1]]]);
+  const wrong = await exportListing({listing, locales: ['en-US'], gallery: 'phone', card: 'nope', jobs: 1, log: () => {}});
+  assert.match(wrong.error, new RegExp(`No card "nope" in phone\\. Its cards: ${features.join(', ')}`));
+  const noGallery = await exportListing({listing, locales: ['en-US'], card: features[0], jobs: 1, log: () => {}});
+  assert.match(noGallery.error, /say which gallery with --gallery/);
 });

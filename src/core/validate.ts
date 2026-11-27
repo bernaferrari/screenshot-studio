@@ -80,7 +80,7 @@ export function validate(value: unknown, schema: Schema, root: Schema = schema, 
     if (schema.exclusiveMinimum !== undefined && value <= schema.exclusiveMinimum) add(`must be more than ${schema.exclusiveMinimum}`);
   }
   if (Array.isArray(value)) {
-    if (schema.minItems !== undefined && value.length < schema.minItems) add(`needs at least ${schema.minItems} item(s)`);
+    if (schema.minItems !== undefined && value.length < schema.minItems) add(`needs at least ${schema.minItems === 1 ? 'one item' : `${schema.minItems} items`}`);
     if (schema.items) value.forEach((item, i) => errors.push(...validate(item, schema.items!, root, join(path, i))));
   }
   if (typeOf(value) === 'object') {

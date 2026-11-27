@@ -1,4 +1,4 @@
-/* {{name}}: a clean starting point. Make it the app's own: its fonts, its colors, one motif. */
+/* {{name}}: A clean starting point, system type and one blue, to make the app's own: its fonts, its colors, one motif. */
 /* The big, hang and duo layouts, placed per gallery by the variables below (see studio/layouts.css). */
 @import "studio/layouts.css";
 /* Colors are shadcn/ui tokens: set --background, --foreground and --primary, or paste a palette from

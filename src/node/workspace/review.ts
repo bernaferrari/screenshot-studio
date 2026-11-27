@@ -20,7 +20,7 @@ export interface ExportReport {
   cards?: unknown[];
   locales?: {locale: string}[];
   finishedAt: string;
-  options?: {locales?: string[]; kind?: string; card?: number; strict?: boolean};
+  options?: {locales?: string[]; gallery?: string; card?: number; strict?: boolean};
 }
 
 export interface ReviewIssue {

@@ -69,7 +69,7 @@ export const STUDIO_DIR = __dirname;
  * The store-listing folder for a command: an explicit path (an app folder or its store-listing), else the nearest
  * store-listing/ at or above the working directory.
  */
-export function findListing(explicit?: string, from = process.cwd()): string | null {
+export function findListing(explicit: string | undefined = chosen, from = process.cwd()): string | null {
   const resolve = (dir: string) => {
     if (fs.existsSync(path.join(dir, 'studio.json'))) return dir;
     if (fs.existsSync(path.join(dir, 'store-listing', 'studio.json'))) return path.join(dir, 'store-listing');
@@ -83,8 +83,16 @@ export function findListing(explicit?: string, from = process.cwd()): string | n
   }
 }
 
+/** The app the command line chose with --listing; every lookup without its own path finds it. */
+let chosen: string | undefined;
+/** Choose the app (or its store-listing folder) the rest of this process works on. */
+export function chooseListing(target: string): void {
+  if (!findListing(target)) throw new Error(`No store-listing/studio.json in ${path.resolve(target)}. Point --listing at an app set up with \`npx screenshot-studio init\`.`);
+  chosen = path.resolve(target);
+}
+
 /** findListing, or an error that says how to get one. */
-export function requireListing(explicit?: string): string {
+export function requireListing(explicit: string | undefined = chosen): string {
   const found = findListing(explicit);
   if (found) return found;
   throw new Error(explicit

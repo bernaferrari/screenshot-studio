@@ -9,6 +9,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import {exportListing, formatSummary} from './export';
 import {installTheme, themes} from './init';
+import {usage} from '../cli/commands';
 
 const DEMO = path.resolve(__dirname, '..', 'templates', 'demo');
 
@@ -18,8 +19,8 @@ export async function run(argv: string[]): Promise<number> {
     theme: {type: 'string'},
     '3d': {type: 'boolean'},
     'no-open': {type: 'boolean'},
-  }, {allowPositionals: true, usage: 'Usage: npx screenshot-studio demo [folder] [--theme aurora] [--3d] [--no-open]'});
-  if (positionals.length > 1) { console.error('Usage: npx screenshot-studio demo [folder] [--theme aurora] [--3d] [--no-open]'); return 1; }
+  }, {allowPositionals: true, usage: usage('demo')});
+  if (positionals.length > 1) { console.error(usage('demo')); return 1; }
   const theme = values.theme || 'aurora';
   const folder = path.resolve(positionals[0] || 'screenshot-studio-demo');
   const depth = !!values['3d'];

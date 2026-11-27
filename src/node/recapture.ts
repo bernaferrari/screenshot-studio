@@ -36,6 +36,7 @@ import {spawn, spawnSync} from 'node:child_process';
 import {loadListing, oldNames, requireListing, STUDIO_DIR} from './project';
 import {bootSimulator, findSimulator, simulatorsFor} from './ios';
 import {findPlaywright} from './playwright';
+import {usage} from '../cli/commands';
 
 export interface RecaptureOptions {
   listing?: string;
@@ -229,16 +230,15 @@ export async function run(argv: string[]): Promise<number> {
     profile: {type: 'string'},
     serial: {type: 'string'},
     simulator: {type: 'string'},
-    listing: {type: 'string'},
     boot: {type: 'boolean'},
     'no-build': {type: 'boolean'},
     'no-capture': {type: 'boolean'},
     'no-export': {type: 'boolean'},
     'dry-run': {type: 'boolean'},
-  }, {allowPositionals: true, usage: 'Usage: npx screenshot-studio recapture [locale…] [--profile phone] [--serial emulator-5578] [--simulator name] [--boot] [--no-build] [--no-capture] [--no-export] [--dry-run]'});
+  }, {allowPositionals: true, usage: usage('recapture')});
   const result = await recapture({
     locales: positionals, profile: values.profile, serial: values.serial, simulator: values.simulator,
-    listing: values.listing, boot: !!values.boot, build: !values['no-build'], capture: !values['no-capture'], export: !values['no-export'],
+    boot: !!values.boot, build: !values['no-build'], capture: !values['no-capture'], export: !values['no-export'],
     dryRun: !!values['dry-run'],
   });
   if (result.error) console.error(result.error);

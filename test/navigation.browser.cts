@@ -1342,7 +1342,7 @@ test("the review queue lists check and export issues with fixes and opens their 
   await issues.first().waitFor();
   assert.equal(await issues.count(), 5);
   // Words the default language has and German doesn't, named so they can be translated.
-  await page.getByText(/field\(s\) not translated yet/).first().waitFor();
+  await page.getByText(/fields? not translated yet/).first().waitFor();
   await page.getByText('"unused" isn\'t used by any card', { exact: true }).waitFor();
   await page.getByText("Remove it, or fix the card's feature name.").waitFor();
   await page.getByText("en-US/phone/old.png", { exact: true }).waitFor();
@@ -1528,7 +1528,7 @@ test('a partial export report refreshes exported image URLs',async t=>{
   await page.goto(base+projects[0].editorURL+'?view=gallery&source=exported');
   const image=page.locator('[data-card-frame=exported] img').first();await image.waitFor();
   const before=await image.getAttribute('src');
-  write(roots[0]+'/store-listing/export-report.json',{ok:true,cards:[{locale:'en-US'}],options:{kind:'phone',card:0}});
+  write(roots[0]+'/store-listing/export-report.json',{ok:true,cards:[{locale:'en-US'}],options:{gallery:'phone',card:0}});
   await page.waitForFunction(previous=>document.querySelector('[data-card-frame=exported] img')?.getAttribute('src')!==previous,before);
 });
 

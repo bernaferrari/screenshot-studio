@@ -25,8 +25,8 @@ Store text (title, short and full description) lives in `<locale>/listing.json`.
 ```sh
 npx screenshot-studio export                          # every language
 npx screenshot-studio export --locale en-US           # one language
-npx screenshot-studio export --kind phone             # one gallery
-npx screenshot-studio export --kind phone --card 0    # one card (0-based), to look at while editing
+npx screenshot-studio export --gallery phone         # one gallery
+npx screenshot-studio export --gallery phone --card home   # one card, by its feature, to look at while editing
 npx screenshot-studio export --locale de-DE --strict
 npx screenshot-studio export --fastlane               # also fastlane / F-Droid metadata
 npx screenshot-studio export --json                   # the result as JSON, for tools and agents
@@ -36,7 +36,7 @@ It writes `<locale>/<gallery>/NN-feature.jpg` (or each card's `file`), a contact
 
 | Option | Does |
 |---|---|
-| `--locale`, `--kind`, `--card` | Only that language, gallery or card; `--card` takes the card's 0-based index, with `--kind` |
+| `--locale`, `--gallery`, `--card` | Only that language, gallery or card; `--card` takes the card's feature name (with `--gallery`) or its index from 0 |
 | `--strict` | Warnings fail the export |
 | `--prune` | Deletes images no card writes any more, instead of warning about them |
 | `--fastlane` | Writes fastlane metadata (below) |

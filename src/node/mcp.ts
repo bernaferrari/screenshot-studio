@@ -13,6 +13,7 @@ import {exportListing} from './export';
 import {findListing, loadListing, readCopy} from './project';
 import {launchBrowser} from './playwright';
 import {cardsFor, devicesFor, outputFile} from '../core/gallery';
+import {usage} from '../cli/commands';
 
 const PROTOCOL = '2025-06-18';
 
@@ -70,14 +71,14 @@ export function createTools(defaultListing?: string): Tool[] {
       inputSchema: {type: 'object', properties: {
         ...listingArg,
         gallery: {type: 'string', description: 'The gallery, e.g. phone, tablet7, tablet10, readme.'},
-        card: {type: 'integer', description: 'The card\'s index in the gallery (0-based).'},
+        card: {type: ['string', 'integer'], description: 'The card: its feature name (as describe_listing lists it), or its index in the gallery from 0.'},
         locale: {type: 'string', description: 'The language (default: the default language).'},
       }, required: ['gallery', 'card']},
       async call(args) {
         const listing = where(args);
         const {defaultLocale} = loadListing(listing);
         const locale = typeof args.locale === 'string' ? args.locale : defaultLocale;
-        const result = await exportListing({listing, locales: [locale], kind: String(args.gallery), card: Number(args.card), log: () => {}});
+        const result = await exportListing({listing, locales: [locale], gallery: String(args.gallery), card: typeof args.card === 'number' ? args.card : String(args.card), log: () => {}});
         if (!result.ok || !result.cards.length) return [text(`Render failed: ${result.error || 'no such card'}`)];
         const card = result.cards[0];
         return [await image(path.join(listing, card.file), 1400), text({file: card.file, notes: card.notes, layout: card.layout, warnings: result.warnings})];
@@ -94,7 +95,7 @@ export function createTools(defaultListing?: string): Tool[] {
       }},
       async call(args) {
         const result = await exportListing({listing: where(args), locales: typeof args.locale === 'string' ? [args.locale] : undefined,
-          kind: typeof args.gallery === 'string' ? args.gallery : undefined, strict: !!args.strict, log: () => {}});
+          gallery: typeof args.gallery === 'string' ? args.gallery : undefined, strict: !!args.strict, log: () => {}});
         return [text(result)];
       },
     },
@@ -172,10 +173,8 @@ interface Request {jsonrpc: '2.0'; id?: number | string | null; method: string; 
 /** `mcp [--listing path]`: serve until stdin closes. */
 export async function run(argv: string[]): Promise<number> {
   const {parseCli} = await import('./cli-args');
-  const {values} = parseCli(argv, {
-    listing: {type: 'string'},
-  }, {usage: 'Usage: npx screenshot-studio mcp [--listing path/to/app]'});
-  const tools = createTools(values.listing);
+  parseCli(argv, {}, {usage: usage('mcp')});
+  const tools = createTools();
   const send = (message: unknown) => process.stdout.write(JSON.stringify(message) + '\n');
   const version = (() => { try { return fs.readFileSync(path.join(__dirname, 'VERSION'), 'utf8').trim(); } catch { return '1.0'; } })();
   // Anything a command prints must not corrupt the protocol stream.

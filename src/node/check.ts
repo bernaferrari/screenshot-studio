@@ -9,10 +9,12 @@ import {outputProblems} from './outputs';
 import path from 'node:path';
 import {validate, type Schema} from '../core/validate';
 import {cardsFor, devicesFor, requiredCopyFields} from '../core/gallery';
-import {cardWords, fillWords} from '../core/layout';
+import {cardWords, count, fillWords} from '../core/layout';
 import {oldNames, readJson, requireListing, STUDIO_DIR} from './project';
+import {SKILL_FILE, skillState} from './skill';
 import type {Copy, Galleries, Listing, Profiles, StudioConfig} from '../core/types';
 import {isStoreGallery, listingProblems, SCREENSHOT_LIMIT, storeFor} from '../core/stores';
+import {usage} from '../cli/commands';
 
 export interface Issue {
   level: 'error' | 'warning';
@@ -92,6 +94,8 @@ export function checkListing(listingDir?: string): CheckResult {
   };
 
   for (const old of oldNames(listing)) error(old.file, `is no longer read; the studio reads ${old.rename}`, {fix: old.fix});
+  if (skillState(path.dirname(listing)) === 'stale')
+    warn(`../${SKILL_FILE}`, 'is an older studio\'s agent skill', {fix: 'Run `npx screenshot-studio init` to bring it up to date (your listing files are kept).'});
 
   const config = load<StudioConfig>('studio.json', 'studio');
   const profiles = load<Profiles>('profiles.json', 'profiles');
@@ -180,7 +184,7 @@ export function checkListing(listingDir?: string): CheckResult {
         const copy = load<Copy>(file, 'copy') || {};
         const missing = requiredCopyFields(resolvedGalleries, profiles, defaultCopy, locale, defaultLocale)
           .filter(({key, field}) => !copy[key]?.[field]?.trim()).map(({key, field}) => `${key}.${field}`);
-        if (missing.length) warn(file, `${missing.length} field(s) not translated yet; those cards show ${defaultLocale} words: ${missing.slice(0, 6).join(', ')}${missing.length > 6 ? ', …' : ''}`,
+        if (missing.length) warn(file, `${count(missing.length, 'field')} not translated yet; those cards show ${defaultLocale} words: ${missing.slice(0, 6).join(', ')}${missing.length > 6 ? ', …' : ''}`,
           {code: 'untranslated', fix: `Translate each empty field from ${defaultLocale}/copy.json, keeping its *highlight* and line breaks.`});
       }
     }
@@ -197,16 +201,16 @@ export function formatIssues(result: CheckResult): string {
   const {counted, issues} = result;
   const lines = issues.map(issue => `${issue.level === 'error' ? '✗' : '!'} ${issue.file}${issue.path ? ` ${issue.path}` : ''}: ${issue.message}${issue.fix ? `\n    → ${issue.fix}` : ''}`);
   const errors = issues.filter(i => i.level === 'error').length, warnings = issues.length - errors;
-  lines.push(`${lines.length ? '\n' : ''}${counted.galleries} galleries, ${counted.cards} cards, ${counted.captures} captures, ${counted.locales} language(s): ` +
-    (issues.length ? `${errors} error(s), ${warnings} warning(s)` : 'all good'));
+  lines.push(`${lines.length ? '\n' : ''}${count(counted.galleries, 'gallery', 'galleries')}, ${count(counted.cards, 'card')}, ${count(counted.captures, 'capture')}, ${count(counted.locales, 'language')}: ` +
+    (issues.length ? `${count(errors, 'error')}, ${count(warnings, 'warning')}` : 'all good'));
   return lines.join('\n');
 }
 
 /** `check [--json]` */
 export async function run(argv: string[]): Promise<number> {
   const {parseCli} = await import('./cli-args');
-  const {values} = parseCli(argv, {json: {type: 'boolean'}, listing: {type: 'string'}}, {usage: 'Usage: npx screenshot-studio check [--json] [--listing <path>]'});
-  const result = checkListing(values.listing);
+  const {values} = parseCli(argv, {json: {type: 'boolean'}}, {usage: usage('check')});
+  const result = checkListing();
   console.log(values.json ? JSON.stringify(result, null, 2) : formatIssues(result));
   return result.ok ? 0 : 1;
 }

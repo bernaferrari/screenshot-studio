@@ -7,6 +7,8 @@ Agents that don't load skills can start from [`llms.txt`](../llms.txt), which sh
 ## The skill
 
 `npx screenshot-studio init` installs a skill at `.claude/skills/store-screenshots/SKILL.md` in the app (from `skills/store-screenshots/SKILL.md` here). Claude Code picks it up when you ask for store screenshots, a Play or App Store listing, README images, or a translation of them. It covers setup, which file to edit for what, the loop below, what a good card looks like, and what to check before finishing.
+The studio keeps it current: after an update, `check` says when the app's copy is older, and `init` refreshes it
+(nothing else in the app changes). Delete its `Installed by screenshot-studio` line to make it your own; then it is left alone.
 
 Other agents can read the same file: point them at it, or copy it where they look for instructions.
 
@@ -34,7 +36,7 @@ Large images come back scaled down to fit an agent's limits, on any platform. Th
 
 1. **Edit** `theme.css`, `theme.ts`, `gallery.json` or `<locale>/copy.json`.
 2. **Check**: `check` (or `npx screenshot-studio check`). Fix every error before rendering.
-3. **Render**: `render_card` for the card you changed (or `npx screenshot-studio export --kind phone --card 0`).
+3. **Render**: `render_card` for the card you changed (or `npx screenshot-studio export --gallery phone --card home`).
 4. **Look**: `view_image` on the card, and after an `export`, on the contact sheet. Judge it against the playbook's design table ([Playbook](playbook.md)), then edit again.
 
 **Capturing the app** works the same way: look with `emulator_screen`, move with `emulator_tap`, write what you did as the scenes of `store-listing/capture.tour.ts` (`'02-settings': d => d.tap('Settings')`), and run `npx screenshot-studio recapture`. If the capture emulator isn't running, the error lists the ways forward ([Capturing](capture.md)).

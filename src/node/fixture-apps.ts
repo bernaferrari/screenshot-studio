@@ -23,6 +23,7 @@ import path from 'node:path';
 import {execFileSync} from 'node:child_process';
 import {readJson} from './project';
 import {launchBrowser} from './playwright';
+import {usage} from '../cli/commands';
 
 /** A Lucide icon name, SVG markup on a 24-unit stroke grid, or text. */
 type Glyph = string | {svg: string} | {text: string};
@@ -364,7 +365,7 @@ export async function buildFixtureApps(options: FixtureAppsOptions): Promise<Fix
   return result;
 }
 
-const USAGE = 'Usage: npx screenshot-studio fixtures fixture-apps.json [--install <emulator-serial>] [--uninstall <emulator-serial>]';
+const USAGE = usage('fixtures');
 
 export async function run(argv: string[]): Promise<number> {
   if (argv.includes('--help') || argv.includes('-h')) { console.log(USAGE); return 0; }

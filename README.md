@@ -104,8 +104,9 @@ The same studio makes the store listings and READMEs of [SDK Monitor](https://gi
 | `init` | Set up an app from screenshots, or for capture on Android or iOS, with a theme |
 | `studio` | The editor |
 | `check` | Check every file, fast; run it after each edit |
-| `export` | Render and check every card; one language, gallery or card; fastlane folders |
+| `export` | Render and check every card; one language, gallery or card (`--card home`); fastlane folders |
 | `recapture` | Build, capture on the emulator or simulator, and export |
+| `tour` | Run the capture tour by hand, in one language, while writing it |
 | `screen` | What the capture emulator shows: a screenshot and every element to tap, for writing a tour |
 | `locales` | Language coverage; `--init de-DE` adds one |
 | `icons` | Every app icon from one drawing |

@@ -36,17 +36,38 @@ export async function fitCopy(main: HTMLElement, header: HTMLElement, size: {W: 
 /** The last two words of each headline line or body whose last wrapped line is too short. */
 export function findWidows(header: HTMLElement): string[] {
   const widows: string[] = [];
-  for (const el of header.querySelectorAll<HTMLElement>('h1 .line, p')) {
-    const range = document.createRange();
-    range.selectNodeContents(el);
+  // The widths of a range's lines, top to bottom.
+  const lineWidths = (range: Range) => {
     const lines = new Map<number, {left: number; right: number}>();
     for (const rect of range.getClientRects()) {
       if (!rect.width) continue;
       const top = Math.round(rect.top / 4), line = lines.get(top);
       lines.set(top, line ? {left: Math.min(line.left, rect.left), right: Math.max(line.right, rect.right)} : {left: rect.left, right: rect.right});
     }
-    if (isWidow([...lines.entries()].sort(([a], [b]) => a - b).map(([, l]) => l.right - l.left)))
-      widows.push(el.textContent!.trim().split(/\s+/).slice(-2).join(' '));
+    return [...lines.entries()].sort(([a], [b]) => a - b).map(([, l]) => l.right - l.left);
+  };
+  for (const el of header.querySelectorAll<HTMLElement>('h1 .line, p')) {
+    // A line break the copy asks for (a \n the theme keeps, with white-space: pre-line) is the writer's: each stretch
+    // between breaks is judged on its own, so a short line before one is never a widow.
+    const text = el.firstChild;
+    const kept = /^pre/.test(getComputedStyle(el).whiteSpace) && el.childNodes.length === 1 && text?.nodeType === Node.TEXT_NODE && text.textContent!.includes('\n');
+    const stretches: Range[] = [];
+    if (kept) {
+      let start = 0;
+      for (const part of text!.textContent!.split('\n')) {
+        const range = document.createRange();
+        range.setStart(text!, start);
+        range.setEnd(text!, start + part.length);
+        stretches.push(range);
+        start += part.length + 1;
+      }
+    } else {
+      const range = document.createRange();
+      range.selectNodeContents(el);
+      stretches.push(range);
+    }
+    for (const range of stretches)
+      if (isWidow(lineWidths(range))) widows.push(range.toString().trim().split(/\s+/).slice(-2).join(' '));
   }
   return widows;
 }

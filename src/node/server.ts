@@ -19,6 +19,7 @@ import {validate, type Schema} from '../core/validate';
 import type {WorkspaceStore} from './workspace/store';
 import {workspaceRoutes} from './workspace/routes';
 import type {ServeFileOptions, WorkspaceHandler} from './workspace/routes';
+import {usage} from '../cli/commands';
 
 export interface ServeOptions {
   /** Whether gallery.json and copy.json under the root may be written. */
@@ -135,7 +136,7 @@ export async function run(argv: string[]): Promise<number> {
     add: {type: 'string', multiple: true},
     registry: {type: 'string'},
     open: {type: 'boolean'},
-  }, {allowPositionals: true, usage: 'Usage: npx screenshot-studio studio [port] [--port 8790] [--add /path/to/app]… [--registry projects.json] [--open]'});
+  }, {allowPositionals: true, usage: usage('studio')});
   if (positionals.length > 1) throw new Error(`Unexpected argument "${positionals[1]}": pass at most one port.`);
   const port = parseIntOption(values.port ?? positionals[0], 'port', {min: 0, max: 65535}) ?? 8790;
   const workspace = createWorkspaceStore({registryFile: values.registry});

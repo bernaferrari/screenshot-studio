@@ -13,6 +13,7 @@ import {pathToFileURL} from 'node:url';
 import {execFileSync} from 'node:child_process';
 import {findListing} from './project';
 import {launchBrowser} from './playwright';
+import {usage} from '../cli/commands';
 
 export interface ReadmePreviewOptions {
   /** The repository whose README.md to render (default: the git root around the store listing). */
@@ -87,10 +88,9 @@ export async function previewReadme(options: ReadmePreviewOptions = {}): Promise
   }
 }
 
-const USAGE = 'Usage: npx screenshot-studio readme [--repo <folder>] [--out <file.png>] [--width 1012]';
+const USAGE = usage('readme');
 
 export async function run(argv: string[]): Promise<number> {
-  if (argv.includes('--help') || argv.includes('-h')) { console.log(USAGE); return 0; }
   const {parseCli, parseIntOption} = await import('./cli-args');
   try {
     const {values} = parseCli(argv, {
