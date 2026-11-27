@@ -1,5 +1,6 @@
 // Auto-fit: longer languages shrink the copy (never below studio.json "minFit", 0.72 by default) until every headline
-// line fits its column and the text clears the app views beside or below it. Then short last lines are reported.
+// line fits its column and the text clears the app views beside or below it, and a little further when that pulls a
+// lone last word back up. Short last lines that remain are reported.
 import {isWidow} from '../core/layout';
 import type {CardReport} from '../core/types';
 
@@ -25,12 +26,22 @@ export async function fitCopy(main: HTMLElement, header: HTMLElement, size: {W: 
     return blocks.every(d => t.b + 16 <= d.top || t.t >= d.bottom || t.r + 16 <= d.left || t.l >= d.right);
   };
   const sizes = [...header.querySelectorAll<HTMLElement>('h1, p')].map(el => [el, parseFloat(getComputedStyle(el).fontSize)] as const);
-  for (let s = 1; !fits() && s > minFit - .001; s -= .02) {
+  const scale = async (s: number) => {
     report.fit = Math.round(s * 100) / 100;
     for (const [el, px] of sizes) el.style.fontSize = `${px * s}px`;
     await refit?.();
+  };
+  for (let s = 1; !fits() && s > minFit - .001; s -= .02) await scale(s);
+  if (!fits()) { report.fit = 0; return; }
+  // Then a little smaller, only to pull a word or two left alone on a last line back up (a long word in a narrow
+  // column): at most 12% more, never below minFit, and only if it works.
+  if (!findWidows(header).length) return;
+  const fitted = report.fit, floor = Math.max(minFit, fitted - .12);
+  for (let s = fitted - .02; s > floor - .001; s -= .02) {
+    await scale(s);
+    if (fits() && !findWidows(header).length) return;
   }
-  if (!fits()) report.fit = 0;
+  await scale(fitted);
 }
 
 /** The last two words of each headline line or body whose last wrapped line is too short. */

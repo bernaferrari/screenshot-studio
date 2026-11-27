@@ -157,3 +157,29 @@ test('--card takes a card by its feature name, and a wrong one lists the cards t
   const noGallery = await exportListing({listing, locales: ['en-US'], card: features[0], jobs: 1, log: () => {}});
   assert.match(noGallery.error, /say which gallery with --gallery/);
 });
+
+test('a word left alone on a headline\'s last line is pulled back up by a little shrinking, or kept at size and named', {timeout: 120_000}, async t => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'studio-widow-'));
+  t.after(() => fs.rmSync(root, {recursive: true, force: true}));
+  const listing = path.join(root, 'store-listing');
+  fs.cpSync(path.join(__dirname, 'fixtures', 'golden'), listing, {recursive: true});
+  const theme = path.join(__dirname, '..', 'themes', 'starter');
+  for (const file of ['theme.css', 'theme.ts']) fs.copyFileSync(path.join(theme, file), path.join(listing, file));
+  const css = fs.readFileSync(path.join(listing, 'theme.css'), 'utf8');
+  const copyFile = path.join(listing, 'en-US', 'copy.json'), copy = JSON.parse(fs.readFileSync(copyFile, 'utf8'));
+  copy.home = {title: 'AAAAAAAAA BB', body: ''};
+  fs.writeFileSync(copyFile, JSON.stringify(copy));
+  // Twelve monospace characters at 100px are about 720px: a column a little narrower wraps "BB" alone.
+  const render = async width => {
+    fs.writeFileSync(path.join(listing, 'theme.css'), `${css}\nheader{left:40px;right:auto;width:${width}px;text-align:left}h1{font:700 100px/1.1 monospace;letter-spacing:0}h1 .line{white-space:normal}\n`);
+    const result = await exportListing({listing, locales: ['en-US'], gallery: 'phone', card: 'home', jobs: 1, log: () => {}});
+    assert.equal(result.ok, true, result.error);
+    return {widows: result.warnings.filter(w => /short last line/.test(w)), notes: result.cards[0].notes.join(' ')};
+  };
+  const close = await render(705);
+  assert.deepEqual(close.widows, []);
+  assert.match(close.notes, /copy shrunk to 9\d%/);
+  const far = await render(600);
+  assert.equal(far.widows.length, 1);
+  assert.doesNotMatch(far.notes, /copy shrunk/);
+});

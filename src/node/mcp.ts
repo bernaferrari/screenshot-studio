@@ -91,7 +91,7 @@ export function createTools(defaultListing?: string): Tool[] {
         ...listingArg,
         locale: {type: 'string', description: 'Only this language.'},
         gallery: {type: 'string', description: 'Only this gallery.'},
-        strict: {type: 'boolean', description: 'Fail on warnings and untranslated words.'},
+        strict: {type: 'boolean', description: 'Fail on any warning, and on languages still borrowing the default language\'s words, captures or callout places.'},
       }},
       async call(args) {
         const result = await exportListing({listing: where(args), locales: typeof args.locale === 'string' ? [args.locale] : undefined,

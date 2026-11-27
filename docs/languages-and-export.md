@@ -16,7 +16,7 @@ npx screenshot-studio locales                # coverage: words, captures, layout
 npx screenshot-studio locales --init de-DE   # add a language with empty copy
 ```
 
-Headlines shrink to fit, down to 72% of their size by default (`minFit` in `studio.json`); past that, shorten the copy. Japanese, Korean, Chinese, Hindi and Bengali get script font fallbacks automatically; a theme can set its own.
+Headlines shrink to fit, down to 72% of their size by default (`minFit` in `studio.json`); past that, shorten the copy. Text wraps into balanced lines, and when a long word still leaves one or two words alone on a last line, the copy shrinks up to 12% more if that pulls them back up. Japanese, Korean, Chinese, Hindi and Bengali get script font fallbacks automatically; a theme can set its own.
 
 Store text (title, short and full description) lives in `<locale>/listing.json`.
 
@@ -53,7 +53,7 @@ Every export also writes `export-report.json` beside `gallery.json`: the same re
 - any request fails.
 
 **It warns, and `--strict` fails, when:**
-- a headline line or supporting line leaves one or two words on a short last line (under a third of the longest line): reword or shorten it, since it reads as a mistake at thumbnail size;
+- a headline line or supporting line leaves one or two words on a short last line (under a third of the longest line) even after balancing and that last bit of shrinking: reword or shorten it, since it reads as a mistake at thumbnail size. A line break the copy asks for (`\n`, kept by `white-space: pre-line`) is the writer's and never counts;
 - a gallery folder holds images no card writes any more (delete them, or export with `--prune`);
 - a continuous background breaks between cards;
 - text is hard to read against what's behind it: every headline run, supporting line, label, name banner and layer in front is measured against the pixels under it, and its worst tenth must reach 2.5:1 contrast (art, stripes or a layer running behind words are the usual cause). Text under 30% opacity, or marked `aria-hidden`, is decoration and isn't measured;

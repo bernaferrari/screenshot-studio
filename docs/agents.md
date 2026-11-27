@@ -24,7 +24,7 @@ Run it from the app's repository. Other MCP clients take the same command: `npx`
 |---|---|
 | `describe_listing` | The galleries and their sizes, every card (layout, captures, headline, output file), the languages and theme files. Start here. |
 | `check` | The file check, in a second: each problem with what to do about it |
-| `render_card` | Renders one card (`gallery`, `card`, optional `locale`) and returns the image, with its notes, where everything landed (`layout`: each device, the headline and each callout in card pixels), or why it failed |
+| `render_card` | Renders one card (`gallery`, `card` by its feature name or index, optional `locale`) and returns the image, with its notes, where everything landed (`layout`: each device, the headline and each callout in card pixels), or why it failed |
 | `export` | Renders and checks everything (optionally one `locale` or `gallery`, `strict`) and writes the images |
 | `view_image` | Shows an image in `store-listing/`: a card, a capture, or `en-US/contact-phone.jpg` for the whole strip |
 | `emulator_screen` | The capture emulator: a screenshot and every element on screen with its label, ID and bounds, the tappable ones marked. The labels are what a tour's `d.tap("…")` takes |
