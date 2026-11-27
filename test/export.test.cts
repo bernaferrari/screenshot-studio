@@ -203,3 +203,32 @@ test('a partial export replaces only what it rendered in the report', () => {
   assert.deepEqual(language.warnings, ['en-US/phone/phone-01.jpg: old widow', 'de-DE/phone/phone-01.jpg: new']);
   assert.deepEqual(language.locales.map(t => [t.locale, t.cards]), [['en-US', 2], ['de-DE', 1]]);
 });
+
+test('a theme\'s shader paints the background in strip pixels, so it continues across seams; a broken one names its line', {timeout: 180_000}, async t => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'studio-shader-'));
+  t.after(() => fs.rmSync(root, {recursive: true, force: true}));
+  const listing = path.join(root, 'store-listing');
+  fs.cpSync(path.join(__dirname, 'fixtures', 'golden'), listing, {recursive: true});
+  fs.copyFileSync(path.join(__dirname, '..', 'themes', 'starter', 'theme.css'), path.join(listing, 'theme.css'));
+  const shade = body => fs.writeFileSync(path.join(listing, 'theme.ts'),
+    `export default {continuous: true, shader: {source: \`vec4 shade(vec2 p) { ${body} }\`, uniforms: {u_tint: 'var(--primary, #3366ff)'}}};\n`);
+  const run = () => exportListing({listing, locales: ['en-US'], gallery: 'phone', jobs: 2, log: () => {}});
+  const seams = result => result.warnings.filter(w => /breaks at the seam/.test(w));
+
+  // A ramp along the whole strip: each card shows its own stretch, and the edges meet.
+  shade('return vec4(mixOklab(u_background, u_tint, p.x / u_strip.x), 1.);');
+  const along = await run();
+  assert.equal(along.ok, true, along.error);
+  assert.deepEqual(seams(along), []);
+  const first = fs.readFileSync(path.join(listing, along.cards[0].file)), second = fs.readFileSync(path.join(listing, along.cards[1].file));
+  assert.notDeepEqual(first, second, 'each card shows a different stretch of the strip');
+
+  // The same ramp in card pixels starts over on every card: the seams break, and the check says so.
+  shade('return vec4(mixOklab(u_background, u_tint, (p.x - u_offset.x) / u_size.x), 1.);');
+  assert.ok(seams(await run()).length > 0);
+
+  shade('return vec4(nope, 1.);');
+  const broken = await run();
+  assert.equal(broken.ok, false);
+  assert.match(broken.error, /shader doesn't compile[\s\S]*line 1/);
+});

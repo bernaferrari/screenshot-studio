@@ -6,12 +6,12 @@ From then on it is the app's own: edit it freely. `npx screenshot-studio themes`
 | Theme | Look |
 |---|---|
 | `starter` | A soft neutral field, blue highlight. The smallest theme, for building your own. |
-| `aurora` | A night sky lit by soft green, teal and violet lights, silver frames, bold rounded type (Google Sans Flex). |
+| `aurora` | A real aurora, drawn by a shader: curtains of fine rays, green at the hem into a violet fringe, stars, dark glass frames, bold rounded type (Google Sans Flex). |
 | `porcelain` | A peach-to-lavender wash with glows and frosted tiles, deep type, a violet highlight, white frames (Plus Jakarta Sans). |
 | `paper` | A warm ruled page with a running head, grotesque type, a pink highlighter (Schibsted Grotesk). |
 | `panels` | A rounded, softly lit panel per card, each a turn of the primary's hue, on graph paper (Bricolage Grotesque). |
 | `signal` | An electric field with a halftone screen swelling toward the foot, huge type, key words on a sharp highlighter (Archivo). |
-| `mono` | Zinc near-black and white with one orange primary, graphite frames, nothing else; works light too (Geist). |
+| `mono` | Black and white only: a soft light through a panel of fluted glass, drawn by a shader, silver emphasis, graphite frames (Geist). |
 
 Each theme but `starter` has a `preview.jpg` of its phone strip.
 
@@ -92,6 +92,41 @@ dependency (`npm i -D screenshot-studio`): it ships the types of `screenshot-stu
 Write plain TypeScript: types are stripped, not compiled, so enums and namespaces aren't supported. The studio reads
 `theme.ts` only; `check` names a `theme.js` from an older version, to rename.
 
+## Shaders
+
+A theme can paint its background with a GLSL shader, under its art: `shader` in `theme.ts`. Write one function,
+`vec4 shade(vec2 p)`: `p` is the pixel's place on the whole strip in CSS pixels (x along the strip, y down), so the
+background continues across every seam by itself. The studio draws it once per card (WebGL2, no library) and dithers
+it, so gradients don't band in a JPEG.
+
+```ts
+import type {Theme} from 'screenshot-studio';
+
+export default {
+  continuous: true,
+  shader: {
+    source: `vec4 shade(vec2 p) {
+      float glow = fbm(p / 400.) * (1. - .8 * copyShade(p, 160.));  // no light behind the words
+      return vec4(mixOklab(u_background, u_glow, glow), 1.);
+    }`,
+    uniforms: {u_glow: 'var(--primary)'},
+  },
+} satisfies Theme;
+```
+
+| It gets | |
+|---|---|
+| `u_size`, `u_offset`, `u_strip` | this card's size, where it starts on the strip, and the whole strip's size (CSS px) |
+| `u_index`, `u_cards`, `u_scale` | this card's position, how many cards, device pixels per CSS pixel |
+| `u_background`, `u_foreground`, `u_primary` | the theme's three colors, sRGB 0–1 |
+| `u_copy` | the words' box on this card (x, y, width, height); `copyShade(p, reach)` is 1 behind them, fading out, and 0 at the card's sides |
+| `hash`, `noise`, `fbm`, `bayer` | noise and an 8 × 8 ordered dither threshold (`step(bayer(p), v)` turns a value into dots) |
+| `mixOklab`, `toOklab`, `fromOklab` | mixing colors through oklab, so the way between them stays clean |
+
+`uniforms` adds your own: a number, an array (a vector) or a CSS color (`'var(--accent)'` becomes a `vec3`). Make
+`shader` a function, `ctx => ({source, uniforms})`, to choose per card or size (mono's flutes follow the card width).
+A compile error names the line in your code. `aurora` and `mono` are shaders to read.
+
 ## Tailwind
 
 A theme can use Tailwind CSS: add `@import "tailwindcss";` to `theme.css`. The studio compiles it when the card
@@ -134,8 +169,9 @@ decorative away from the headline, and inside the card: a motif cut at a card's 
 
 ## 3D devices
 
-Phones and tablets can be real 3D devices: true thickness, rounded edges, a glass face, the capture on the screen
-(three.js, loaded only for the cards that have one). It's one CSS variable on the frame, `--depth`: the device's
+Phones and tablets can be real 3D devices, built like the real thing: an iPhone Pro's thickness (8.75 mm on 71.9 mm),
+black glass around the capture on the screen, a metal band around the sides and a soft shadow on the card (three.js,
+loaded only for the cards that have one). It's one CSS variable on the frame, `--depth`: the device's
 thickness as a multiple of the real one's. `0`, the default, is the flat frame.
 
 | To | Write |
@@ -148,7 +184,7 @@ thickness as a multiple of the real one's. `0`, the default, is the flat frame.
 | Keep a card's, or one device's, flat frame | the layout word `flat`, or `flat` in the device's role (wins over everything) |
 
 The device takes its pose from its frame's CSS `transform`, so any `perspective(…) rotateY(…)` of your own works too,
-and its body color from `--device-body` (white by default). The flat frame stays in place, hidden, so layout, bounds
+and the color of its metal band from `--device-body` (silver by default). The flat frame stays in place, hidden, so layout, bounds
 checks and callouts work as before; in a theme, `ctx.devices[i].canvas` is the 3D drawing (to clip it at a panel's
 edge in `decorate`, say). `npx screenshot-studio demo --3d` shows it.
 

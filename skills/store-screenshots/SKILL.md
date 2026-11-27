@@ -52,6 +52,7 @@ results you can parse, and open the images yourself.
 | Fonts, colors (shadcn/ui tokens: `--background`, `--foreground`, `--primary`), where devices sit | `theme.css` |
 | Background art, extra elements | `theme.ts` |
 | Real 3D devices | the layout words `tilt` or `3d` in `gallery.json`, or `.device{--depth:1}` in `theme.css` |
+| A shader background | `shader` in `theme.ts`: a GLSL `vec4 shade(vec2 p)` in strip pixels, so seams continue; `copyShade` keeps light off the words (`docs/themes.md`, Shaders) |
 | Image sizes, capture sizes | `profiles.json` |
 | Store text (title, short description) | `<locale>/listing.json` |
 

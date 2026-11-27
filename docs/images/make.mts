@@ -34,7 +34,7 @@ function hero() {
   // Five apps, each its own color, with a gap between them so every headline reads whole; the edges get headlines
   // that sit clear of the cut (QuietGuard's is centered).
   const cards = [
-    ['QuietGuard', 'en-US/phone/phone-01-home.jpg'], ['ChangeDetection', 'en-US/phone/v2-01-home.jpg'], ['Keepout', 'en-US/phone/phone-01-home.jpg'],
+    ['QuietGuard', 'en-US/phone/phone-01-home.jpg'], ['WiFiWeakspot', 'en-US/screenshots/v10-01-channels.jpg'], ['Keepout', 'en-US/phone/phone-01-home.jpg'],
     ['Calcula', 'en-US/phone/phone-01-every-key.jpg'], ['Wordkeep', 'en-US/phone/01-home.jpg'],
   ];
   const W = 2400, width = 470;
@@ -82,7 +82,7 @@ function themes() {
   const cards = names.map(theme => {
     const run = spawnSync(process.execPath, [studio, 'demo', theme, '--theme', theme, '--no-open'], {cwd: work, encoding: 'utf8'});
     if (run.status !== 0) throw new Error(`demo --theme ${theme} failed:\n${run.stdout}${run.stderr}`);
-    return image(path.join(work, theme, 'store-listing/en-US/phone/03-text.jpg'));
+    return image(path.join(work, theme, 'store-listing/en-US/phone/01-home.jpg'));
   });
   fs.rmSync(work, {recursive: true, force: true});
   const html = names.map((name, i) => `<p style="position:absolute;left:${48 + i * 392}px;top:44px;font-size:36px;font-weight:650;letter-spacing:-.01em">${name}</p>
@@ -96,13 +96,13 @@ function depth() {
   const work = fs.mkdtempSync(path.join(os.tmpdir(), 'readme-depth-'));
   const run = spawnSync(process.execPath, [studio, 'demo', 'd', '--theme', 'porcelain', '--3d', '--no-open'], {cwd: work, encoding: 'utf8'});
   if (run.status !== 0) throw new Error(`demo --3d failed:\n${run.stdout}${run.stderr}`);
-  const cards = ['02-restock', '01-page', '03-text'].map(n => image(path.join(work, 'd/store-listing/en-US/phone', `${n}.jpg`)));
+  const cards = ['02-coverage', '01-home', '03-channels'].map(n => image(path.join(work, 'd/store-listing/en-US/phone', `${n}.jpg`)));
   fs.rmSync(work, {recursive: true, force: true});
   return [cards.map((src, i) => `<img class="card" src="${src}" style="left:${120 + i * 740}px;top:70px;width:680px;border-radius:32px">`).join(''), 2400, 880];
 }
 
 /**
- * A callout picked from the capture's accessibility tree, on the demo's restock card in three languages: the same
+ * A callout picked from the capture's accessibility tree, on WiFi Weakspot's home screen in three languages: the same
  * element lifted out and magnified in each, wherever it sits.
  */
 function callouts() {
@@ -110,18 +110,18 @@ function callouts() {
   fs.cpSync(path.join(root, 'templates/demo'), at, {recursive: true});
   const locales = [['en-US', 'English'], ['de-DE', 'Deutsch'], ['zh-CN', '中文']];
   for (const [locale] of locales) for (const ext of ['png', 'nodes.json'])
-    fs.copyFileSync(path.join(listing('ChangeDetection'), locale, `raw/phone/light/02b-compare-restock.${ext}`), path.join(at, locale, `raw/phone/restock.${ext}`));
-  for (const file of ['theme.css', 'theme.ts']) fs.writeFileSync(path.join(at, file), fs.readFileSync(path.join(root, 'themes/aurora', file), 'utf8').replaceAll('{{name}}', 'ChangeDetection'));
+    fs.copyFileSync(path.join(listing('WiFiWeakspot'), locale, `raw/phone/signal.${ext}`), path.join(at, locale, `raw/phone/home.${ext}`));
+  for (const file of ['theme.css', 'theme.ts']) fs.writeFileSync(path.join(at, file), fs.readFileSync(path.join(root, 'themes/aurora', file), 'utf8').replaceAll('{{name}}', 'WiFi Weakspot'));
   fs.cpSync(path.join(root, 'themes/aurora/assets'), path.join(at, 'assets'), {recursive: true});
   const profiles = JSON.parse(fs.readFileSync(path.join(at, 'profiles.json'), 'utf8'));
   Object.assign(profiles.phone, {captureWidth: 1080, captureHeight: 2340});
   fs.writeFileSync(path.join(at, 'profiles.json'), JSON.stringify(profiles));
-  // The first change on the page, by its place in the UI tree: "Sold out" before, "In stock" after.
-  fs.writeFileSync(path.join(at, 'gallery.json'), JSON.stringify({phone: [{feature: 'restock', raw: 'phone/restock.png', layout: 'big',
-    callouts: [{x: 147, y: 516, w: 912, h: 391, target: '0.0.0.0.0.0.0.0.0.2.3.1', targetMode: 'element', mag: 1.18, radius: 34}]}]}));
+  // The signal card on the home screen, by its place in the UI tree: the reading and its verdict.
+  fs.writeFileSync(path.join(at, 'gallery.json'), JSON.stringify({phone: [{feature: 'home', raw: 'phone/home.png', layout: 'big',
+    callouts: [{x: 70, y: 760, w: 940, h: 670, target: '1.0.0.0.0.0.0.0.0.0.0', targetMode: 'element', mag: 1.12, radius: 44}]}]}));
   const run = spawnSync(process.execPath, [studio, 'export', '--listing', at], {encoding: 'utf8'});
   if (run.status !== 0) throw new Error(`callout export failed:\n${run.stdout}${run.stderr}`);
-  const cards = locales.map(([locale, name]) => [image(path.join(at, locale, 'phone/01-restock.jpg')), name]);
+  const cards = locales.map(([locale, name]) => [image(path.join(at, locale, 'phone/01-home.jpg')), name]);
   fs.rmSync(work, {recursive: true, force: true});
   const html = `<p style="position:absolute;left:80px;top:300px;width:760px;font-size:76px;font-weight:780;letter-spacing:-.035em;line-height:1.05">Lift out what<br><span style="color:#4150d0">matters.</span></p>
 <p style="position:absolute;left:80px;top:500px;width:720px;font-size:36px;line-height:1.38;color:#5b5f73">Pick a UI element from the capture's accessibility tree. The callout lifts it out, magnified, and follows it into every language, wherever the translation moves it.</p>
@@ -138,12 +138,12 @@ function readmeArt() {
   return [html, 2400, 60 * 2 + height * 2 + 40];
 }
 
-/** The editor on a fresh demo, shown as ~/code/ChangeDetection: its store preview, its languages, and the live GIF. */
+/** The editor on a fresh demo, shown as ~/code/WiFiWeakspot: its store preview, its languages, and the live GIF. */
 async function editor(browser) {
   const home = fs.mkdtempSync(path.join(os.tmpdir(), 'readme-editor-')), code = path.join(home, 'code');
   fs.mkdirSync(code);
-  spawnSync(process.execPath, [studio, 'demo', 'ChangeDetection', '--no-open'], {cwd: code});
-  const project = path.join(code, 'ChangeDetection'), listing = path.join(project, 'store-listing');
+  spawnSync(process.execPath, [studio, 'demo', 'WiFiWeakspot', '--no-open'], {cwd: code});
+  const project = path.join(code, 'WiFiWeakspot'), listing = path.join(project, 'store-listing');
   const port = 8790 + Math.floor(Math.random() * 100);
   const server = spawn(process.execPath, [studio, 'studio', String(port), '--registry', path.join(home, 'projects.json')], {cwd: project, env: {...process.env, HOME: home}});
   try {
@@ -179,7 +179,7 @@ async function editor(browser) {
       fs.rmSync(path.join(listing, 'assets'), {recursive: true, force: true});
       for (const file of ['theme.css', 'theme.ts']) {
         const from = path.join(root, 'themes', theme, file);
-        if (fs.existsSync(from)) fs.writeFileSync(path.join(listing, file), fs.readFileSync(from, 'utf8').replaceAll('{{name}}', 'ChangeDetection'));
+        if (fs.existsSync(from)) fs.writeFileSync(path.join(listing, file), fs.readFileSync(from, 'utf8').replaceAll('{{name}}', 'WiFi Weakspot'));
       }
       if (fs.existsSync(path.join(root, 'themes', theme, 'assets'))) fs.cpSync(path.join(root, 'themes', theme, 'assets'), path.join(listing, 'assets'), {recursive: true});
     };
@@ -193,6 +193,12 @@ async function editor(browser) {
     for (let i = 0; i < 10; i++) await page.keyboard.press('ArrowRight');
     await page.mouse.move(1270, 1230);
     await page.waitForTimeout(3000);
+    // The crop: the row of cards with the same gutter on every side, measured on the page.
+    const boxes = await page.locator('[data-card-frame]').evaluateAll(cards => cards.map(card => card.getBoundingClientRect().toJSON()));
+    const row = boxes.filter(box => box.width > 0 && box.top === boxes[0].top);
+    const gutter = 20, left = Math.min(...row.map(b => b.left)), top = Math.min(...row.map(b => b.top));
+    const right = Math.max(...row.map(b => b.right)), bottom = Math.max(...row.map(b => b.bottom));
+    const crop = [right - left + 2 * gutter, bottom - top + 2 * gutter, left - gutter, top - gutter].map(v => Math.round(v / 2) * 2);
     const start = (Date.now() - t0) / 1000;
     for (const theme of ['porcelain', 'paper', 'mono', 'aurora']) { await page.waitForTimeout(2600); swap(theme); }
     await page.waitForTimeout(2600);
@@ -200,8 +206,8 @@ async function editor(browser) {
     await context.close();
     const video = fs.readdirSync(home).find(file => file.endsWith('.webm'));
     execFileSync('ffmpeg', ['-y', '-loglevel', 'error', '-ss', String(start), '-to', String(end), '-i', path.join(home, video), '-vf',
-      // The card row with one 10px gutter on every edge, at its own size so it stays sharp.
-      'crop=1100:660:96:500,fps=8,split[a][b];[a]palettegen=max_colors=112:stats_mode=diff[p];[b][p]paletteuse=dither=bayer:bayer_scale=4:diff_mode=rectangle',
+      // The card row with the same gutter on every edge, at its own size so it stays sharp.
+      `crop=${crop.join(':')},fps=8,split[a][b];[a]palettegen=max_colors=112:stats_mode=diff[p];[b][p]paletteuse=dither=bayer:bayer_scale=4:diff_mode=rectangle`,
       path.join(out, 'demo.gif')]);
     console.log('docs/images/demo.gif');
   } finally {

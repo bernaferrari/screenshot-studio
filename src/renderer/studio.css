@@ -28,7 +28,7 @@
 html,body{margin:0;width:var(--canvas-width);height:var(--canvas-height);overflow:hidden}
 body{-webkit-font-smoothing:antialiased}
 .campaign{position:relative;width:var(--canvas-width);height:var(--canvas-height);overflow:hidden}
-.art{position:absolute;inset:0;width:100%;height:100%;pointer-events:none}
+.art,.shader{position:absolute;inset:0;width:100%;height:100%;pointer-events:none}
 header{position:absolute;z-index:3}
 h1{margin:0}
 h1 .line{display:block;white-space:nowrap}
@@ -53,7 +53,7 @@ h1 ins{text-decoration:none}
    flat, on a card or in a device's role, keeps the flat frame whatever else says. --device-body colors the body. In the
    studio layer, so a theme's own --depth or transform wins (except over flat). */
 @layer studio{
-  .tilt .device{--depth:1;transform:var(--tilt,perspective(2400px) rotateY(-18deg) rotateX(6deg) rotateZ(1.5deg))}
+  .tilt .device{--depth:1;transform:var(--tilt,perspective(2200px) rotateY(-24deg) rotateX(8deg) rotateZ(2deg))}
   [class~="3d"] .device{--depth:1}
   .flat .device,.device.flat{--depth:0 !important}
 }

@@ -7,6 +7,7 @@ import {cardWords, plainHeadline} from '../core/layout';
 import type {ThemeContext} from '../core/types';
 import {drawCallouts} from './callouts';
 import {captureLoader, checkBounds, createDevices, depthOf, labelDevices, measure, relative, settleDevices, sizeFrames} from './devices';
+import {drawShader} from './shader';
 import {findWidows, fitCopy} from './fit';
 import {identity} from './identity';
 import {addLayers, cssAttributes, wordAttributes} from './layers';
@@ -56,6 +57,14 @@ if (slide.identity) main.append(await identity(slide, config));
 const art = main.querySelector<SVGSVGElement>('.art')!;
 art.setAttribute('viewBox', `0 0 ${W} ${H}`);
 const context: ThemeContext = {W, H, kind, locale, defaultLocale, index, slide, slides, profile, profiles, config, main, art, capture: devices[0]?.img};
+// A shader background goes under the art; it is drawn once, into a plain canvas.
+const shader = typeof theme.shader === 'function' ? theme.shader(context) : theme.shader;
+if (shader) {
+  const canvas = drawShader(context, shader, kind === 'readme');
+  canvas.className = 'shader';
+  canvas.setAttribute('aria-hidden', 'true');
+  main.prepend(canvas);
+}
 if (theme.art) {
   const drawn = theme.art(context);
   if (drawn instanceof Node) art.append(drawn);

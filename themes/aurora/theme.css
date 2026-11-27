@@ -1,41 +1,47 @@
-/* {{name}}: A night sky lit by soft panorama lights in the primary color and its neighbours, silver frames, bold rounded type. */
+/* {{name}}: A night sky with curtains of aurora rippling across the strip in the primary and its neighbours, stars, dark glass frames lit from below, bold rounded type. */
 /* Colors are shadcn/ui tokens: re-brand with --background, --foreground and --primary (or paste a palette from
-   ui.shadcn.com/themes). The lights, frames and muted text are mixed from them; set any of them here to override. */
+   ui.shadcn.com/themes). The sky, the curtains and the frames are mixed from them; set any of them here to override. */
 @import "studio/layouts.css";
 :root{
-  --background:oklch(0.17 0.045 268);
-  --foreground:oklch(0.97 0.01 250);
-  --primary:oklch(0.85 0.17 162);
+  --background:oklch(0.16 0.04 272);
+  --foreground:oklch(0.98 0.008 250);
+  --primary:oklch(0.88 0.19 158);
   --primary-foreground:var(--background);
-  --muted-foreground:oklch(from var(--foreground) calc(l - .2) calc(c + .02) h);
-  /* The lights: the primary, and turns of its hue across the sky (teal, blue, violet). */
-  --light-1:oklch(from var(--primary) calc(l - .12) c h);
-  --light-2:oklch(from var(--primary) calc(l - .3) calc(c * 1.3) calc(h + 125));
-  --light-3:oklch(from var(--primary) calc(l - .02) calc(c * .9) calc(h + 38));
-  --light-4:oklch(from var(--primary) calc(l - .42) calc(c * 1.1) calc(h + 95));
-  /* Frames: cool silver, so light and dark screens both stand clear of the sky. */
-  --frame-top:oklch(from var(--foreground) .97 .006 h);
-  --frame-bottom:color-mix(in oklab,var(--foreground) 82%,var(--light-2));
-  --shadow:color-mix(in oklab,var(--background) 40%,#000);
+  --muted-foreground:oklch(from var(--foreground) calc(l - .12) .03 h);
+  /* The sky: deepest at the top, a touch of the primary's green at the horizon. */
+  --sky-top:oklch(from var(--background) calc(l - .07) calc(c * .8) calc(h + 8));
+  --sky-bottom:oklch(from var(--primary) .24 .06 calc(h + 30));
+  /* The curtains: the primary and a turn of its hue toward cyan, with a violet fringe where the rays fade. */
+  --curtain-1:var(--primary);
+  --curtain-2:oklch(from var(--primary) calc(l - .06) c calc(h + 45));
+  --fringe:oklch(from var(--primary) calc(l - .2) calc(c * 1.1) calc(h + 150));
+  --hem:oklch(from var(--primary) .97 .08 h);
+  /* Frames: dark glass with a lit rim, glowing in the primary from below. */
+  --frame-top:oklch(from var(--background) calc(l + .2) calc(c * .7) h);
+  --frame-bottom:oklch(from var(--background) calc(l + .05) c h);
+  --rim:oklch(from var(--primary) .95 .06 h / .55);
+  --glow:oklch(from var(--primary) l c h / .32);
 }
 @font-face{font-family:Aurora;src:url(assets/GoogleSansFlex-latin.woff2) format('woff2');font-weight:100 1000;font-display:block;
   unicode-range:U+0000-00FF,U+0131,U+0152-0153,U+02BB-02BC,U+02C6,U+02DA,U+02DC,U+0304,U+0308,U+0329,U+2000-206F,U+20AC,U+2122,U+2191,U+2193,U+2212,U+2215,U+FEFF,U+FFFD}
 @font-face{font-family:Aurora;src:url(assets/GoogleSansFlex-latin-ext.woff2) format('woff2');font-weight:100 1000;font-display:block;
   unicode-range:U+0100-02BA,U+02BD-02C5,U+02C7-02CC,U+02CE-02D7,U+02DD-02FF,U+0304,U+0308,U+0329,U+1D00-1DBF,U+1E00-1E9F,U+1EF2-1EFF,U+2020,U+20A0-20AB,U+20AD-20C4,U+2113,U+2C60-2C7F,U+A720-A7FF}
 
+
 body,.campaign{background:var(--background);color:var(--foreground);font-family:Aurora,var(--script-font),sans-serif}
 
 /* Copy at the top, its first letter exactly where the device below starts. */
 header{z-index:5}
-h1{font-size:108px;line-height:1.02;letter-spacing:-.018em;word-spacing:.06em;font-weight:720;font-variation-settings:'opsz' 144,'ROND' 40}
-h1 em{font-style:normal;color:var(--primary)}
-h1 ins{text-decoration:none;color:var(--light-3)}
+h1{font-size:110px;line-height:1.02;letter-spacing:-.02em;word-spacing:.05em;font-weight:740;font-variation-settings:'opsz' 144,'ROND' 60;
+  text-shadow:0 2px 30px oklch(from var(--background) l c h / .6)}
+h1 em{font-style:normal;color:var(--primary);text-shadow:0 0 40px oklch(from var(--primary) l c h / .45)}
+h1 ins{text-decoration:none;color:var(--curtain-2)}
 h1 del{opacity:.5}
-header p{margin:28px 0 0;font-size:42px;line-height:1.28;font-weight:420;color:var(--muted-foreground);max-width:880px;text-wrap:balance}
+header p{margin:28px 0 0;font-size:42px;line-height:1.28;font-weight:440;color:var(--muted-foreground);max-width:880px;text-wrap:balance}
 
-/* Frames: silver, lit from the top. */
+/* Frames: dark glass lit along the top edge, and the curtains' glow on the sky beneath. */
 .device{background:linear-gradient(170deg,var(--frame-top),var(--frame-bottom));
-  box-shadow:inset 0 0 0 2px #ffffffc0,inset 0 -3px 0 #00000018,0 50px 110px -20px var(--shadow),0 0 0 1px #00000050}
+  box-shadow:inset 0 0 0 2px oklch(1 0 0 / .1),inset 0 2px 0 var(--rim),0 0 0 1px oklch(0 0 0 / .5),0 30px 140px -10px var(--glow),0 50px 90px -30px #000c}
 .device-label{color:var(--foreground)}
 .device-label em{font-style:normal;color:var(--primary)}
 

@@ -9,7 +9,7 @@ How to work: **edit → check → render → look → refine.** Run `check` afte
 - If `store-listing/studio.json` is missing, run `npx screenshot-studio init` (with `--screenshots ./folder`, or `--package com.example.app` to capture an Android app, or `--platform ios`). `init` prints the next steps.
 - Prefer the MCP server (`claude mcp add screenshot-studio -- npx screenshot-studio mcp`, run in the app). Call `describe_listing` first, `check` after each edit, `render_card` to see a card, `export` to write everything.
 - Without MCP: `npx screenshot-studio check`, then `npx screenshot-studio export` (one language: `--locale de-DE`; fastlane folders: `--fastlane`; machine-readable: `--json`).
-- Words go in `store-listing/<locale>/copy.json`, keyed by each card's `feature`. Layout goes in `store-listing/gallery.json`, shared by every language; a card's `layers` add words or art to it (with Tailwind classes, when `theme.css` has `@import "tailwindcss";`). The look is `store-listing/theme.css` (colors are shadcn/ui tokens: `--background`, `--foreground`, `--primary`; real 3D devices are `--depth`, or the layout words `tilt` and `3d`) and `theme.ts` (typed with `satisfies Theme`), which belong to the app: edit them freely.
+- Words go in `store-listing/<locale>/copy.json`, keyed by each card's `feature`. Layout goes in `store-listing/gallery.json`, shared by every language; a card's `layers` add words or art to it (with Tailwind classes, when `theme.css` has `@import "tailwindcss";`). The look is `store-listing/theme.css` (colors are shadcn/ui tokens: `--background`, `--foreground`, `--primary`; real 3D devices are `--depth`, or the layout words `tilt` and `3d`) and `theme.ts` (typed with `satisfies Theme`; its `shader` paints the background in GLSL), which belong to the app: edit them freely.
 - Never edit `store-listing/studio/`: the package serves it.
 
 ## Start here
@@ -26,7 +26,7 @@ How to work: **edit → check → render → look → refine.** Run `check` afte
 
 ## Looks and languages
 
-- [Themes](docs/themes.md): re-branding with three shadcn/ui color tokens, layout words, what CSS can see of each card, 3D devices, fonts
+- [Themes](docs/themes.md): re-branding with three shadcn/ui color tokens, layout words, what CSS can see of each card, shader backgrounds, 3D devices, fonts
 - [Shipped themes](themes/): `theme.css` and `theme.ts` for each look, to read before writing your own
 - [Languages and export](docs/languages-and-export.md): words per language, export, README strips, fastlane and F-Droid
 

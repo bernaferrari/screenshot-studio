@@ -366,6 +366,12 @@ export interface UiNode {
 export interface Box {left: number; top: number; width: number; height: number}
 
 /** What a theme's hooks receive. `Fields` are the theme's own card fields (see Theme). */
+/** A theme's shader: its GLSL (defining `vec4 shade(vec2 p)`) and any uniforms of its own. */
+export interface ShaderSpec {
+  source: string;
+  uniforms?: Record<string, number | number[] | string>;
+}
+
 export interface ThemeContext<Fields extends object = {}> {
   W: number;
   H: number;
@@ -415,6 +421,13 @@ export interface Theme<Fields extends object = {}> {
    * the renderer moves them into style, where CSS applies.
    */
   art?(ctx: ThemeContext<Fields>): string | Node | void;
+  /**
+   * A GLSL background drawn under the art: the body of `vec4 shade(vec2 p)`'s file, where p is the pixel's place on
+   * the whole strip in CSS pixels (y down), so it continues across seams by itself. It gets u_size, u_offset, u_strip,
+   * u_index, u_cards, the theme's colors (u_background, u_foreground, u_primary) and noise, fbm, hash and mixOklab;
+   * `uniforms` adds more (a number, an array, or a CSS color such as 'var(--accent)'). A function decides per card.
+   */
+  shader?: string | ShaderSpec | ((ctx: ThemeContext<Fields>) => string | ShaderSpec | void);
   /** Add elements before captures load: a brand mark, panels, notes. */
   compose?(ctx: ThemeContext<Fields>): void | Promise<void>;
   /** Adjust or redraw frames once captures have their size. */

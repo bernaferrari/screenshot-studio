@@ -1,15 +1,15 @@
 {
   "$schema": "https://unpkg.com/screenshot-studio/studio/schemas/copy.schema.json",
-  "page": {
-    "title": "Sehen, *was* sich\ngeändert hat.",
-    "body": "Die ganze Seite, die Änderung markiert."
+  "home": {
+    "title": "Finde deine\n*Funklöcher.*",
+    "body": "Sieh, wie gut dein WLAN wirklich ist."
   },
-  "restock": {
-    "title": "Ausverkauft?\n*Wieder da.*",
-    "body": "Beobachte jedes Produkt und erfahre es sofort."
+  "coverage": {
+    "title": "Kartiere\n*tote Zonen.*",
+    "body": "Tippe, wo du stehst. Die Karte füllt sich."
   },
-  "text": {
-    "title": "Lies es\n*Wort für Wort.*",
-    "body": "Frist verschoben? Förderung geändert? Sieh es."
+  "channels": {
+    "title": "Wähle einen\n*freien* Kanal.",
+    "body": "Alle Netze in der Nähe, als Wellen."
   }
 }

@@ -36,7 +36,8 @@ export async function run(argv: string[]): Promise<number> {
   }
   // The theme is swapped whole: its files and fonts replace the last one's.
   fs.rmSync(path.join(listing, 'assets'), {recursive: true, force: true});
-  installTheme(listing, theme, {fill: text => text.replaceAll('{{name}}', 'ChangeDetection'), overwrite: true,
+  const app = JSON.parse(fs.readFileSync(path.join(listing, 'studio.json'), 'utf8')).app as string;
+  installTheme(listing, theme, {fill: text => text.replaceAll('{{name}}', app), overwrite: true,
     write: (relative, content) => fs.writeFileSync(path.join(listing, relative), content)});
   // --3d tilts every card, and a tilted device is drawn in 3D; without it the demo's cards stand straight again.
   const galleryFile = path.join(listing, 'gallery.json');

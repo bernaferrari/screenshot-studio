@@ -1,6 +1,6 @@
 // Real 3D devices, for themes with `depth`: each phone or tablet frame is drawn by three.js (MIT) as a device with
-// true thickness (a Galaxy S25 is 7.2 mm deep on 70.5 mm wide; a tablet about 6 mm on 165 mm), softly rounded edges,
-// a glass face and the capture on its screen, posed exactly where the frame's CSS puts it: flat, or tilted by its
+// true thickness (an iPhone 17 Pro is 8.75 mm deep on 71.9 mm wide; a tablet about 6 mm on 165 mm), built like one: black
+// glass around the capture on its screen, a metal band in the body color around its sides, and a soft shadow on the card, posed exactly where the frame's CSS puts it: flat, or tilted by its
 // `transform` (perspective(…) rotateY(…)…). The DOM frame stays in place, hidden, so layout, bounds checks and
 // callouts still see it; a canvas over the card draws the device. The body takes `--device-body` (or the frame's
 // solid background), white by default.
@@ -18,8 +18,8 @@ const roundedRect = (w: number, h: number, r: number) => {
   return s;
 };
 
-/** Depth as a share of the short side. */
-const DEPTH = {phone: 7.2 / 70.5, tablet: 6.1 / 165};
+/** Depth as a share of the short side: an iPhone 17 Pro (8.75 mm on 71.9 mm), a tablet about 6 mm on 165 mm. */
+const DEPTH = {phone: 8.75 / 71.9, tablet: 6.1 / 165};
 
 /**
  * The frame's CSS transform, split into its perspective distance and its rotation. Read from the computed transform, so
@@ -70,6 +70,8 @@ export async function renderDevice(main: HTMLElement, front: HTMLElement, amount
   let glassMat: THREE.MeshBasicMaterial | null = null;
   let texture: THREE.Texture | null = null;
   let sheenTexture: THREE.CanvasTexture | null = null;
+  let shadowGeo: THREE.PlaneGeometry | null = null;
+  let shadowMat: THREE.ShadowMaterial | null = null;
 
   try {
     renderer.setPixelRatio(window.devicePixelRatio * 1.5);
@@ -87,6 +89,27 @@ export async function renderDevice(main: HTMLElement, front: HTMLElement, amount
     const key = new THREE.DirectionalLight(0xffffff, 1.6);
     key.position.set(-1.4, 1.1, 1.3);
     scene.add(key);
+    // The device's shadow on the card, as if it hovered a little in front of it, soft like a studio key light's.
+    renderer.shadowMap.enabled = true;
+    renderer.shadowMap.type = THREE.VSMShadowMap;
+    // Cast by a light almost in front, from a little above and left: the shadow sits behind the device and shows only as
+    // a soft falloff past its lower right edge. It adds no light of its own.
+    const reach = Math.max(W, H) * 1.2;
+    const caster = new THREE.DirectionalLight(0xffffff, 0);
+    caster.position.set(-.18, .3, 1).multiplyScalar(reach);
+    caster.castShadow = true;
+    Object.assign(caster.shadow.camera, {left: -reach, right: reach, top: reach, bottom: -reach, near: 1, far: reach * 4});
+    caster.shadow.mapSize.set(2048, 2048);
+    caster.shadow.radius = 40;
+    caster.shadow.blurSamples = 32;
+    caster.shadow.bias = -.0005;
+    scene.add(caster);
+    shadowGeo = new THREE.PlaneGeometry(cardW * 6, cardH * 6);
+    shadowMat = new THREE.ShadowMaterial({opacity: .22});
+    const ground = new THREE.Mesh(shadowGeo, shadowMat);
+    ground.position.set(0, 0, -short * thickness - short * .05);
+    ground.receiveShadow = true;
+    scene.add(ground);
     const fill = new THREE.DirectionalLight(0xffffff, .7);
     fill.position.set(1.5, .3, .6);
     scene.add(fill);
@@ -106,15 +129,19 @@ export async function renderDevice(main: HTMLElement, front: HTMLElement, amount
 
     // The body: the frame's outline extruded backwards, its edge rounded by a bevel. Its front face is the CSS frame's
     // plane (z = 0), so the outline lands exactly where the frame's does.
-    const depth = short * thickness, round = short * .016;
+    const depth = short * thickness, round = Math.min(depth * .3, short * .012);
     body = new THREE.ExtrudeGeometry(roundedRect(W - 2 * round, H - 2 * round, Math.max(1, radius - round)), {
       depth: Math.max(1, depth - 2 * round), bevelEnabled: true, bevelThickness: round, bevelSize: round, bevelSegments: 16, curveSegments: 48,
     });
     body.translate(0, 0, -depth + round);
+    // Built like a phone: black glass on the front (the bezel around the screen), the body color on a metal band
+    // around the sides, which catches the room's light along its edge.
     const color = bodyColor(front);
-    face = new THREE.MeshPhysicalMaterial({color, roughness: .25, metalness: 0, clearcoat: 1, clearcoatRoughness: .15});
-    edge = new THREE.MeshPhysicalMaterial({color, roughness: .5, metalness: 0, clearcoat: .3, clearcoatRoughness: .4});
-    device.add(new THREE.Mesh(body, [face, edge]));
+    face = new THREE.MeshPhysicalMaterial({color: 0x0a0a0c, roughness: .06, metalness: 0, clearcoat: 1, clearcoatRoughness: .04});
+    edge = new THREE.MeshPhysicalMaterial({color, roughness: .3, metalness: .85, clearcoat: .5, clearcoatRoughness: .2});
+    const shell = new THREE.Mesh(body, [face, edge]);
+    shell.castShadow = true;
+    device.add(shell);
 
     // The screen: the capture on a rounded rectangle just in front of the face, unlit so it keeps its colors.
     const img = front.querySelector<HTMLImageElement>('.screen img')!;
@@ -169,6 +196,8 @@ export async function renderDevice(main: HTMLElement, front: HTMLElement, amount
     glassMat?.dispose();
     texture?.dispose();
     sheenTexture?.dispose();
+    shadowGeo?.dispose();
+    shadowMat?.dispose();
     envRT?.dispose();
     pmrem.dispose();
     room.dispose();

@@ -87,7 +87,7 @@ type Edges = [[Column, Column], [Column, Column]];
 // The two pixel columns at each edge of a card, with the foreground hidden: the background alone, as RGB rows
 // ([outer, inner] on the left, [inner, outer] on the right).
 async function edgeColumns(page: Page, width: number, height: number): Promise<Edges> {
-  await page.evaluate(() => { for (const el of document.querySelectorAll<HTMLElement>('.device, header, .callout, .device-label, .identity')) el.style.visibility = 'hidden'; });
+  await page.evaluate(() => { for (const el of document.querySelectorAll<HTMLElement>('.device, .device-3d, header, .callout, .device-label, .identity')) el.style.visibility = 'hidden'; });
   const shots: string[] = [];
   for (const x of [0, width - 2]) shots.push((await page.screenshot({type: 'png', scale: 'css', clip: {x, y: 0, width: 2, height}})).toString('base64'));
   return page.evaluate(shots => Promise.all(shots.map(async data => {

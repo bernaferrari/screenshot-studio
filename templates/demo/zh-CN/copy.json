@@ -1,15 +1,15 @@
 {
   "$schema": "https://unpkg.com/screenshot-studio/studio/schemas/copy.schema.json",
-  "page": {
-    "title": "看清*哪里*\n变了。",
-    "body": "整页内容，变化处已标出。"
+  "home": {
+    "title": "找出\n*信号盲区*。",
+    "body": "看看你的 Wi-Fi 到底有多好。"
   },
-  "restock": {
-    "title": "售罄了？\n*已补货。*",
-    "body": "关注任何商品，到货就告诉你。"
+  "coverage": {
+    "title": "找出\n*信号死角。*",
+    "body": "点按你所在的位置，地图随之填满。"
   },
-  "text": {
-    "title": "读懂\n*每一个字。*",
-    "body": "截止日期改了？资助变了？一看便知。"
+  "channels": {
+    "title": "选一个\n*空闲*信道。",
+    "body": "附近所有网络，画成波形。"
   }
 }

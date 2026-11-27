@@ -1,6 +1,6 @@
 # The Screenshot Studio demo
 
-Real captures of ChangeDetection, an Android app that watches web pages, in three languages, made into a Google Play set.
+Real captures of WiFi Weakspot, an Android app that maps where your Wi-Fi gets weak, in three languages, made into a Google Play set.
 Try things, then export again:
 
 | Try | Edit |
