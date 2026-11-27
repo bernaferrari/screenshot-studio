@@ -183,3 +183,23 @@ test('a word left alone on a headline\'s last line is pulled back up by a little
   assert.equal(far.widows.length, 1);
   assert.doesNotMatch(far.notes, /copy shrunk/);
 });
+
+test('a partial export replaces only what it rendered in the report', () => {
+  const {mergeReport} = require('../studio/studio.cjs');
+  const card = (locale, kind, index) => ({locale, kind, index, feature: `f${index}`, file: `${locale}/${kind}/${kind}-0${index + 1}.jpg`, width: 1, height: 1, bytes: 1, notes: []});
+  const tally = (locale, cards) => ({locale, cards, untranslated: 0, borrowedCaptures: 0, movedCallouts: 0, fixedCallouts: 0, shrunk: 0});
+  const previous = {ok: true, cards: [card('en-US', 'phone', 0), card('en-US', 'phone', 1), card('de-DE', 'phone', 0), card('de-DE', 'tablet7', 0)],
+    warnings: ['en-US/phone/phone-01.jpg: old widow', 'de-DE/phone/phone-01.jpg: stale', 'de-DE/tablet7/tablet7-01.jpg: kept', 'de-DE/phone: seam', 'de-DE/listing.json title has 40 characters', 'de-DE/phone/old.jpg is no longer in the gallery; delete it', 'global note'],
+    locales: [tally('en-US', 2), tally('de-DE', 2)]};
+  const latest = {ok: true, cards: [card('de-DE', 'phone', 0)], warnings: ['de-DE/phone/phone-01.jpg: new'], locales: [tally('de-DE', 1)]};
+
+  const one = mergeReport(previous, latest, {locales: ['de-DE'], gallery: 'phone', card: 0});
+  assert.deepEqual(one.cards.map(c => c.file).sort(), ['de-DE/phone/phone-01.jpg', 'de-DE/tablet7/tablet7-01.jpg', 'en-US/phone/phone-01.jpg', 'en-US/phone/phone-02.jpg']);
+  assert.deepEqual(one.warnings, ['en-US/phone/phone-01.jpg: old widow', 'de-DE/tablet7/tablet7-01.jpg: kept', 'de-DE/phone: seam', 'de-DE/phone/old.jpg is no longer in the gallery; delete it', 'de-DE/phone/phone-01.jpg: new']);
+  assert.equal(one.locales.find(t => t.locale === 'de-DE').cards, 2, 'one card keeps the language\'s full tally');
+
+  const language = mergeReport(previous, latest, {locales: ['de-DE']});
+  assert.deepEqual(language.cards.map(c => c.locale).sort(), ['de-DE', 'en-US', 'en-US']);
+  assert.deepEqual(language.warnings, ['en-US/phone/phone-01.jpg: old widow', 'de-DE/phone/phone-01.jpg: new']);
+  assert.deepEqual(language.locales.map(t => [t.locale, t.cards]), [['en-US', 2], ['de-DE', 1]]);
+});

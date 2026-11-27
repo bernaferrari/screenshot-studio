@@ -322,6 +322,41 @@ interface Run extends ListingFiles {
   warn: (message: string) => void;
 }
 
+/** What a partial export rendered: these languages (all when unset), this gallery, this card. */
+interface ExportScope { locales?: string[]; gallery?: string; card?: number }
+
+/**
+ * The report after a partial export: the new run's cards, warnings and language tallies, plus everything from the
+ * previous report that the run didn't render again. Warnings are kept by the language and card they start with
+ * ("de-DE/phone/phone-02-log.jpg: …", "de-DE/phone: …"); one that names neither is the new run's to give.
+ */
+export function mergeReport(previous: ExportResult, latest: ExportResult, scope: ExportScope): ExportResult {
+  const language = (locale: string) => !scope.locales?.length || scope.locales.includes(locale);
+  const covered = (locale: string, kind?: string, index?: number) => language(locale)
+    && (!scope.gallery || kind === undefined || kind === scope.gallery)
+    && (scope.card === undefined || index === undefined || index === scope.card);
+  const cards = (previous.cards || []).filter(card => !covered(card.locale, card.kind, card.index));
+  const byFile = new Map((previous.cards || []).map(card => [card.file, card]));
+  const warnings = (previous.warnings || []).filter(warning => {
+    const where = warning.match(/^([a-z]{2,3}(?:-[A-Za-z0-9]{2,8})*)\/([^:\s]+)[:\s]/);
+    if (!where) return false;
+    const card = byFile.get(`${where[1]}/${where[2]}`);
+    if (card) return !covered(card.locale, card.kind, card.index);
+    const [kind, ...rest] = where[2].split('/');
+    // listing.json is checked on every run of its language; stale images only on a run of the whole language;
+    // a gallery's seams on any run of that gallery but a single card's.
+    if (kind.includes('.')) return !language(where[1]);
+    if (rest.length) return !(language(where[1]) && !scope.gallery && scope.card === undefined);
+    return !covered(where[1], kind, scope.card === undefined ? undefined : -1);
+  });
+  // A language's tally counts all its cards: a run of one gallery or card keeps the previous count.
+  const whole = !scope.gallery && scope.card === undefined;
+  const fresh = new Map(latest.locales.map(tally => [tally.locale, tally]));
+  const old = new Map((previous.locales || []).map(tally => [tally.locale, tally]));
+  const locales = [...new Set([...old.keys(), ...fresh.keys()])].map(locale => (whole || !old.has(locale) ? fresh.get(locale) : old.get(locale)) || old.get(locale)!);
+  return {...latest, cards: [...cards, ...latest.cards], warnings: [...warnings, ...latest.warnings], locales};
+}
+
 const defaultJobs = () => Math.min(4, os.availableParallelism());
 
 /** Render, check and write a listing's cards. Never throws for a card problem: the result says what failed. */
@@ -336,10 +371,18 @@ export async function exportListing(options: ExportOptions = {}): Promise<Export
   const warn = (message: string) => { warnings.push(message); log(`warning: ${message}`); };
   /** The card asked for, as its index once resolved. */
   let card: number | undefined;
-  // export-report.json: the last export's result, for the editor's review queue.
+  // export-report.json: what the exports have found, for the editor's review queue. A partial export (some languages,
+  // one gallery, one card) replaces only what it rendered, so the rest of the last full export stays in review.
   const finish = (result: ExportResult): ExportResult => {
     const ran = {locales: options.locales, gallery: options.gallery, card, strict: !!options.strict};
-    try { fs.writeFileSync(path.join(listing, 'export-report.json'), JSON.stringify({...result, finishedAt: new Date().toISOString(), options: ran}, null, 2) + '\n'); } catch {}
+    const file = path.join(listing, 'export-report.json');
+    let report: ExportResult & {options?: object; partial?: boolean} = result;
+    if (!result.error && (options.locales?.length || options.gallery || card !== undefined)) {
+      let previous: ExportResult | null = null;
+      try { previous = JSON.parse(fs.readFileSync(file, 'utf8')); } catch { /* No report yet. */ }
+      if (previous && !previous.error) report = {...mergeReport(previous, result, {locales: options.locales, gallery: options.gallery, card}), partial: true};
+    }
+    try { fs.writeFileSync(file, JSON.stringify({...report, finishedAt: new Date().toISOString(), options: ran}, null, 2) + '\n'); } catch {}
     return result;
   };
 
