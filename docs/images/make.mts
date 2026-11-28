@@ -118,7 +118,7 @@ function callouts() {
   fs.writeFileSync(path.join(at, 'profiles.json'), JSON.stringify(profiles));
   // The signal card on the home screen, by its place in the UI tree: the reading and its verdict.
   fs.writeFileSync(path.join(at, 'gallery.json'), JSON.stringify({phone: [{feature: 'home', raw: 'phone/home.png', layout: 'big',
-    callouts: [{x: 70, y: 760, w: 940, h: 670, target: '1.0.0.0.0.0.0.0.0.0.0', targetMode: 'element', mag: 1.12, radius: 44}]}]}));
+    callouts: [{x: 40, y: 370, w: 1000, h: 713, target: '1.0.0.0.0.0.0.0.0.0.0', targetMode: 'element', mag: 1.3, dy: -30, radius: 52}]}]}));
   const run = spawnSync(process.execPath, [studio, 'export', '--listing', at], {encoding: 'utf8'});
   if (run.status !== 0) throw new Error(`callout export failed:\n${run.stdout}${run.stderr}`);
   const cards = locales.map(([locale, name]) => [image(path.join(at, locale, 'phone/01-home.jpg')), name]);
@@ -196,9 +196,9 @@ async function editor(browser) {
     // The crop: the row of cards with the same gutter on every side, measured on the page.
     const boxes = await page.locator('[data-card-frame]').evaluateAll(cards => cards.map(card => card.getBoundingClientRect().toJSON()));
     const row = boxes.filter(box => box.width > 0 && box.top === boxes[0].top);
-    const gutter = 20, left = Math.min(...row.map(b => b.left)), top = Math.min(...row.map(b => b.top));
-    const right = Math.max(...row.map(b => b.right)), bottom = Math.max(...row.map(b => b.bottom));
-    const crop = [right - left + 2 * gutter, bottom - top + 2 * gutter, left - gutter, top - gutter].map(v => Math.round(v / 2) * 2);
+    const gutter = 20, rowLeft = Math.min(...row.map(b => b.left)), rowTop = Math.min(...row.map(b => b.top));
+    const rowRight = Math.max(...row.map(b => b.right)), rowBottom = Math.max(...row.map(b => b.bottom));
+    const crop = [rowRight - rowLeft + 2 * gutter, rowBottom - rowTop + 2 * gutter, rowLeft - gutter, rowTop - gutter].map(v => Math.round(v / 2) * 2);
     const start = (Date.now() - t0) / 1000;
     for (const theme of ['porcelain', 'paper', 'mono', 'aurora']) { await page.waitForTimeout(2600); swap(theme); }
     await page.waitForTimeout(2600);

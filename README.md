@@ -37,7 +37,7 @@ Then: *"Make a Play Store screenshot set for this app from the screenshots in ./
 ## Live as it changes
 
 <p align="center">
-  <img src="docs/images/demo.gif" width="100%" alt="The editor re-rendering the demo's three Play cards live as the theme changes on disk: aurora, porcelain, paper, mono">
+  <img src="docs/images/demo.gif" width="100%" alt="The editor re-rendering the demo's three WiFi Weakspot Play cards live as the theme changes on disk: aurora, porcelain, paper, mono">
 </p>
 
 The editor follows your files. When you (or an agent) save `theme.css`, the cards re-render in place. Click a card to inspect and reword it, see the set on a Google Play page at thumbnail size, track every language, and work through one **Review** list of everything left to fix.
@@ -45,7 +45,7 @@ The editor follows your files. When you (or an agent) save `theme.css`, the card
 
 ## Six looks to start from
 
-The same card in each of the six themes. Every theme recolors from three [shadcn/ui](https://ui.shadcn.com/themes) color tokens (`--background`, `--foreground`, `--primary`), so a shadcn palette drops straight in; try one on the demo with `npx screenshot-studio demo --theme paper`. Add words or art to a single card (a sticker, a big number, a shape) with its `layers`, translated like the rest, styled by the theme or by Tailwind classes.
+The same card in each of the six themes. Every theme recolors from three [shadcn/ui](https://ui.shadcn.com/themes) color tokens (`--background`, `--foreground`, `--primary`), so a shadcn palette drops straight in; try one on the demo with `npx screenshot-studio demo --theme paper`. Add words or art to a single card (a sticker, a big number, a shape) with its `layers`, translated like the rest, styled by the theme or by Tailwind classes. A theme can also paint its background with a GLSL shader that runs across the whole strip, as `aurora`'s night sky and `mono`'s fluted glass do ([Shaders](docs/themes.md#shaders)).
 
 <p align="center">
   <img src="docs/images/themes.jpg" width="100%" alt="One card in each of the six themes: aurora, porcelain, signal, paper, panels and mono">
@@ -53,10 +53,10 @@ The same card in each of the six themes. Every theme recolors from three [shadcn
 
 ## Real 3D phones
 
-Add `tilt` to a card's layout and its phone turns in perspective as a real 3D device, with its thickness, rounded edges and glass. `3d` stands it up straight, and one CSS variable, `--depth`, makes any device 3D (or thicker) from the theme. Try it: `npx screenshot-studio demo --3d`.
+Add `tilt` to a card's layout and its phone turns in perspective as a real 3D device, built like one: an iPhone Pro's thickness, black glass around the screen, a metal band around the sides and a soft shadow on the card. `3d` stands it up straight, and one CSS variable, `--depth`, makes any device 3D (or thicker) from the theme. Try it: `npx screenshot-studio demo --3d`.
 
 <p align="center">
-  <img src="docs/images/depth.jpg" width="100%" alt="The demo's three cards in porcelain with real 3D phones, tilted so their edges show">
+  <img src="docs/images/depth.jpg" width="100%" alt="The demo's three WiFi Weakspot cards in porcelain as real 3D phones: black glass, metal edges, tilted so their depth shows">
 </p>
 
 ## Zoom in on what matters
@@ -64,7 +64,7 @@ Add `tilt` to a card's layout and its phone turns in perspective as a real 3D de
 A callout lifts part of the real screen out and magnifies it. Pick it as a UI element from the capture's accessibility tree, not a box of pixels, and it follows that element into every language, wherever the translation moves it.
 
 <p align="center">
-  <img src="docs/images/callouts.jpg" width="100%" alt="One callout picked from the accessibility tree: the restock change lifted out of ChangeDetection's compare screen in English, German and Chinese">
+  <img src="docs/images/callouts.jpg" width="100%" alt="One callout picked from the accessibility tree: WiFi Weakspot's signal card lifted out of its home screen, magnified, in English, German and Chinese">
 </p>
 
 ## Checked like a reviewer would
